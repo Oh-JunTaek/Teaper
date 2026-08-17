@@ -42,6 +42,7 @@ import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDra
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { selectGenerationEvidence } from "../services/generationSelection";
+import { canAccessGeneratedQuestion } from "../services/questionAccess";
 import { checkProviderConnection, resolveProvider, validateProviderUrl } from "../services/aiProviders";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 
@@ -68,7 +69,7 @@ export const assessmentRouter = router({
   dashboard: protectedProcedure.query(() => dashboardStats()),
 
   materials: router({
-    list: protectedProcedure.query(() => listMaterials()),
+    list: protectedProcedure.query(({ ctx }) => listMaterials(ctx.user.id)),
     upload: protectedProcedure.input(z.object({
       title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes),
       fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), base64: base64File, sourceText: z.string().max(30000).optional(),
@@ -195,7 +196,7 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 설정을 사용할 수 없습니다." });
       }
       const selectedOfficialDocuments = await getSelectedOfficialDocumentsForGeneration(ctx.user.id, input.subject);
-      const corpus = await getMaterialChunksForRag(input.subject, input.unit);
+      const corpus = await getMaterialChunksForRag(input.subject, input.unit, ctx.user.id);
       const allReferences = await getReferenceQuestionsForRag(input.subject, input.unit);
       const selectedReferenceRows = await getSelectedReferenceQuestionsForGeneration(ctx.user.id, input.subject, input.unit);
       const selectedEvidence = selectGenerationEvidence(allReferences, selectedReferenceRows, selectedOfficialDocuments);
@@ -243,9 +244,9 @@ export const assessmentRouter = router({
   }),
 
   questions: router({
-    list: protectedProcedure.input(z.object({ status: z.enum(statuses).optional() }).optional()).query(({ input }) => listGeneratedQuestions(input?.status)),
-    detail: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
-      const detail = await getGeneratedQuestionDetail(input.id);
+    list: protectedProcedure.input(z.object({ status: z.enum(statuses).optional() }).optional()).query(({ ctx, input }) => listGeneratedQuestions(input?.status, ctx.user.id, ctx.user.role === "admin")),
+    detail: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ ctx, input }) => {
+      const detail = await getGeneratedQuestionDetail(input.id, ctx.user.id, ctx.user.role === "admin");
       if (!detail) throw new TRPCError({ code: "NOT_FOUND", message: "문항을 찾을 수 없습니다." });
       return detail;
     }),
@@ -253,11 +254,13 @@ export const assessmentRouter = router({
       id: z.number().int().positive(), action: z.enum(["approved", "revised", "rejected"]), reason: z.string().min(2).max(2000),
       questionText: z.string().min(10).optional(), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1).optional(), explanation: z.string().min(2).optional(), intent: z.string().min(2).optional(),
     })).mutation(async ({ ctx, input }) => {
+      const detail = await getGeneratedQuestionDetail(input.id, ctx.user.id, ctx.user.role === "admin");
+      if (!detail || !canAccessGeneratedQuestion({ viewerId: ctx.user.id, viewerRole: ctx.user.role, creatorId: detail.question.creatorId })) throw new TRPCError({ code: "NOT_FOUND", message: "문항을 찾을 수 없습니다." });
       await reviewGeneratedQuestion({ reviewerId: ctx.user.id, ...input });
       return { success: true };
     }),
-    exportCsv: protectedProcedure.query(async () => {
-      const approved = await listGeneratedQuestions("approved");
+    exportCsv: protectedProcedure.query(async ({ ctx }) => {
+      const approved = await listGeneratedQuestions("approved", ctx.user.id, ctx.user.role === "admin");
       const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
       const header = ["ID", "문제", "보기", "정답", "해설", "출제 의도", "난이도", "배점", "유형", "모델", "프롬프트 버전", "검수 상태"];
       const rows = approved.map(item => [item.id, item.questionText, (item.choices || []).join(" | "), item.answer, item.explanation, item.intent, item.difficulty, item.points, item.questionType, item.model, item.promptVersion, item.status]);

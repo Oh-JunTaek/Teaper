@@ -134,9 +134,10 @@ export async function getMaterial(id: number) {
   return (await db.select().from(referenceMaterials).where(eq(referenceMaterials.id, id)).limit(1))[0];
 }
 
-export async function listMaterials() {
+export async function listMaterials(ownerId?: number) {
   const db = await requireDb();
-  return db.select().from(referenceMaterials).orderBy(desc(referenceMaterials.createdAt));
+  const query = db.select().from(referenceMaterials);
+  return ownerId ? query.where(eq(referenceMaterials.ownerId, ownerId)).orderBy(desc(referenceMaterials.createdAt)) : query.orderBy(desc(referenceMaterials.createdAt));
 }
 
 export async function updateMaterialExtraction(id: number, values: { ocrText: string; ocrStructure: unknown; ocrStatus: "completed" | "failed" }) {
@@ -211,13 +212,15 @@ export async function getReferenceQuestionsForRag(subject: string, unit: string)
   return db.select().from(referenceQuestions).where(and(eq(referenceQuestions.subject, subject), or(eq(referenceQuestions.unit, unit), eq(referenceQuestions.unit, "공통"))));
 }
 
-export async function getMaterialChunksForRag(subject: string, unit: string) {
+export async function getMaterialChunksForRag(subject: string, unit: string, ownerId?: number) {
   const db = await requireDb();
+  const scope = [eq(referenceMaterials.subject, subject), or(eq(referenceMaterials.unit, unit), eq(referenceMaterials.unit, "공통"))];
+  if (ownerId) scope.push(eq(referenceMaterials.ownerId, ownerId));
   return db
     .select({ chunk: materialChunks, material: referenceMaterials })
     .from(materialChunks)
     .innerJoin(referenceMaterials, eq(materialChunks.materialId, referenceMaterials.id))
-    .where(and(eq(referenceMaterials.subject, subject), or(eq(referenceMaterials.unit, unit), eq(referenceMaterials.unit, "공통"))));
+    .where(and(...scope));
 }
 
 export async function createGenerationRequest(values: typeof generationRequests.$inferInsert, officialDocumentIds: number[] = [], referenceQuestionIds: number[] = []) {
@@ -243,16 +246,20 @@ export async function createGeneratedQuestion(values: typeof generatedQuestions.
   return questionId;
 }
 
-export async function listGeneratedQuestions(status?: "pending_review" | "approved" | "revised" | "rejected" | "validation_hold") {
+export async function listGeneratedQuestions(status?: "pending_review" | "approved" | "revised" | "rejected" | "validation_hold", creatorId?: number, includeAll = false) {
   const db = await requireDb();
   const query = db.select().from(generatedQuestions);
-  return status ? query.where(eq(generatedQuestions.status, status)).orderBy(desc(generatedQuestions.createdAt)) : query.orderBy(desc(generatedQuestions.createdAt));
+  const scope = !includeAll && creatorId ? eq(generatedQuestions.creatorId, creatorId) : undefined;
+  const filter = status && scope ? and(eq(generatedQuestions.status, status), scope) : status ? eq(generatedQuestions.status, status) : scope;
+  return filter ? query.where(filter).orderBy(desc(generatedQuestions.createdAt)) : query.orderBy(desc(generatedQuestions.createdAt));
 }
 
-export async function getGeneratedQuestionDetail(id: number) {
+export async function getGeneratedQuestionDetail(id: number, viewerId?: number, includeAll = false) {
   const db = await requireDb();
   const question = (await db.select().from(generatedQuestions).where(eq(generatedQuestions.id, id)).limit(1))[0];
   if (!question) return undefined;
+  if (!includeAll && viewerId !== undefined && question.creatorId !== viewerId) return undefined;
+  const generationRequest = (await db.select().from(generationRequests).where(eq(generationRequests.id, question.requestId)).limit(1))[0];
   const sources = await db.select().from(generatedQuestionSources).where(eq(generatedQuestionSources.generatedQuestionId, id));
   const events = await db.select().from(reviewEvents).where(eq(reviewEvents.generatedQuestionId, id)).orderBy(desc(reviewEvents.createdAt));
   const officialDocumentLinks = await db.select({ document: officialDocuments, source: officialSources }).from(generationOfficialDocuments).innerJoin(officialDocuments, eq(generationOfficialDocuments.documentId, officialDocuments.id)).innerJoin(officialSources, eq(officialDocuments.sourceId, officialSources.id)).where(eq(generationOfficialDocuments.requestId, question.requestId));
@@ -260,7 +267,7 @@ export async function getGeneratedQuestionDetail(id: number) {
   const referenceIds = sources.filter(s => s.sourceType === "reference_question").map(s => s.sourceId);
   const materials = materialIds.length ? await db.select().from(referenceMaterials).where(or(...materialIds.map(item => eq(referenceMaterials.id, item)))) : [];
   const references = referenceIds.length ? await db.select().from(referenceQuestions).where(or(...referenceIds.map(item => eq(referenceQuestions.id, item)))) : [];
-  return { question, sources, events, materials, references, officialDocuments: officialDocumentLinks };
+  return { question, generationRequest, sources, events, materials, references, officialDocuments: officialDocumentLinks };
 }
 
 export async function reviewGeneratedQuestion(input: {
