@@ -50,6 +50,20 @@
       "when": 1786971728349,
       "tag": "0006_confused_brood",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "5",
+      "when": 1786979271113,
+      "tag": "0007_unique_firestar",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "5",
+      "when": 1786979434022,
+      "tag": "0008_giant_elektra",
+      "breakpoints": true
     }
   ]
 }

@@ -85,6 +85,10 @@ export const referenceQuestions = mysqlTable(
 export const generationRequests = mysqlTable("generation_requests", {
   id: int("id").autoincrement().primaryKey(),
   requesterId: int("requesterId").notNull(),
+  providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini"]).default("managed").notNull(),
+  providerSettingId: int("providerSettingId"),
+  providerModel: varchar("providerModel", { length: 160 }).notNull().default("managed-default"),
+  externalTransferConsentAt: timestamp("externalTransferConsentAt"),
   subject: varchar("subject", { length: 80 }).notNull(),
   unit: varchar("unit", { length: 120 }).notNull(),
   difficulty: varchar("difficulty", { length: 30 }).notNull(),
@@ -94,6 +98,28 @@ export const generationRequests = mysqlTable("generation_requests", {
   additionalRequirements: text("additionalRequirements"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export const aiProviderSettings = mysqlTable(
+  "ai_provider_settings",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini"]).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    baseUrl: varchar("baseUrl", { length: 500 }),
+    model: varchar("model", { length: 160 }).notNull(),
+    encryptedApiKey: text("encryptedApiKey"),
+    apiKeyHint: varchar("apiKeyHint", { length: 16 }),
+    allowExternalTransfer: int("allowExternalTransfer").default(0).notNull(),
+    externalTransferConsentAt: timestamp("externalTransferConsentAt"),
+    enabled: int("enabled").default(1).notNull(),
+    lastVerifiedAt: timestamp("lastVerifiedAt"),
+    lastVerificationStatus: varchar("lastVerificationStatus", { length: 40 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("ai_provider_settings_user_idx").on(table.userId, table.providerType)],
+);
 
 export const generatedQuestions = mysqlTable(
   "generated_questions",

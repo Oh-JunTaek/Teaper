@@ -13,10 +13,13 @@ export default function Generate() {
   const [, setLocation] = useLocation();
   const [form, setForm] = useState({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "자료 분석형", points: 3, questionCount: 1, additionalRequirements: "" });
   const [prototypeReady, setPrototypeReady] = useState(false);
+  const [providerId, setProviderId] = useState("managed");
+  const [externalTransferConsent, setExternalTransferConsent] = useState(false);
   const officialInput = useMemo(() => ({ subject: form.subject }), [form.subject]);
   const utils = trpc.useUtils();
   const official = trpc.assessment.officialDocuments.list.useQuery(officialInput);
   const sampleQuestions = trpc.assessment.references.prototypeSamples.useQuery();
+  const providers = trpc.assessment.aiProviders.list.useQuery();
   const setSampleSelection = trpc.assessment.references.setSelection.useMutation({ onSuccess: () => utils.assessment.references.prototypeSamples.invalidate() });
   const setSelection = trpc.assessment.officialDocuments.setSelection.useMutation({ onSuccess: () => utils.assessment.officialDocuments.list.invalidate() });
   const prepare = trpc.assessment.references.preparePrototype.useMutation({
@@ -36,7 +39,13 @@ export default function Generate() {
       }
     });
   };
-  const submit = (event: FormEvent) => { event.preventDefault(); create.mutate(form); };
+  const selectedProvider = providers.data?.find(provider => String(provider.id) === providerId);
+  const usesExternalProvider = selectedProvider?.providerType === "gemini" || selectedProvider?.providerType === "openai_compatible";
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (usesExternalProvider && !externalTransferConsent) { toast.error("개인 외부 AI로 전송될 자료 범위에 동의해 주세요."); return; }
+    create.mutate({ ...form, providerSettingId: providerId === "managed" ? undefined : Number(providerId), confirmExternalTransfer: usesExternalProvider ? externalTransferConsent : false });
+  };
   const selectedCount = official.data?.filter(row => row.useForGeneration).length ?? 0;
   const sampleRows = sampleQuestions.data?.filter(item => item.question.subject === form.subject) ?? [];
   const selectedSampleCount = sampleRows.filter(item => item.useForGeneration).length;
@@ -54,6 +63,7 @@ export default function Generate() {
           <div><Label>배점</Label><Input type="number" min="1" max="20" value={form.points} onChange={e => setForm({ ...form, points: Number(e.target.value) })} className="mt-1.5" /></div>
           <div><Label>문항 수 <span className="text-xs font-normal text-slate-400">(최대 5개)</span></Label><Input type="number" min="1" max="5" value={form.questionCount} onChange={e => setForm({ ...form, questionCount: Number(e.target.value) })} className="mt-1.5" /></div>
           <div className="sm:col-span-2"><Label>추가 요구사항 <span className="text-xs font-normal text-slate-400">(선택)</span></Label><Textarea value={form.additionalRequirements} onChange={e => setForm({ ...form, additionalRequirements: e.target.value })} className="mt-1.5 min-h-28" placeholder="예: 결합의 극성과 분자 모양의 관계를 판단하는 자료를 포함해 주세요." /></div>
+          <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4"><Label>AI 실행 방식</Label><select value={providerId} onChange={event => { setProviderId(event.target.value); setExternalTransferConsent(false); }} className="mt-1.5 h-10 w-full rounded-md border border-input bg-white px-3 text-sm"><option value="managed">관리형 AI · 기본 제공</option>{providers.data?.map(provider => <option key={provider.id} value={String(provider.id)}>{provider.label} · {provider.model}</option>)}</select><p className="mt-2 text-xs leading-5 text-slate-500">{providerId === "managed" ? "관리형 AI가 서버에서 문항을 생성·검증합니다." : selectedProvider?.providerType === "ollama" ? "로컬 Ollama는 로컬 앱 브리지에서 문항 원문을 외부로 보내지 않고 실행합니다." : "개인 외부 AI를 선택하면 근거 텍스트와 출제 조건이 해당 제공자로 전송됩니다."}</p>{usesExternalProvider && <label className="mt-3 flex gap-2 text-xs leading-5 text-slate-600"><input type="checkbox" checked={externalTransferConsent} onChange={event => setExternalTransferConsent(event.target.checked)} className="mt-1" /><span>이번 생성에서 문항 조건과 선택한 근거 텍스트가 <strong>{selectedProvider?.label}</strong>에 전송되는 것에 동의합니다.</span></label>}<a href="/ai-settings" className="mt-3 inline-block text-xs font-semibold text-[#116B58] underline underline-offset-4">AI 제공자 설정으로 이동</a></div>
         </div>
         <Button disabled={create.isPending} className="mt-6 h-12 w-full rounded-xl bg-[#15856B] text-base hover:bg-[#106C58]">{create.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />근거 확인·초안 작성·검증 중</> : <><Sparkles className="mr-2 h-5 w-5" />문항 초안 생성</>}</Button>
       </form>

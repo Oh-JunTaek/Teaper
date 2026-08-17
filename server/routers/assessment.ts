@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
+  createAiProviderSetting,
   createGeneratedQuestion,
   createGenerationRequest,
   createMaterial,
@@ -8,6 +9,7 @@ import {
   createOfficialSource,
   dashboardStats,
   ensureOfficialCatalog,
+  getAiProviderSettingForUser,
   getGeneratedQuestionDetail,
   getMaterial,
   getMaterialChunksForRag,
@@ -16,6 +18,7 @@ import {
   getSelectedReferenceQuestionsForGeneration,
   ensurePrototypeSampleQuestions,
   listGeneratedQuestions,
+  listAiProviderSettings,
   listMaterials,
   listOfficialDocuments,
   listOfficialDocumentsForUser,
@@ -31,6 +34,7 @@ import {
   setOfficialDocumentSelection,
   setReferenceQuestionSelection,
   updateMaterialExtraction,
+  updateAiProviderVerification,
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -38,6 +42,7 @@ import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDra
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { selectGenerationEvidence } from "../services/generationSelection";
+import { checkProviderConnection, resolveProvider, validateProviderUrl } from "../services/aiProviders";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
@@ -102,6 +107,56 @@ export const assessmentRouter = router({
     }),
   }),
 
+  aiProviders: router({
+    list: protectedProcedure.query(({ ctx }) => listAiProviderSettings(ctx.user.id)),
+    create: protectedProcedure.input(z.object({
+      providerType: z.enum(["ollama", "openai_compatible", "gemini"]),
+      label: z.string().min(2).max(120),
+      baseUrl: z.string().max(500).optional(),
+      model: z.string().min(2).max(160),
+      apiKey: z.string().max(2000).optional(),
+      confirmExternalTransfer: z.boolean().default(false),
+    })).mutation(async ({ ctx, input }) => {
+      const isExternal = input.providerType !== "ollama";
+      if (isExternal && !input.confirmExternalTransfer) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "개인 외부 AI를 사용하려면 외부 전송 범위에 동의해야 합니다." });
+      }
+      try {
+        const baseUrl = input.providerType === "gemini"
+          ? "https://generativelanguage.googleapis.com"
+          : validateProviderUrl(input.providerType, input.baseUrl || (input.providerType === "ollama" ? "http://127.0.0.1:11434" : ""));
+        const id = await createAiProviderSetting({
+          userId: ctx.user.id,
+          providerType: input.providerType,
+          label: input.label,
+          baseUrl,
+          model: input.model,
+          apiKey: input.apiKey,
+          allowExternalTransfer: isExternal,
+          externalTransferConsentAt: isExternal ? new Date() : null,
+        });
+        return { id };
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: error instanceof Error ? error.message : "AI 제공자 설정을 저장하지 못했습니다." });
+      }
+    }),
+    verify: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const setting = await getAiProviderSettingForUser(ctx.user.id, input.id);
+      if (!setting) throw new TRPCError({ code: "NOT_FOUND", message: "AI 제공자 설정을 찾을 수 없습니다." });
+      if (setting.providerType === "ollama" && process.env.LOCAL_APP_MODE !== "true") {
+        return { status: "local_app_required", models: [], message: "웹앱에서는 교사 PC의 Ollama에 직접 연결할 수 없습니다. 로컬 앱 브리지에서 연결을 확인하세요." };
+      }
+      try {
+        const result = await checkProviderConnection(resolveProvider(setting, true));
+        await updateAiProviderVerification(setting.id, ctx.user.id, "ready");
+        return result;
+      } catch (error) {
+        await updateAiProviderVerification(setting.id, ctx.user.id, "failed");
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 연결을 확인하지 못했습니다." });
+      }
+    }),
+  }),
+
   references: router({
     list: protectedProcedure.query(() => listReferenceQuestions()),
     prototypeSamples: protectedProcedure.query(({ ctx }) => listPrototypeSamplesForUser(ctx.user.id)),
@@ -127,8 +182,18 @@ export const assessmentRouter = router({
 
   generation: router({
     create: protectedProcedure.input(z.object({
-      subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(),
+      subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
     })).mutation(async ({ ctx, input }) => {
+      const providerSetting = input.providerSettingId ? await getAiProviderSettingForUser(ctx.user.id, input.providerSettingId) : undefined;
+      if (input.providerSettingId && !providerSetting) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "선택한 AI 제공자 설정을 찾을 수 없거나 사용할 권한이 없습니다." });
+      }
+      let provider;
+      try {
+        provider = resolveProvider(providerSetting, input.confirmExternalTransfer);
+      } catch (error) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 설정을 사용할 수 없습니다." });
+      }
       const selectedOfficialDocuments = await getSelectedOfficialDocumentsForGeneration(ctx.user.id, input.subject);
       const corpus = await getMaterialChunksForRag(input.subject, input.unit);
       const allReferences = await getReferenceQuestionsForRag(input.subject, input.unit);
@@ -136,7 +201,7 @@ export const assessmentRouter = router({
       const selectedEvidence = selectGenerationEvidence(allReferences, selectedReferenceRows, selectedOfficialDocuments);
       const selectedPrototypeReferences = selectedEvidence.references;
       const references = selectedEvidence.references;
-      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null }, selectedEvidence.officialDocumentIds, selectedEvidence.referenceQuestionIds);
+      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, subject: input.subject, unit: input.unit, difficulty: input.difficulty, questionType: input.questionType, points: input.points, questionCount: input.questionCount, additionalRequirements: input.additionalRequirements || null, providerType: provider.kind, providerSettingId: provider.providerSettingId ?? null, providerModel: provider.model, externalTransferConsentAt: provider.externalTransfer ? new Date() : null }, selectedEvidence.officialDocumentIds, selectedEvidence.referenceQuestionIds);
       const queryVector = createTextEmbedding(`${input.subject} ${input.unit} ${input.questionType} ${input.difficulty} ${input.additionalRequirements || ""}`);
       const rankedChunks = rank(queryVector, corpus.map(row => ({ ...row, embedding: row.chunk.embedding }))).slice(0, 10);
       const rankedReferences = rank(queryVector, references.map(item => ({ ...item, embedding: item.embedding }))).slice(0, 6);
@@ -152,11 +217,11 @@ export const assessmentRouter = router({
         let finalDraft = null as Awaited<ReturnType<typeof generateDraft>> | null;
         let finalValidation = null as Awaited<ReturnType<typeof validateDraft>> | null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` });
+          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` }, provider);
           const draftVector = createTextEmbedding([generated.draft.questionText, ...(generated.draft.choices || []), generated.draft.answer].join(" "));
           const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
           const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
-          const validation = await validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined });
+          const validation = await validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined }, provider);
           finalDraft = generated;
           finalValidation = validation;
           if (validation.pass) break;

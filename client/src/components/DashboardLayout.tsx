@@ -14,6 +14,7 @@ import {
   ClipboardList,
   FileArchive,
   LayoutDashboard,
+  Cpu,
   LogOut,
   PanelLeft,
   ShieldCheck,
@@ -27,6 +28,7 @@ const menuItems = [
   { icon: FileArchive, label: "참고 자료", path: "/materials" },
   { icon: ClipboardList, label: "기출문제", path: "/references" },
   { icon: Sparkles, label: "문항 생성", path: "/generate" },
+  { icon: Cpu, label: "AI 설정", path: "/ai-settings" },
   { icon: ShieldCheck, label: "검수함", path: "/review" },
   { icon: BookOpenCheck, label: "승인 문항", path: "/approved" },
 ];

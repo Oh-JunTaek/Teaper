@@ -1,0 +1,2 @@
+ALTER TABLE `ai_provider_settings` MODIFY COLUMN `providerType` enum('managed','ollama','openai_compatible','gemini') NOT NULL;--> statement-breakpoint
+ALTER TABLE `generation_requests` MODIFY COLUMN `providerType` enum('managed','ollama','openai_compatible','gemini') NOT NULL DEFAULT 'managed';

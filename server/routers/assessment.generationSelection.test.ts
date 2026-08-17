@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
+import { encryptPersonalApiKey } from "../services/personalApiCrypto";
 
 const db = vi.hoisted(() => ({
   createGeneratedQuestion: vi.fn().mockResolvedValue(901),
   createGenerationRequest: vi.fn().mockResolvedValue(501),
+  createAiProviderSetting: vi.fn().mockResolvedValue(55),
   dashboardStats: vi.fn(),
+  getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
   getMaterialChunksForRag: vi.fn().mockResolvedValue([]),
   getReferenceQuestionsForRag: vi.fn().mockResolvedValue([{ id: 11, subject: "화학 I", unit: "화학 결합", questionType: "개념 확인형", difficulty: "중", points: 3, year: "프로토타입", source: "프로토타입 샘플", questionText: "샘플 문제", choices: ["A", "B"], answer: "1", explanation: "설명", intent: "의도", embedding: [1] }]),
   getSelectedOfficialDocumentsForGeneration: vi.fn().mockResolvedValue([{ document: { id: 7, title: "화학 I 공식 문서", subject: "화학 I", applicableYear: "2026", officialUrl: "https://ncic.re.kr/sample", summary: "공식 범위", rightsStatus: "link_only" }, source: { provider: "교육부" } }]),
@@ -14,7 +17,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({
   ...db,
-  createMaterial: vi.fn(), createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), ensureOfficialCatalog: vi.fn(), getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: vi.fn(), listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: vi.fn(),
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: vi.fn(), createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: vi.fn(), listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: vi.fn(),
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -42,5 +45,52 @@ describe("generation request evidence integration", () => {
     expect(db.ensurePrototypeSampleQuestions).toHaveBeenCalledWith(42);
     expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ requesterId: 42 }), [7], [11]);
     expect(db.createGeneratedQuestion).toHaveBeenCalled();
+  });
+
+  it("records a selected local provider in the generation request", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1, providerSettingId: 55, confirmExternalTransfer: false });
+
+    expect(db.getAiProviderSettingForUser).toHaveBeenCalledWith(42, 55);
+    expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ providerType: "ollama", providerSettingId: 55, providerModel: "qwen3:8b", externalTransferConsentAt: null }), [7], [11]);
+  });
+
+  it("blocks an external provider when per-request transfer consent is absent", async () => {
+    db.getAiProviderSettingForUser.mockResolvedValueOnce({ id: 56, userId: 42, providerType: "gemini", label: "개인 Gemini", baseUrl: "https://generativelanguage.googleapis.com", model: "gemini-2.5-flash", encryptedApiKey: "unused-before-consent", allowExternalTransfer: 1, externalTransferConsentAt: new Date(), enabled: 1 });
+    const caller = assessmentRouter.createCaller(context());
+
+    await expect(caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1, providerSettingId: 56, confirmExternalTransfer: false })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
+
+  it("stores a loopback Ollama setting without an external transfer consent", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await caller.aiProviders.create({ providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", confirmExternalTransfer: false });
+
+    expect(db.createAiProviderSetting).toHaveBeenCalledWith(expect.objectContaining({ userId: 42, providerType: "ollama", allowExternalTransfer: false, baseUrl: "http://127.0.0.1:11434" }));
+  });
+
+  it("requires consent before creating an external personal API setting", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.aiProviders.create({ providerType: "gemini", label: "개인 Gemini", model: "gemini-2.5-flash", apiKey: "test-key", confirmExternalTransfer: false })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+  });
+
+  it("does not attempt to contact a teacher PC Ollama from the web server", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.aiProviders.verify({ id: 55 })).resolves.toMatchObject({ status: "local_app_required" });
+  });
+
+  it("rejects an AI setting owned by another user and disallows a remote Ollama address", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    db.getAiProviderSettingForUser.mockResolvedValueOnce(undefined);
+    await expect(caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1, providerSettingId: 999, confirmExternalTransfer: false })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(caller.aiProviders.create({ providerType: "ollama", label: "원격 Ollama", baseUrl: "https://remote.example.com", model: "qwen3:8b", confirmExternalTransfer: false })).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  it("records external provider consent with the selected model in the generation history", async () => {
+    db.getAiProviderSettingForUser.mockResolvedValueOnce({ id: 56, userId: 42, providerType: "gemini", label: "개인 Gemini", baseUrl: "https://generativelanguage.googleapis.com", model: "gemini-2.5-flash", encryptedApiKey: encryptPersonalApiKey("test-personal-key"), allowExternalTransfer: 1, externalTransferConsentAt: new Date(), enabled: 1 });
+    const caller = assessmentRouter.createCaller(context());
+    await caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1, providerSettingId: 56, confirmExternalTransfer: true });
+
+    expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ providerType: "gemini", providerSettingId: 56, providerModel: "gemini-2.5-flash", externalTransferConsentAt: expect.any(Date) }), [7], [11]);
   });
 });

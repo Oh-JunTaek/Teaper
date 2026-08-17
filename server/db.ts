@@ -1,6 +1,7 @@
 import { and, count, desc, eq, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
+  aiProviderSettings,
   generatedQuestions,
   generatedQuestionSources,
   generationOfficialDocuments,
@@ -21,6 +22,7 @@ import {
 import { ENV } from "./_core/env";
 import { buildApprovedOfficialDocumentVersion } from "./services/officialCatalogVersion";
 import { createTextEmbedding } from "./services/assessmentAi";
+import { apiKeyHint, encryptPersonalApiKey } from "./services/personalApiCrypto";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -61,6 +63,64 @@ export async function getUserByOpenId(openId: string) {
   if (!db) return undefined;
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
   return result[0];
+}
+
+export type ProviderType = "managed" | "ollama" | "openai_compatible" | "gemini";
+
+export async function listAiProviderSettings(userId: number) {
+  const db = await requireDb();
+  return db.select({
+    id: aiProviderSettings.id,
+    providerType: aiProviderSettings.providerType,
+    label: aiProviderSettings.label,
+    baseUrl: aiProviderSettings.baseUrl,
+    model: aiProviderSettings.model,
+    apiKeyHint: aiProviderSettings.apiKeyHint,
+    allowExternalTransfer: aiProviderSettings.allowExternalTransfer,
+    externalTransferConsentAt: aiProviderSettings.externalTransferConsentAt,
+    enabled: aiProviderSettings.enabled,
+    lastVerifiedAt: aiProviderSettings.lastVerifiedAt,
+    lastVerificationStatus: aiProviderSettings.lastVerificationStatus,
+    createdAt: aiProviderSettings.createdAt,
+    updatedAt: aiProviderSettings.updatedAt,
+  }).from(aiProviderSettings).where(eq(aiProviderSettings.userId, userId)).orderBy(desc(aiProviderSettings.updatedAt));
+}
+
+export async function getAiProviderSettingForUser(userId: number, id: number) {
+  const db = await requireDb();
+  return (await db.select().from(aiProviderSettings).where(and(eq(aiProviderSettings.id, id), eq(aiProviderSettings.userId, userId), eq(aiProviderSettings.enabled, 1))).limit(1))[0];
+}
+
+export async function createAiProviderSetting(input: {
+  userId: number;
+  providerType: Exclude<ProviderType, "managed">;
+  label: string;
+  baseUrl: string;
+  model: string;
+  apiKey?: string;
+  allowExternalTransfer: boolean;
+  externalTransferConsentAt?: Date | null;
+}) {
+  const db = await requireDb();
+  const usesApiKey = input.providerType === "openai_compatible" || input.providerType === "gemini";
+  if (usesApiKey && !input.apiKey?.trim()) throw new Error("개인 API 키가 필요합니다.");
+  const result = await db.insert(aiProviderSettings).values({
+    userId: input.userId,
+    providerType: input.providerType,
+    label: input.label,
+    baseUrl: input.baseUrl,
+    model: input.model,
+    encryptedApiKey: input.apiKey ? encryptPersonalApiKey(input.apiKey) : null,
+    apiKeyHint: input.apiKey ? apiKeyHint(input.apiKey) : null,
+    allowExternalTransfer: input.allowExternalTransfer ? 1 : 0,
+    externalTransferConsentAt: input.externalTransferConsentAt ?? null,
+  });
+  return Number(result[0].insertId);
+}
+
+export async function updateAiProviderVerification(id: number, userId: number, status: string) {
+  const db = await requireDb();
+  await db.update(aiProviderSettings).set({ lastVerificationStatus: status, lastVerifiedAt: new Date() }).where(and(eq(aiProviderSettings.id, id), eq(aiProviderSettings.userId, userId)));
 }
 
 export async function createMaterial(values: typeof referenceMaterials.$inferInsert) {
