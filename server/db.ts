@@ -4,6 +4,7 @@ import {
   generatedQuestions,
   generatedQuestionSources,
   generationOfficialDocuments,
+  generationReferenceQuestions,
   generationRequests,
   InsertUser,
   materialChunks,
@@ -12,12 +13,14 @@ import {
   officialSourceChanges,
   officialSources,
   referenceMaterials,
+  referenceQuestionSelections,
   referenceQuestions,
   reviewEvents,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
 import { buildApprovedOfficialDocumentVersion } from "./services/officialCatalogVersion";
+import { createTextEmbedding } from "./services/assessmentAi";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -100,6 +103,44 @@ export async function listReferenceQuestions() {
   return db.select().from(referenceQuestions).orderBy(desc(referenceQuestions.createdAt));
 }
 
+export async function ensurePrototypeSampleQuestions(ownerId: number) {
+  const db = await requireDb();
+  const existing = await db.select({ id: referenceQuestions.id }).from(referenceQuestions).where(eq(referenceQuestions.source, "프로토타입 샘플"));
+  if (existing.length) {
+    await db.insert(referenceQuestionSelections).values(existing.map(row => ({ userId: ownerId, referenceQuestionId: row.id, useForGeneration: 1 }))).onDuplicateKeyUpdate({ set: { useForGeneration: 1 } });
+    return { created: 0, ids: existing.map(row => row.id), label: "프로토타입 샘플" };
+  }
+  const samples = [
+    { subject: "화학 I", unit: "화학 결합", questionType: "개념 확인형", difficulty: "중", points: 3, year: "프로토타입", source: "프로토타입 샘플", questionText: "원자 사이의 전기음성도 차이가 클 때 형성되기 쉬운 결합에 대한 설명으로 가장 적절한 것은?", choices: ["전자쌍을 공유하지 않는다", "전자를 한 원자에서 다른 원자로 이동시키는 성격이 커진다", "항상 금속 원자 사이에서만 형성된다", "분자의 극성과 무관하다"], answer: "2", explanation: "전기음성도 차이가 클수록 전자 이동 성격이 커져 이온 결합 성격이 증가한다.", intent: "전기음성도 차이와 결합 성격의 관계를 확인한다." },
+    { subject: "화학 I", unit: "화학 결합", questionType: "자료 분석형", difficulty: "상", points: 4, year: "프로토타입", source: "프로토타입 샘플", questionText: "두 분자의 결합 극성과 분자 구조 자료를 비교할 때 분자 전체의 극성을 판단하기 위해 함께 고려해야 할 요소는?", choices: ["원자량만", "결합의 극성과 결합 방향의 벡터 합", "시료의 부피만", "반응 시간만"], answer: "2", explanation: "분자 전체의 극성은 개별 결합의 극성과 공간적 배치에 따른 벡터 합으로 판단한다.", intent: "결합 극성과 분자 구조를 함께 해석하는 능력을 확인한다." },
+  ];
+  const ids: number[] = [];
+  for (const sample of samples) {
+    const embedding = createTextEmbedding([sample.questionText, ...sample.choices, sample.answer, sample.explanation, sample.intent].join(" "));
+    ids.push(await createReferenceQuestion({ ownerId, ...sample, choices: sample.choices, embedding }));
+  }
+  await db.insert(referenceQuestionSelections).values(ids.map(referenceQuestionId => ({ userId: ownerId, referenceQuestionId, useForGeneration: 1 })));
+  return { created: ids.length, ids, label: "프로토타입 샘플" };
+}
+
+export async function listPrototypeSamplesForUser(userId: number) {
+  const db = await requireDb();
+  const questions = await db.select().from(referenceQuestions).where(eq(referenceQuestions.source, "프로토타입 샘플")).orderBy(referenceQuestions.id);
+  const selections = await db.select().from(referenceQuestionSelections).where(eq(referenceQuestionSelections.userId, userId));
+  const selected = new Map(selections.map(row => [row.referenceQuestionId, Boolean(row.useForGeneration)]));
+  return questions.map(question => ({ question, useForGeneration: selected.get(question.id) ?? false, sourceLabel: "프로토타입 샘플", useScope: "현재 문항 생성의 참고 유형·개념 근거" }));
+}
+
+export async function setReferenceQuestionSelection(userId: number, referenceQuestionId: number, useForGeneration: boolean) {
+  const db = await requireDb();
+  await db.insert(referenceQuestionSelections).values({ userId, referenceQuestionId, useForGeneration: useForGeneration ? 1 : 0 }).onDuplicateKeyUpdate({ set: { useForGeneration: useForGeneration ? 1 : 0 } });
+}
+
+export async function getSelectedReferenceQuestionsForGeneration(userId: number, subject: string, unit: string) {
+  const db = await requireDb();
+  return db.select({ question: referenceQuestions, selection: referenceQuestionSelections }).from(referenceQuestionSelections).innerJoin(referenceQuestions, eq(referenceQuestionSelections.referenceQuestionId, referenceQuestions.id)).where(and(eq(referenceQuestionSelections.userId, userId), eq(referenceQuestionSelections.useForGeneration, 1), eq(referenceQuestions.subject, subject), or(eq(referenceQuestions.unit, unit), eq(referenceQuestions.unit, "공통"))));
+}
+
 export async function updateReferenceQuestion(id: number, values: Omit<typeof referenceQuestions.$inferInsert, "id" | "ownerId" | "createdAt" | "updatedAt">) {
   const db = await requireDb();
   await db.update(referenceQuestions).set(values).where(eq(referenceQuestions.id, id));
@@ -119,12 +160,15 @@ export async function getMaterialChunksForRag(subject: string, unit: string) {
     .where(and(eq(referenceMaterials.subject, subject), or(eq(referenceMaterials.unit, unit), eq(referenceMaterials.unit, "공통"))));
 }
 
-export async function createGenerationRequest(values: typeof generationRequests.$inferInsert, officialDocumentIds: number[] = []) {
+export async function createGenerationRequest(values: typeof generationRequests.$inferInsert, officialDocumentIds: number[] = [], referenceQuestionIds: number[] = []) {
   const db = await requireDb();
   const result = await db.insert(generationRequests).values(values);
   const requestId = Number(result[0].insertId);
   if (officialDocumentIds.length) {
     await db.insert(generationOfficialDocuments).values(Array.from(new Set(officialDocumentIds)).map(documentId => ({ requestId, documentId })));
+  }
+  if (referenceQuestionIds.length) {
+    await db.insert(generationReferenceQuestions).values(Array.from(new Set(referenceQuestionIds)).map(referenceQuestionId => ({ requestId, referenceQuestionId })));
   }
   return requestId;
 }

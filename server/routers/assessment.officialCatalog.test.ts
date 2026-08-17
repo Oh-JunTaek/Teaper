@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { TrpcContext } from "../_core/context";
 
 const dbMocks = vi.hoisted(() => ({
-  createGeneratedQuestion: vi.fn(), createGenerationRequest: vi.fn(), createMaterial: vi.fn(), createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), dashboardStats: vi.fn(), ensureOfficialCatalog: vi.fn(), getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getMaterialChunksForRag: vi.fn(), getReferenceQuestionsForRag: vi.fn(), getSelectedOfficialDocumentsForGeneration: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listReferenceQuestions: vi.fn(), listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: vi.fn(),
+  createGeneratedQuestion: vi.fn(), createGenerationRequest: vi.fn(), createMaterial: vi.fn(), createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), dashboardStats: vi.fn(), ensureOfficialCatalog: vi.fn(), getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getMaterialChunksForRag: vi.fn(), getReferenceQuestionsForRag: vi.fn(), getSelectedOfficialDocumentsForGeneration: vi.fn(), ensurePrototypeSampleQuestions: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listReferenceQuestions: vi.fn(), listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setOfficialDocumentSelection: vi.fn(), setReferenceQuestionSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: vi.fn(),
 }));
 
 vi.mock("../db", () => dbMocks);
@@ -35,6 +35,21 @@ describe("official document catalog routes", () => {
 
     await expect(caller.officialDocuments.setSelection({ documentId: 9, useForGeneration: false })).resolves.toEqual({ success: true });
     expect(dbMocks.setOfficialDocumentSelection).toHaveBeenCalledWith(42, 9, false);
+  });
+
+  it("prepares prototype samples for the signed-in teacher", async () => {
+    dbMocks.ensurePrototypeSampleQuestions.mockResolvedValue({ created: 2, ids: [11, 12], label: "프로토타입 샘플" });
+    const caller = assessmentRouter.createCaller(createAdminContext());
+
+    await expect(caller.references.preparePrototype()).resolves.toEqual({ created: 2, ids: [11, 12], label: "프로토타입 샘플" });
+    expect(dbMocks.ensurePrototypeSampleQuestions).toHaveBeenCalledWith(42);
+  });
+
+  it("stores a selected prototype question for the signed-in teacher", async () => {
+    const caller = assessmentRouter.createCaller(createAdminContext());
+
+    await expect(caller.references.setSelection({ referenceQuestionId: 11, useForGeneration: true })).resolves.toEqual({ success: true });
+    expect(dbMocks.setReferenceQuestionSelection).toHaveBeenCalledWith(42, 11, true);
   });
 
   it("passes an approved source candidate to the database reflection workflow", async () => {

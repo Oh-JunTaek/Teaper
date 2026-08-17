@@ -13,10 +13,13 @@ import {
   getMaterialChunksForRag,
   getReferenceQuestionsForRag,
   getSelectedOfficialDocumentsForGeneration,
+  getSelectedReferenceQuestionsForGeneration,
+  ensurePrototypeSampleQuestions,
   listGeneratedQuestions,
   listMaterials,
   listOfficialDocuments,
   listOfficialDocumentsForUser,
+  listPrototypeSamplesForUser,
   listOfficialSourceChanges,
   listOfficialSources,
   listReferenceQuestions,
@@ -26,6 +29,7 @@ import {
   reviewOfficialSourceChange,
   setWorkspaceUserRole,
   setOfficialDocumentSelection,
+  setReferenceQuestionSelection,
   updateMaterialExtraction,
   updateReferenceQuestion,
 } from "../db";
@@ -33,6 +37,7 @@ import { storageGetSignedUrl, storagePut } from "../storage";
 import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
+import { selectGenerationEvidence } from "../services/generationSelection";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
@@ -99,6 +104,9 @@ export const assessmentRouter = router({
 
   references: router({
     list: protectedProcedure.query(() => listReferenceQuestions()),
+    prototypeSamples: protectedProcedure.query(({ ctx }) => listPrototypeSamplesForUser(ctx.user.id)),
+    preparePrototype: protectedProcedure.mutation(({ ctx }) => ensurePrototypeSampleQuestions(ctx.user.id)),
+    setSelection: protectedProcedure.input(z.object({ referenceQuestionId: z.number().int().positive(), useForGeneration: z.boolean() })).mutation(async ({ ctx, input }) => { await setReferenceQuestionSelection(ctx.user.id, input.referenceQuestionId, input.useForGeneration); return { success: true }; }),
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
       questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
@@ -122,9 +130,13 @@ export const assessmentRouter = router({
       subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(),
     })).mutation(async ({ ctx, input }) => {
       const selectedOfficialDocuments = await getSelectedOfficialDocumentsForGeneration(ctx.user.id, input.subject);
-      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null }, selectedOfficialDocuments.map(row => row.document.id));
       const corpus = await getMaterialChunksForRag(input.subject, input.unit);
-      const references = await getReferenceQuestionsForRag(input.subject, input.unit);
+      const allReferences = await getReferenceQuestionsForRag(input.subject, input.unit);
+      const selectedReferenceRows = await getSelectedReferenceQuestionsForGeneration(ctx.user.id, input.subject, input.unit);
+      const selectedEvidence = selectGenerationEvidence(allReferences, selectedReferenceRows, selectedOfficialDocuments);
+      const selectedPrototypeReferences = selectedEvidence.references;
+      const references = selectedEvidence.references;
+      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null }, selectedEvidence.officialDocumentIds, selectedEvidence.referenceQuestionIds);
       const queryVector = createTextEmbedding(`${input.subject} ${input.unit} ${input.questionType} ${input.difficulty} ${input.additionalRequirements || ""}`);
       const rankedChunks = rank(queryVector, corpus.map(row => ({ ...row, embedding: row.chunk.embedding }))).slice(0, 10);
       const rankedReferences = rank(queryVector, references.map(item => ({ ...item, embedding: item.embedding }))).slice(0, 6);

@@ -243,5 +243,29 @@ export const generationOfficialDocuments = mysqlTable(
   table => [index("generation_official_documents_request_idx").on(table.requestId, table.documentId)],
 );
 
+export const referenceQuestionSelections = mysqlTable(
+  "reference_question_selections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    referenceQuestionId: int("referenceQuestionId").notNull(),
+    useForGeneration: int("useForGeneration").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("reference_question_selections_user_idx").on(table.userId, table.referenceQuestionId)],
+);
+
+export const generationReferenceQuestions = mysqlTable(
+  "generation_reference_questions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    requestId: int("requestId").notNull(),
+    referenceQuestionId: int("referenceQuestionId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("generation_reference_questions_request_idx").on(table.requestId, table.referenceQuestionId)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
