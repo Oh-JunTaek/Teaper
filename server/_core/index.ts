@@ -7,6 +7,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { registerStorageProxy } from "./storageProxy";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { runOfficialSourceCheck } from "../scheduled/officialSourceCheck";
 import { serveStatic, setupVite } from "./vite";
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -36,6 +37,8 @@ async function startServer() {
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
   registerStorageProxy(app);
   registerOAuthRoutes(app);
+  // This route is called only by a platform-managed scheduled job after the site is deployed.
+  app.post("/api/scheduled/official-source-check", runOfficialSourceCheck);
   // tRPC API
   app.use(
     "/api/trpc",

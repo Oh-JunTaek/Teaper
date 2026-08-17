@@ -5,23 +5,34 @@ import {
   createGenerationRequest,
   createMaterial,
   createReferenceQuestion,
+  createOfficialSource,
   dashboardStats,
+  ensureOfficialCatalog,
   getGeneratedQuestionDetail,
   getMaterial,
   getMaterialChunksForRag,
   getReferenceQuestionsForRag,
+  getSelectedOfficialDocumentsForGeneration,
   listGeneratedQuestions,
   listMaterials,
+  listOfficialDocuments,
+  listOfficialDocumentsForUser,
+  listOfficialSourceChanges,
+  listOfficialSources,
   listReferenceQuestions,
   listWorkspaceUsers,
   replaceMaterialChunks,
   reviewGeneratedQuestion,
+  reviewOfficialSourceChange,
   setWorkspaceUserRole,
+  setOfficialDocumentSelection,
   updateMaterialExtraction,
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
 import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
+import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
+import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
@@ -78,6 +89,14 @@ export const assessmentRouter = router({
     }),
   }),
 
+  officialDocuments: router({
+    list: protectedProcedure.input(z.object({ subject: z.string().optional() }).optional()).query(({ ctx, input }) => listOfficialDocumentsForUser(ctx.user.id, input?.subject)),
+    setSelection: protectedProcedure.input(z.object({ documentId: z.number().int().positive(), useForGeneration: z.boolean() })).mutation(async ({ ctx, input }) => {
+      await setOfficialDocumentSelection(ctx.user.id, input.documentId, input.useForGeneration);
+      return { success: true };
+    }),
+  }),
+
   references: router({
     list: protectedProcedure.query(() => listReferenceQuestions()),
     create: protectedProcedure.input(z.object({
@@ -102,7 +121,8 @@ export const assessmentRouter = router({
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null });
+      const selectedOfficialDocuments = await getSelectedOfficialDocumentsForGeneration(ctx.user.id, input.subject);
+      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null }, selectedOfficialDocuments.map(row => row.document.id));
       const corpus = await getMaterialChunksForRag(input.subject, input.unit);
       const references = await getReferenceQuestionsForRag(input.subject, input.unit);
       const queryVector = createTextEmbedding(`${input.subject} ${input.unit} ${input.questionType} ${input.difficulty} ${input.additionalRequirements || ""}`);
@@ -110,8 +130,9 @@ export const assessmentRouter = router({
       const rankedReferences = rank(queryVector, references.map(item => ({ ...item, embedding: item.embedding }))).slice(0, 6);
       const curriculumContext = materialContext(rankedChunks.map(item => item.item), "curriculum");
       const guidelineContext = materialContext(rankedChunks.map(item => item.item), "guideline");
+      const selectedOfficialContext = buildOfficialEvidenceContext(selectedOfficialDocuments.map(row => row.document));
       const referenceContext = rankedReferences.map(({ item }) => `[기출 ${item.id}] 유형=${item.questionType}, 난이도=${item.difficulty}, 출제 의도=${item.intent}\n${item.questionText}`).join("\n\n");
-      if (!curriculumContext && !referenceContext && !guidelineContext) {
+      if (!curriculumContext && !referenceContext && !guidelineContext && !selectedOfficialContext) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "같은 과목·단원의 참고 자료 또는 기출문제를 먼저 등록해 주세요." });
       }
       const created: number[] = [];
@@ -119,7 +140,7 @@ export const assessmentRouter = router({
         let finalDraft = null as Awaited<ReturnType<typeof generateDraft>> | null;
         let finalValidation = null as Awaited<ReturnType<typeof validateDraft>> | null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const generated = await generateDraft({ ...input, curriculumContext, referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n재생성 시도: ${attempt + 1}` });
+          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` });
           const draftVector = createTextEmbedding([generated.draft.questionText, ...(generated.draft.choices || []), generated.draft.answer].join(" "));
           const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
           const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
@@ -174,6 +195,22 @@ export const assessmentRouter = router({
       if (ctx.user.id === input.userId && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "본인의 관리자 권한은 해제할 수 없습니다." });
       await setWorkspaceUserRole(input.userId, input.role);
       return { success: true };
+    }),
+    officialSources: adminProcedure.query(() => listOfficialSources()),
+    createOfficialSource: adminProcedure.input(z.object({ provider: z.string().min(2).max(160), title: z.string().min(2).max(255), sourceType: z.enum(["ministry", "curriculum_center", "education_office"]), listingUrl: z.string().url(), allowedUse: z.enum(["link_only", "metadata_only"]).default("link_only") })).mutation(async ({ input }) => {
+      assertAllowedOfficialSourceUrl(input.listingUrl);
+      const catalogKey = `${input.sourceType}-${crypto.randomUUID().slice(0, 12)}`;
+      const id = await createOfficialSource({ catalogKey, ...input, enabled: 1 });
+      return { id };
+    }),
+    officialChanges: adminProcedure.query(() => listOfficialSourceChanges()),
+    syncOfficialSources: adminProcedure.mutation(async () => {
+      await ensureOfficialCatalog();
+      return { results: await checkAllOfficialSources() };
+    }),
+    reviewOfficialChange: adminProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["approved", "rejected"]), reviewNote: z.string().min(2).max(1000) })).mutation(async ({ ctx, input }) => {
+      const result = await reviewOfficialSourceChange(input.id, ctx.user.id, input.status, input.reviewNote);
+      return { success: true, ...result };
     }),
   }),
 });

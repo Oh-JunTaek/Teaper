@@ -15,6 +15,27 @@
       "when": 1786967331012,
       "tag": "0001_shiny_impossible_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1786969232788,
+      "tag": "0002_absurd_miracleman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1786969747027,
+      "tag": "0003_amused_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1786970277843,
+      "tag": "0004_cute_maggott",
+      "breakpoints": true
     }
   ]
 }

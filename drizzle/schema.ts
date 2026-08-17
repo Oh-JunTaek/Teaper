@@ -151,5 +151,97 @@ export const reviewEvents = mysqlTable(
   table => [index("review_events_question_idx").on(table.generatedQuestionId)],
 );
 
+export const officialSources = mysqlTable(
+  "official_sources",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    catalogKey: varchar("catalogKey", { length: 100 }).notNull().unique(),
+    provider: varchar("provider", { length: 160 }).notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    sourceType: mysqlEnum("sourceType", ["ministry", "curriculum_center", "education_office"]).notNull(),
+    listingUrl: text("listingUrl").notNull(),
+    allowedUse: mysqlEnum("allowedUse", ["link_only", "metadata_only", "approved_for_rag"]).default("link_only").notNull(),
+    enabled: int("enabled").default(1).notNull(),
+    lastFingerprint: varchar("lastFingerprint", { length: 128 }),
+    lastCheckedAt: timestamp("lastCheckedAt"),
+    lastCheckStatus: varchar("lastCheckStatus", { length: 40 }),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("official_sources_enabled_idx").on(table.enabled)],
+);
+
+export const officialDocuments = mysqlTable(
+  "official_documents",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    catalogKey: varchar("catalogKey", { length: 100 }).notNull().unique(),
+    sourceId: int("sourceId").notNull(),
+    previousDocumentId: int("previousDocumentId"),
+    title: varchar("title", { length: 255 }).notNull(),
+    subject: varchar("subject", { length: 80 }).notNull(),
+    unit: varchar("unit", { length: 120 }).notNull(),
+    applicableYear: varchar("applicableYear", { length: 40 }).notNull(),
+    documentType: mysqlEnum("documentType", ["curriculum", "guideline", "achievement_standard"]).notNull(),
+    officialUrl: text("officialUrl").notNull(),
+    issueNumber: varchar("issueNumber", { length: 100 }),
+    publishedAt: varchar("publishedAt", { length: 30 }),
+    appliesFrom: varchar("appliesFrom", { length: 30 }),
+    appliesTo: varchar("appliesTo", { length: 30 }),
+    rightsStatus: mysqlEnum("rightsStatus", ["link_only", "rights_review", "approved_for_rag"]).default("link_only").notNull(),
+    catalogStatus: mysqlEnum("catalogStatus", ["published", "pending_review", "archived"]).default("published").notNull(),
+    summary: text("summary").notNull(),
+    sourceSnapshot: json("sourceSnapshot"),
+    isDefault: int("isDefault").default(1).notNull(),
+    lastVerifiedAt: timestamp("lastVerifiedAt").defaultNow().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("official_documents_subject_idx").on(table.subject, table.catalogStatus)],
+);
+
+export const officialSourceChanges = mysqlTable(
+  "official_source_changes",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    sourceId: int("sourceId").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    documentUrl: text("documentUrl").notNull(),
+    reason: varchar("reason", { length: 255 }).notNull(),
+    fingerprint: varchar("fingerprint", { length: 128 }).notNull(),
+    snapshot: json("snapshot"),
+    status: mysqlEnum("status", ["pending", "approved", "rejected"]).default("pending").notNull(),
+    reviewedBy: int("reviewedBy"),
+    reviewNote: text("reviewNote"),
+    reviewedAt: timestamp("reviewedAt"),
+    detectedAt: timestamp("detectedAt").defaultNow().notNull(),
+  },
+  table => [index("official_source_changes_source_idx").on(table.sourceId, table.status)],
+);
+
+export const officialDocumentSelections = mysqlTable(
+  "official_document_selections",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull(),
+    documentId: int("documentId").notNull(),
+    useForGeneration: int("useForGeneration").default(1).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("official_document_selections_user_idx").on(table.userId, table.documentId)],
+);
+
+export const generationOfficialDocuments = mysqlTable(
+  "generation_official_documents",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    requestId: int("requestId").notNull(),
+    documentId: int("documentId").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("generation_official_documents_request_idx").on(table.requestId, table.documentId)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
