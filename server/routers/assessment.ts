@@ -1,0 +1,179 @@
+import { TRPCError } from "@trpc/server";
+import { z } from "zod";
+import {
+  createGeneratedQuestion,
+  createGenerationRequest,
+  createMaterial,
+  createReferenceQuestion,
+  dashboardStats,
+  getGeneratedQuestionDetail,
+  getMaterial,
+  getMaterialChunksForRag,
+  getReferenceQuestionsForRag,
+  listGeneratedQuestions,
+  listMaterials,
+  listReferenceQuestions,
+  listWorkspaceUsers,
+  replaceMaterialChunks,
+  reviewGeneratedQuestion,
+  setWorkspaceUserRole,
+  updateMaterialExtraction,
+  updateReferenceQuestion,
+} from "../db";
+import { storageGetSignedUrl, storagePut } from "../storage";
+import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
+import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
+
+const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
+const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
+const base64File = z.string().min(8).max(14_000_000);
+
+function ensureFile(input: { base64: string; fileName: string; mimeType: string }) {
+  if (!input.mimeType.startsWith("image/") && input.mimeType !== "application/pdf") {
+    throw new TRPCError({ code: "BAD_REQUEST", message: "PDF 또는 이미지 파일만 등록할 수 있습니다." });
+  }
+  if (!input.fileName.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "파일명이 필요합니다." });
+}
+
+function rank<T extends { embedding: number[] }>(query: number[], items: T[]) {
+  return items.map(item => ({ item, score: cosineSimilarity(query, item.embedding) })).sort((a, b) => b.score - a.score);
+}
+
+function materialContext(rows: Awaited<ReturnType<typeof getMaterialChunksForRag>>, type: "curriculum" | "guideline") {
+  return rows.filter(row => row.material.materialType === type).slice(0, 5).map(row => `[자료 ${row.material.id}: ${row.material.title}]\n${row.chunk.content}`).join("\n\n");
+}
+
+export const assessmentRouter = router({
+  dashboard: protectedProcedure.query(() => dashboardStats()),
+
+  materials: router({
+    list: protectedProcedure.query(() => listMaterials()),
+    upload: protectedProcedure.input(z.object({
+      title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes),
+      fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), base64: base64File, sourceText: z.string().max(30000).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      ensureFile(input);
+      const bytes = Buffer.from(input.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+      const stored = await storagePut(`teacher-assessment/${ctx.user.id}/materials/${input.fileName}`, bytes, input.mimeType);
+      const isExtractable = input.mimeType.startsWith("image/") || input.mimeType === "application/pdf";
+      const materialId = await createMaterial({
+        ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType,
+        fileName: input.fileName, mimeType: input.mimeType, fileKey: stored.key, fileUrl: stored.url, sourceText: input.sourceText || null, ocrStatus: isExtractable ? "pending" : "not_required",
+      });
+      let extractedText = input.sourceText || "";
+      let extraction = null as Awaited<ReturnType<typeof extractDocumentText>> | null;
+      if (isExtractable) {
+        try {
+          extraction = await extractDocumentText({ signedUrl: await storageGetSignedUrl(stored.key), mimeType: input.mimeType, fileName: input.fileName });
+          extractedText = [input.sourceText, extraction.plainText].filter(Boolean).join("\n\n");
+          await updateMaterialExtraction(materialId, { ocrText: extractedText, ocrStructure: extraction, ocrStatus: "completed" });
+        } catch (error) {
+          await updateMaterialExtraction(materialId, { ocrText: input.sourceText || "", ocrStructure: { error: error instanceof Error ? error.message : "OCR 실패" }, ocrStatus: "failed" });
+        }
+      }
+      if (extractedText.trim()) {
+        await replaceMaterialChunks(materialId, splitIntoChunks(extractedText).map(content => ({ content, embedding: createTextEmbedding(content) })));
+      }
+      return { materialId, fileUrl: stored.url, ocrStatus: extraction ? "completed" : isExtractable ? "failed" : "not_required" };
+    }),
+  }),
+
+  references: router({
+    list: protectedProcedure.query(() => listReferenceQuestions()),
+    create: protectedProcedure.input(z.object({
+      subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
+      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
+    })).mutation(async ({ ctx, input }) => {
+      const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
+      const id = await createReferenceQuestion({ ownerId: ctx.user.id, ...input, choices: input.choices || null, embedding });
+      return { id };
+    }),
+    update: protectedProcedure.input(z.object({
+      id: z.number().int().positive(), subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
+      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
+    })).mutation(async ({ input }) => {
+      const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
+      await updateReferenceQuestion(input.id, { ...input, choices: input.choices || null, embedding });
+      return { success: true };
+    }),
+  }),
+
+  generation: router({
+    create: protectedProcedure.input(z.object({
+      subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const requestId = await createGenerationRequest({ requesterId: ctx.user.id, ...input, additionalRequirements: input.additionalRequirements || null });
+      const corpus = await getMaterialChunksForRag(input.subject, input.unit);
+      const references = await getReferenceQuestionsForRag(input.subject, input.unit);
+      const queryVector = createTextEmbedding(`${input.subject} ${input.unit} ${input.questionType} ${input.difficulty} ${input.additionalRequirements || ""}`);
+      const rankedChunks = rank(queryVector, corpus.map(row => ({ ...row, embedding: row.chunk.embedding }))).slice(0, 10);
+      const rankedReferences = rank(queryVector, references.map(item => ({ ...item, embedding: item.embedding }))).slice(0, 6);
+      const curriculumContext = materialContext(rankedChunks.map(item => item.item), "curriculum");
+      const guidelineContext = materialContext(rankedChunks.map(item => item.item), "guideline");
+      const referenceContext = rankedReferences.map(({ item }) => `[기출 ${item.id}] 유형=${item.questionType}, 난이도=${item.difficulty}, 출제 의도=${item.intent}\n${item.questionText}`).join("\n\n");
+      if (!curriculumContext && !referenceContext && !guidelineContext) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "같은 과목·단원의 참고 자료 또는 기출문제를 먼저 등록해 주세요." });
+      }
+      const created: number[] = [];
+      for (let index = 0; index < input.questionCount; index += 1) {
+        let finalDraft = null as Awaited<ReturnType<typeof generateDraft>> | null;
+        let finalValidation = null as Awaited<ReturnType<typeof validateDraft>> | null;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+          const generated = await generateDraft({ ...input, curriculumContext, referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n재생성 시도: ${attempt + 1}` });
+          const draftVector = createTextEmbedding([generated.draft.questionText, ...(generated.draft.choices || []), generated.draft.answer].join(" "));
+          const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
+          const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
+          const validation = await validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined });
+          finalDraft = generated;
+          finalValidation = validation;
+          if (validation.pass) break;
+        }
+        if (!finalDraft || !finalValidation) throw new Error("문항 생성 결과를 만들지 못했습니다.");
+        const sources = [
+          ...rankedChunks.map(({ item }) => ({ sourceType: item.material.materialType === "guideline" ? "guideline" as const : "material" as const, sourceId: item.material.id, excerpt: item.chunk.content.slice(0, 500) })),
+          ...rankedReferences.map(({ item }) => ({ sourceType: "reference_question" as const, sourceId: item.id, excerpt: item.intent })),
+        ];
+        const questionId = await createGeneratedQuestion({
+          requestId, creatorId: ctx.user.id, questionText: finalDraft.draft.questionText, choices: finalDraft.draft.choices, answer: finalDraft.draft.answer, explanation: finalDraft.draft.explanation,
+          intent: finalDraft.draft.intent, difficulty: input.difficulty, points: input.points, questionType: input.questionType, usedConcepts: finalDraft.draft.usedConcepts,
+          validationReport: finalValidation, model: finalDraft.model, promptVersion: "chem-rag-v1.0", status: finalValidation.pass ? "pending_review" : "validation_hold",
+        }, sources);
+        created.push(questionId);
+      }
+      return { requestId, questionIds: created };
+    }),
+  }),
+
+  questions: router({
+    list: protectedProcedure.input(z.object({ status: z.enum(statuses).optional() }).optional()).query(({ input }) => listGeneratedQuestions(input?.status)),
+    detail: protectedProcedure.input(z.object({ id: z.number().int().positive() })).query(async ({ input }) => {
+      const detail = await getGeneratedQuestionDetail(input.id);
+      if (!detail) throw new TRPCError({ code: "NOT_FOUND", message: "문항을 찾을 수 없습니다." });
+      return detail;
+    }),
+    review: protectedProcedure.input(z.object({
+      id: z.number().int().positive(), action: z.enum(["approved", "revised", "rejected"]), reason: z.string().min(2).max(2000),
+      questionText: z.string().min(10).optional(), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1).optional(), explanation: z.string().min(2).optional(), intent: z.string().min(2).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      await reviewGeneratedQuestion({ reviewerId: ctx.user.id, ...input });
+      return { success: true };
+    }),
+    exportCsv: protectedProcedure.query(async () => {
+      const approved = await listGeneratedQuestions("approved");
+      const escape = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const header = ["ID", "문제", "보기", "정답", "해설", "출제 의도", "난이도", "배점", "유형", "모델", "프롬프트 버전", "검수 상태"];
+      const rows = approved.map(item => [item.id, item.questionText, (item.choices || []).join(" | "), item.answer, item.explanation, item.intent, item.difficulty, item.points, item.questionType, item.model, item.promptVersion, item.status]);
+      return { csv: [header, ...rows].map(row => row.map(escape).join(",")).join("\n"), count: approved.length };
+    }),
+  }),
+
+  admin: router({
+    overview: adminProcedure.query(() => dashboardStats()),
+    users: adminProcedure.query(() => listWorkspaceUsers()),
+    setRole: adminProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["teacher", "admin"]) })).mutation(async ({ ctx, input }) => {
+      if (ctx.user.id === input.userId && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "본인의 관리자 권한은 해제할 수 없습니다." });
+      await setWorkspaceUserRole(input.userId, input.role);
+      return { success: true };
+    }),
+  }),
+});

@@ -1,28 +1,155 @@
-import { int, mysqlEnum, mysqlTable, text, timestamp, varchar } from "drizzle-orm/mysql-core";
+import {
+  index,
+  int,
+  json,
+  mysqlEnum,
+  mysqlTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/mysql-core";
 
-/**
- * Core user table backing auth flow.
- * Extend this file with additional tables as your product grows.
- * Columns use camelCase to match both database fields and generated types.
- */
 export const users = mysqlTable("users", {
-  /**
-   * Surrogate primary key. Auto-incremented numeric value managed by the database.
-   * Use this for relations between tables.
-   */
   id: int("id").autoincrement().primaryKey(),
-  /** Manus OAuth identifier (openId) returned from the OAuth callback. Unique per user. */
   openId: varchar("openId", { length: 64 }).notNull().unique(),
   name: text("name"),
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
-  role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
+  role: mysqlEnum("role", ["teacher", "admin"]).default("teacher").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
 
+export const referenceMaterials = mysqlTable(
+  "reference_materials",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    title: varchar("title", { length: 255 }).notNull(),
+    subject: varchar("subject", { length: 80 }).notNull(),
+    unit: varchar("unit", { length: 120 }).notNull(),
+    applicableYear: varchar("applicableYear", { length: 20 }).notNull(),
+    materialType: mysqlEnum("materialType", ["curriculum", "textbook", "guideline", "teaching", "other"]).notNull(),
+    fileName: varchar("fileName", { length: 255 }).notNull(),
+    mimeType: varchar("mimeType", { length: 120 }).notNull(),
+    fileKey: text("fileKey").notNull(),
+    fileUrl: text("fileUrl").notNull(),
+    sourceText: text("sourceText"),
+    ocrText: text("ocrText"),
+    ocrStructure: json("ocrStructure"),
+    ocrStatus: mysqlEnum("ocrStatus", ["not_required", "pending", "completed", "failed"]).default("not_required").notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("reference_materials_subject_unit_idx").on(table.subject, table.unit)],
+);
+
+export const materialChunks = mysqlTable(
+  "material_chunks",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    materialId: int("materialId").notNull(),
+    chunkIndex: int("chunkIndex").notNull(),
+    content: text("content").notNull(),
+    embedding: json("embedding").$type<number[]>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("material_chunks_material_idx").on(table.materialId)],
+);
+
+export const referenceQuestions = mysqlTable(
+  "reference_questions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    subject: varchar("subject", { length: 80 }).notNull(),
+    unit: varchar("unit", { length: 120 }).notNull(),
+    questionType: varchar("questionType", { length: 80 }).notNull(),
+    difficulty: varchar("difficulty", { length: 30 }).notNull(),
+    points: int("points").notNull(),
+    year: varchar("year", { length: 20 }).notNull(),
+    source: varchar("source", { length: 160 }).notNull(),
+    questionText: text("questionText").notNull(),
+    choices: json("choices").$type<string[]>(),
+    answer: text("answer").notNull(),
+    explanation: text("explanation").notNull(),
+    intent: text("intent").notNull(),
+    embedding: json("embedding").$type<number[]>().notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("reference_questions_subject_unit_idx").on(table.subject, table.unit)],
+);
+
+export const generationRequests = mysqlTable("generation_requests", {
+  id: int("id").autoincrement().primaryKey(),
+  requesterId: int("requesterId").notNull(),
+  subject: varchar("subject", { length: 80 }).notNull(),
+  unit: varchar("unit", { length: 120 }).notNull(),
+  difficulty: varchar("difficulty", { length: 30 }).notNull(),
+  questionType: varchar("questionType", { length: 80 }).notNull(),
+  points: int("points").notNull(),
+  questionCount: int("questionCount").notNull(),
+  additionalRequirements: text("additionalRequirements"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export const generatedQuestions = mysqlTable(
+  "generated_questions",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    requestId: int("requestId").notNull(),
+    creatorId: int("creatorId").notNull(),
+    questionText: text("questionText").notNull(),
+    choices: json("choices").$type<string[]>(),
+    answer: text("answer").notNull(),
+    explanation: text("explanation").notNull(),
+    intent: text("intent").notNull(),
+    difficulty: varchar("difficulty", { length: 30 }).notNull(),
+    points: int("points").notNull(),
+    questionType: varchar("questionType", { length: 80 }).notNull(),
+    usedConcepts: json("usedConcepts").$type<string[]>(),
+    validationReport: json("validationReport"),
+    model: varchar("model", { length: 120 }).notNull(),
+    promptVersion: varchar("promptVersion", { length: 80 }).notNull(),
+    status: mysqlEnum("status", ["pending_review", "approved", "revised", "rejected", "validation_hold"]).default("pending_review").notNull(),
+    reviewedBy: int("reviewedBy"),
+    reviewReason: text("reviewReason"),
+    reviewedAt: timestamp("reviewedAt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("generated_questions_status_idx").on(table.status)],
+);
+
+export const generatedQuestionSources = mysqlTable(
+  "generated_question_sources",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    generatedQuestionId: int("generatedQuestionId").notNull(),
+    sourceType: mysqlEnum("sourceType", ["material", "reference_question", "guideline"]).notNull(),
+    sourceId: int("sourceId").notNull(),
+    excerpt: text("excerpt"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("generated_question_sources_question_idx").on(table.generatedQuestionId)],
+);
+
+export const reviewEvents = mysqlTable(
+  "review_events",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    generatedQuestionId: int("generatedQuestionId").notNull(),
+    reviewerId: int("reviewerId").notNull(),
+    action: mysqlEnum("action", ["approved", "revised", "rejected"]).notNull(),
+    reason: text("reason"),
+    beforeSnapshot: json("beforeSnapshot"),
+    afterSnapshot: json("afterSnapshot"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+  },
+  table => [index("review_events_question_idx").on(table.generatedQuestionId)],
+);
+
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
-
-// TODO: Add your tables here

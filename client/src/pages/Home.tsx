@@ -1,33 +1,33 @@
-import { useAuth } from "@/_core/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { Skeleton } from "@/components/ui/skeleton";
+import { trpc } from "@/lib/trpc";
+import { ArrowRight, BookOpen, ClipboardCheck, FileText, Sparkles } from "lucide-react";
+import { useLocation } from "wouter";
 
-/**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Workflow, Frontend Best Practices, Design Guide and Common Pitfalls
- */
+const cards = [
+  { key: "materialCount", label: "등록 참고 자료", detail: "교육과정·지침·교수 자료", icon: FileText, tone: "bg-[#E6F4EE] text-[#15856B]" },
+  { key: "referenceCount", label: "구조화된 기출문제", detail: "유형·난이도·출제 의도", icon: BookOpen, tone: "bg-[#E8EFF7] text-[#2D6496]" },
+  { key: "reviewCount", label: "검수 대기 문항", detail: "근거 및 검증 결과 확인", icon: ClipboardCheck, tone: "bg-[#FFF2D8] text-[#B56716]" },
+  { key: "approvedCount", label: "승인된 문항", detail: "CSV로 내보낼 수 있는 문항", icon: Sparkles, tone: "bg-[#F2EAFE] text-[#7B56B3]" },
+] as const;
+
 export default function Home() {
-  // The useAuth hook provides authentication state.
-  // To implement login/logout, call logout(), or start login from an event
-  // handler: onClick={() => startLogin()} (imported from "@/const"). Never call
-  // startLogin() during render (no href={startLogin()}) — it mints a one-time
-  // nonce cookie and must run only at the moment of navigation.
-  let { user, loading, error, isAuthenticated, logout } = useAuth();
-
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
-
+  const { data, isLoading } = trpc.assessment.dashboard.useQuery();
+  const [, setLocation] = useLocation();
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
+    <div className="mx-auto max-w-7xl">
+      <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
+        <div><Badge className="rounded-md bg-[#E6F4EE] px-2.5 py-1 text-[#15856B] hover:bg-[#E6F4EE]">화학 I · 출제 워크스페이스</Badge><h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">오늘의 출제 업무</h1><p className="mt-2 text-slate-500">자료를 근거로 문항을 생성하고, 검수 이력을 남겨 관리합니다.</p></div>
+        <Button onClick={() => setLocation("/generate")} className="h-11 rounded-xl bg-[#15856B] px-5 hover:bg-[#106C58]"><Sparkles className="mr-2 h-4 w-4" />문항 생성 시작</Button>
+      </div>
+      <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {cards.map(card => <article key={card.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between"><div className={`grid h-10 w-10 place-items-center rounded-xl ${card.tone}`}><card.icon className="h-5 w-5" /></div><span className="text-3xl font-bold tracking-tight text-[#183248]">{isLoading ? <Skeleton className="h-8 w-10" /> : data?.[card.key] ?? 0}</span></div><h2 className="mt-5 font-semibold text-[#183248]">{card.label}</h2><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}
+      </section>
+      <section className="mt-8 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">
+        <article className="rounded-2xl bg-[#173B53] p-7 text-white shadow-[0_16px_36px_rgba(23,59,83,0.16)]"><p className="text-sm font-semibold text-[#8CD5B6]">권장 작업 흐름</p><h2 className="mt-2 text-2xl font-bold">근거를 준비한 뒤, 문항을 생성하세요.</h2><p className="mt-3 max-w-xl leading-7 text-slate-300">교육과정·출제 지침·기출문제를 등록하면 검색 결과가 문항 생성과 검수 근거에 함께 연결됩니다.</p><div className="mt-6 flex flex-wrap gap-2">{["1. 참고 자료", "2. 기출문제", "3. 문항 생성", "4. 검수·승인"].map(item => <span key={item} className="rounded-lg border border-white/15 bg-white/8 px-3 py-2 text-xs text-slate-200">{item}</span>)}</div><Button variant="secondary" onClick={() => setLocation("/materials")} className="mt-7 rounded-xl bg-white text-[#173B53] hover:bg-slate-100">자료 등록하기<ArrowRight className="ml-2 h-4 w-4" /></Button></article>
+        <article className="rounded-2xl border border-slate-200 bg-white p-7"><p className="text-sm font-semibold text-[#15856B]">검수 원칙</p><h2 className="mt-2 text-xl font-bold text-[#183248]">AI 초안은 교사가 최종 판단합니다.</h2><div className="mt-5 space-y-4 text-sm leading-6 text-slate-600"><p><strong className="text-[#183248]">근거 추적</strong><br />사용된 교육자료·기출문제·지침을 문항과 연결해 확인합니다.</p><p><strong className="text-[#183248]">자동 검증</strong><br />범위, 정답·해설, 난이도, 유사도를 확인하고 실패 결과는 보류합니다.</p><p><strong className="text-[#183248]">검수 기록</strong><br />승인·수정·반려 사유를 남겨 다음 출제 품질을 개선합니다.</p></div></article>
+      </section>
     </div>
   );
 }

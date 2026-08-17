@@ -1,0 +1,15 @@
+import { useAuth } from "@/_core/hooks/useAuth";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { trpc } from "@/lib/trpc";
+import { Loader2, ShieldCheck, UsersRound } from "lucide-react";
+import { toast } from "sonner";
+
+export default function Admin() {
+  const { user } = useAuth();
+  const utils = trpc.useUtils();
+  const { data: users, isLoading } = trpc.assessment.admin.users.useQuery(undefined, { enabled: user?.role === "admin" });
+  const setRole = trpc.assessment.admin.setRole.useMutation({ onSuccess: async () => { await utils.assessment.admin.users.invalidate(); toast.success("사용자 역할이 변경되었습니다."); }, onError: error => toast.error(error.message) });
+  if (user?.role !== "admin") return <div className="mx-auto grid min-h-[55vh] max-w-2xl place-items-center text-center"><div><ShieldCheck className="mx-auto h-9 w-9 text-slate-300" /><h1 className="mt-4 text-xl font-bold text-[#183248]">관리자 권한이 필요합니다.</h1><p className="mt-2 text-sm text-slate-500">사용자 역할 변경은 관리자에게만 허용됩니다.</p></div></div>;
+  return <div className="mx-auto max-w-5xl"><div><p className="text-sm font-semibold text-[#15856B]">ROLE BASED ACCESS CONTROL</p><h1 className="mt-1 text-3xl font-bold text-[#183248]">사용자 관리</h1><p className="mt-2 text-slate-500">교사는 출제 업무를 수행하고, 관리자는 사용자 역할을 관리할 수 있습니다.</p></div><section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4"><UsersRound className="h-4 w-4 text-[#15856B]" /><h2 className="font-bold text-[#183248]">워크스페이스 사용자</h2></div><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr><th className="px-5 py-3 font-semibold">이름</th><th className="px-5 py-3 font-semibold">이메일</th><th className="px-5 py-3 font-semibold">현재 역할</th><th className="px-5 py-3 font-semibold">최근 로그인</th><th className="px-5 py-3 font-semibold">관리</th></tr></thead><tbody className="divide-y divide-slate-100">{isLoading ? <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">사용자 목록을 불러오는 중입니다.</td></tr> : users?.map(member => <tr key={member.id}><td className="px-5 py-4 font-medium text-[#183248]">{member.name || "이름 없음"}</td><td className="px-5 py-4 text-slate-500">{member.email || "-"}</td><td className="px-5 py-4"><Badge className={member.role === "admin" ? "bg-[#E8EFF7] text-[#2D6496] hover:bg-[#E8EFF7]" : "bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]"}>{member.role === "admin" ? "관리자" : "교사"}</Badge></td><td className="px-5 py-4 text-xs text-slate-500">{new Date(member.lastSignedIn).toLocaleString("ko-KR")}</td><td className="px-5 py-4"><Button disabled={setRole.isPending || member.id === user.id} variant="outline" size="sm" onClick={() => setRole.mutate({ userId: member.id, role: member.role === "admin" ? "teacher" : "admin" })}>{setRole.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : member.role === "admin" ? "교사로 변경" : "관리자로 변경"}</Button></td></tr>)}</tbody></table></div></section></div>;
+}

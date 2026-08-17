@@ -1,262 +1,92 @@
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-  SidebarTrigger,
-  useSidebar,
-} from "@/components/ui/sidebar";
 import { startLogin } from "@/const";
-import { useIsMobile } from "@/hooks/useMobile";
-import { LayoutDashboard, LogOut, PanelLeft, Users } from "lucide-react";
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import {
+  BookOpenCheck,
+  ClipboardList,
+  FileArchive,
+  LayoutDashboard,
+  LogOut,
+  PanelLeft,
+  ShieldCheck,
+  Sparkles,
+  UsersRound,
+} from "lucide-react";
 import { useLocation } from "wouter";
-import { DashboardLayoutSkeleton } from './DashboardLayoutSkeleton';
-import { Button } from "./ui/button";
 
 const menuItems = [
-  { icon: LayoutDashboard, label: "Page 1", path: "/" },
-  { icon: Users, label: "Page 2", path: "/some-path" },
+  { icon: LayoutDashboard, label: "대시보드", path: "/" },
+  { icon: FileArchive, label: "참고 자료", path: "/materials" },
+  { icon: ClipboardList, label: "기출문제", path: "/references" },
+  { icon: Sparkles, label: "문항 생성", path: "/generate" },
+  { icon: ShieldCheck, label: "검수함", path: "/review" },
+  { icon: BookOpenCheck, label: "승인 문항", path: "/approved" },
 ];
 
-const SIDEBAR_WIDTH_KEY = "sidebar-width";
-const DEFAULT_WIDTH = 280;
-const MIN_WIDTH = 200;
-const MAX_WIDTH = 480;
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  const [sidebarWidth, setSidebarWidth] = useState(() => {
-    const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
-    return saved ? parseInt(saved, 10) : DEFAULT_WIDTH;
-  });
-  const { loading, user } = useAuth();
-
-  useEffect(() => {
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, sidebarWidth.toString());
-  }, [sidebarWidth]);
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { loading, user, logout } = useAuth();
+  const [location, setLocation] = useLocation();
 
   if (loading) {
-    return <DashboardLayoutSkeleton />
+    return <div className="min-h-screen bg-[#F6F7F5] grid place-items-center text-sm text-slate-500">교사도우미를 준비하고 있습니다.</div>;
   }
 
   if (!user) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex flex-col items-center gap-8 p-8 max-w-md w-full">
-          <div className="flex flex-col items-center gap-6">
-            <h1 className="text-2xl font-semibold tracking-tight text-center">
-              Sign in to continue
-            </h1>
-            <p className="text-sm text-muted-foreground text-center max-w-sm">
-              Access to this dashboard requires authentication. Continue to launch the login flow.
-            </p>
-          </div>
-          <Button
-            onClick={() => startLogin()}
-            size="lg"
-            className="w-full shadow-lg hover:shadow-xl transition-all"
-          >
-            Sign in
-          </Button>
-        </div>
+      <div className="min-h-screen bg-[#F6F7F5] grid place-items-center px-5">
+        <section className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-9 shadow-[0_20px_70px_rgba(28,51,70,0.10)]">
+          <div className="mb-7 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#173B53] text-white"><BookOpenCheck className="h-6 w-6" /></div>
+          <p className="text-sm font-bold tracking-[0.14em] text-[#15856B]">TEACHER ASSESSMENT WORKSPACE</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">근거를 확인하며<br />문항을 만드세요.</h1>
+          <p className="mt-4 leading-7 text-slate-600">교사도우미는 교육과정, 기출문제, 출제 지침을 근거로 문항 초안을 만들고 검수 과정을 기록하는 출제 보조 시스템입니다.</p>
+          <Button className="mt-8 h-12 w-full rounded-xl bg-[#173B53] text-base hover:bg-[#102C40]" onClick={() => startLogin()}>교사 로그인</Button>
+          <p className="mt-4 text-center text-xs text-slate-400">AI가 작성한 결과는 교사의 최종 검수가 필요합니다.</p>
+        </section>
       </div>
     );
   }
 
   return (
-    <SidebarProvider
-      style={
-        {
-          "--sidebar-width": `${sidebarWidth}px`,
-        } as CSSProperties
-      }
-    >
-      <DashboardLayoutContent setSidebarWidth={setSidebarWidth}>
-        {children}
-      </DashboardLayoutContent>
-    </SidebarProvider>
-  );
-}
-
-type DashboardLayoutContentProps = {
-  children: React.ReactNode;
-  setSidebarWidth: (width: number) => void;
-};
-
-function DashboardLayoutContent({
-  children,
-  setSidebarWidth,
-}: DashboardLayoutContentProps) {
-  const { user, logout } = useAuth();
-  const [location, setLocation] = useLocation();
-  const { state, toggleSidebar } = useSidebar();
-  const isCollapsed = state === "collapsed";
-  const [isResizing, setIsResizing] = useState(false);
-  const sidebarRef = useRef<HTMLDivElement>(null);
-  const activeMenuItem = menuItems.find(item => item.path === location);
-  const isMobile = useIsMobile();
-
-  useEffect(() => {
-    if (isCollapsed) {
-      setIsResizing(false);
-    }
-  }, [isCollapsed]);
-
-  useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      if (!isResizing) return;
-
-      const sidebarLeft = sidebarRef.current?.getBoundingClientRect().left ?? 0;
-      const newWidth = e.clientX - sidebarLeft;
-      if (newWidth >= MIN_WIDTH && newWidth <= MAX_WIDTH) {
-        setSidebarWidth(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setIsResizing(false);
-    };
-
-    if (isResizing) {
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-    }
-
-    return () => {
-      document.removeEventListener("mousemove", handleMouseMove);
-      document.removeEventListener("mouseup", handleMouseUp);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-    };
-  }, [isResizing, setSidebarWidth]);
-
-  return (
-    <>
-      <div className="relative" ref={sidebarRef}>
-        <Sidebar
-          collapsible="icon"
-          className="border-r-0"
-          disableTransition={isResizing}
-        >
-          <SidebarHeader className="h-16 justify-center">
-            <div className="flex items-center gap-3 px-2 transition-all w-full">
-              <button
-                onClick={toggleSidebar}
-                className="h-8 w-8 flex items-center justify-center hover:bg-accent rounded-lg transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring shrink-0"
-                aria-label="Toggle navigation"
-              >
-                <PanelLeft className="h-4 w-4 text-muted-foreground" />
-              </button>
-              {!isCollapsed ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-semibold tracking-tight truncate">
-                    Navigation
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          </SidebarHeader>
-
-          <SidebarContent className="gap-0">
-            <SidebarMenu className="px-2 py-1">
-              {menuItems.map(item => {
-                const isActive = location === item.path;
-                return (
-                  <SidebarMenuItem key={item.path}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => setLocation(item.path)}
-                      tooltip={item.label}
-                      className={`h-10 transition-all font-normal`}
-                    >
-                      <item.icon
-                        className={`h-4 w-4 ${isActive ? "text-primary" : ""}`}
-                      />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarContent>
-
-          <SidebarFooter className="p-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-3 rounded-lg px-1 py-1 hover:bg-accent/50 transition-colors w-full text-left group-data-[collapsible=icon]:justify-center focus:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                  <Avatar className="h-9 w-9 border shrink-0">
-                    <AvatarFallback className="text-xs font-medium">
-                      {user?.name?.charAt(0).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
-                    <p className="text-sm font-medium truncate leading-none">
-                      {user?.name || "-"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate mt-1.5">
-                      {user?.email || "-"}
-                    </p>
-                  </div>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuItem
-                  onClick={logout}
-                  className="cursor-pointer text-destructive focus:text-destructive"
-                >
-                  <LogOut className="mr-2 h-4 w-4" />
-                  <span>Sign out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-        <div
-          className={`absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/20 transition-colors ${isCollapsed ? "hidden" : ""}`}
-          onMouseDown={() => {
-            if (isCollapsed) return;
-            setIsResizing(true);
-          }}
-          style={{ zIndex: 50 }}
-        />
-      </div>
-
-      <SidebarInset>
-        {isMobile && (
-          <div className="flex border-b h-14 items-center justify-between bg-background/95 px-2 backdrop-blur supports-[backdrop-filter]:backdrop-blur sticky top-0 z-40">
-            <div className="flex items-center gap-2">
-              <SidebarTrigger className="h-9 w-9 rounded-lg bg-background" />
-              <div className="flex items-center gap-3">
-                <div className="flex flex-col gap-1">
-                  <span className="tracking-tight text-foreground">
-                    {activeMenuItem?.label ?? "Menu"}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-        <main className="flex-1 p-4">{children}</main>
-      </SidebarInset>
-    </>
+    <div className="min-h-screen bg-[#F6F7F5] text-slate-800">
+      <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-slate-200 bg-[#173B53] px-4 py-5 text-slate-100 md:flex">
+        <button onClick={() => setLocation("/")} className="mb-10 flex items-center gap-3 px-2 text-left">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#52B788] text-[#123144]"><BookOpenCheck className="h-5 w-5" /></span>
+          <span><strong className="block text-[15px] tracking-tight">교사도우미</strong><small className="text-[11px] text-slate-300">근거 기반 출제 보조</small></span>
+        </button>
+        <nav className="space-y-1">
+          {[...menuItems, ...(user.role === "admin" ? [{ icon: UsersRound, label: "사용자 관리", path: "/admin" }] : [])].map(item => {
+            const active = location === item.path;
+            return <button key={item.path} onClick={() => setLocation(item.path)} className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white/14 font-semibold text-white" : "text-slate-300 hover:bg-white/8 hover:text-white"}`}>
+              <item.icon className="h-4 w-4" />{item.label}
+            </button>;
+          })}
+        </nav>
+        <div className="mt-auto rounded-2xl border border-white/10 bg-white/7 p-3">
+          <p className="text-xs leading-5 text-slate-300">문항 생성 결과는 검수함에서 근거와 함께 확인할 수 있습니다.</p>
+        </div>
+      </aside>
+      <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200/90 bg-[#F6F7F5]/90 px-4 backdrop-blur md:ml-64 md:px-8">
+        <button onClick={() => setLocation("/")} className="flex items-center gap-2 font-bold text-[#183248] md:hidden"><PanelLeft className="h-5 w-5" />교사도우미</button>
+        <div className="hidden text-sm text-slate-500 md:block">화학 I 파일럿 · 근거 기반 문항 관리</div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-2 rounded-xl p-1.5 text-left hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#15856B]">
+              <Avatar className="h-8 w-8 border border-slate-200"><AvatarFallback className="bg-white text-xs font-bold text-[#173B53]">{user.name?.slice(0, 1) || "교"}</AvatarFallback></Avatar>
+              <span className="hidden sm:block"><span className="block text-xs font-semibold leading-4">{user.name || "교사"}</span><Badge variant="secondary" className="mt-0.5 h-4 px-1.5 text-[10px]">{user.role === "admin" ? "관리자" : "교사"}</Badge></span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-44"><DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 focus:text-red-600"><LogOut className="mr-2 h-4 w-4" />로그아웃</DropdownMenuItem></DropdownMenuContent>
+        </DropdownMenu>
+      </header>
+      <main className="min-h-[calc(100vh-4rem)] px-4 py-6 md:ml-64 md:px-8 md:py-8">{children}</main>
+    </div>
   );
 }
