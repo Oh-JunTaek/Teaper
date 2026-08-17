@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cosineSimilarity, createTextEmbedding, splitIntoChunks } from "./assessmentAi";
+import { cosineSimilarity, createTextEmbedding, needsVisionFallback, splitIntoChunks } from "./assessmentAi";
 
 describe("assessmentAi retrieval helpers", () => {
   it("creates stable normalized vectors for the same educational text", () => {
@@ -26,5 +26,10 @@ describe("assessmentAi retrieval helpers", () => {
     expect(chunks.length).toBeGreaterThan(1);
     expect(chunks.every(chunk => chunk.length > 0)).toBe(true);
     expect(chunks.join("")).toContain("나".repeat(100));
+  });
+
+  it("uses visual reading only when a PDF has too little selectable text", () => {
+    expect(needsVisionFallback("선택 가능한 PDF 텍스트 ".repeat(20))).toBe(false);
+    expect(needsVisionFallback("스캔본")).toBe(true);
   });
 });

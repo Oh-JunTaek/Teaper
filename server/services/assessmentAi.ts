@@ -1,4 +1,5 @@
 import { invokeLLM, listLLMModels } from "../_core/llm";
+import { PDFParse } from "pdf-parse";
 
 export const PROMPT_VERSION = "chem-rag-v1.0";
 const VECTOR_SIZE = 128;
@@ -75,6 +76,25 @@ export function splitIntoChunks(text: string, size = 900) {
   return chunks;
 }
 
+export function needsVisionFallback(text: string) {
+  return text.replace(/\s+/g, "").length < 120;
+}
+
+async function extractPdfTextFirst(signedUrl: string, fileName: string) {
+  const response = await fetch(signedUrl, { signal: AbortSignal.timeout(30_000) });
+  if (!response.ok) throw new Error(`PDF 원문을 읽지 못했습니다. (${response.status})`);
+  const parser = new PDFParse({ data: Buffer.from(await response.arrayBuffer()) });
+  try {
+    const result = await parser.getText();
+    const plainText = result.text.trim();
+    if (needsVisionFallback(plainText)) return null;
+    const headings = plainText.split(/\n+/).map(line => line.trim()).filter(line => line.length >= 4 && line.length <= 80).slice(0, 20);
+    return { title: fileName.replace(/\.pdf$/i, ""), plainText, headings, keywords: [], cautions: ["PDF 텍스트 레이어에서 내용을 읽었습니다."], model: "pdf-text-parser", extractionMethod: "pdf_text" as const };
+  } finally {
+    await parser.destroy();
+  }
+}
+
 async function selectModel(kind: "vision" | "generation" | "validation") {
   const { data } = await listLLMModels();
   const preferred = kind === "vision"
@@ -92,6 +112,14 @@ function contentOf(response: any) {
 }
 
 export async function extractDocumentText(input: { signedUrl: string; mimeType: string; fileName: string }) {
+  if (input.mimeType === "application/pdf") {
+    try {
+      const parsed = await extractPdfTextFirst(input.signedUrl, input.fileName);
+      if (parsed) return parsed;
+    } catch {
+      // 암호화·손상·스캔 PDF는 아래 시각 인식 보조 단계로 이어집니다.
+    }
+  }
   const model = await selectModel("vision");
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
   const filePart = input.mimeType.startsWith("image/")
@@ -124,7 +152,7 @@ export async function extractDocumentText(input: { signedUrl: string; mimeType: 
     },
   });
   const data = JSON.parse(contentOf(response));
-  return { ...data, model } as { title: string; plainText: string; headings: string[]; keywords: string[]; cautions: string[]; model: string };
+  return { ...data, model, extractionMethod: input.mimeType === "application/pdf" ? "vision_pdf" : "vision_image" } as { title: string; plainText: string; headings: string[]; keywords: string[]; cautions: string[]; model: string; extractionMethod: "vision_pdf" | "vision_image" };
 }
 
 export async function generateDraft(input: {
