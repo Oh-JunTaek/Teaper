@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { setSecret, getSecret } from "../src/vault.mjs";
+import { createLocalBridge } from "../src/bridge.mjs";
+import { openLocalStore, exportQuestionsCsv } from "../src/store.mjs";
+import { fallbackOptions } from "../src/fallback.mjs";
+
+const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
+process.env.LOCAL_APP_DATA_DIR = folder;
+process.env.LOCAL_VAULT_MASTER_KEY = "12345678910111213141516171819202122";
+try {
+  await setSecret("gemini", "not-in-sqlite");
+  assert.equal(await getSecret("gemini"), "not-in-sqlite");
+  assert.equal((await readFile(join(folder, "secrets.vault"), "utf8")).includes("not-in-sqlite"), false);
+  const store = await openLocalStore();
+  store.saveMaterial({ id: "m-1", title: "교사 자료", subject: "화학 I", unit: "화학 결합", materialType: "teaching", filePath: join(folder, "materials", "source.pdf"), contentSha256: "hash", createdAt: new Date().toISOString() });
+  store.saveMaterialChunk({ id: "c-1", materialId: "m-1", chunkIndex: 0, content: "공유 결합", embedding: [0.1, 0.2], createdAt: new Date().toISOString() });
+  assert.equal(store.listMaterialCandidates("화학 I", "화학 결합").length, 1);
+  store.saveQuestion({ id: "q-1", requestId: "r-1", status: "approved", questionText: "문항", choices: ["1", "2"], answer: "1", explanation: "해설", intent: "의도", difficulty: "중", points: 3, questionType: "개념", validationReport: {}, createdAt: new Date().toISOString() });
+  store.saveQuestionSource({ id: "s-1", questionId: "q-1", sourceType: "material", sourceId: "m-1", excerpt: "공유 결합", createdAt: new Date().toISOString() });
+  store.saveOfficialEvidence({ requestId: "r-1", documentId: "o-1", document: { title: "교육과정" } });
+  store.saveReferenceEvidence({ requestId: "r-1", referenceQuestionId: "ref-1", reference: { intent: "비교" } });
+  assert.equal(store.listQuestionSources("q-1").length, 1);
+  assert.match(exportQuestionsCsv(store.listApproved()), /문항/);
+  store.close();
+  const bridge = await createLocalBridge();
+  const bad = await fetch(`http://127.0.0.1:${bridge.port}/health`);
+  assert.equal(bad.status, 401);
+  const good = await fetch(`http://127.0.0.1:${bridge.port}/health`, { headers: { authorization: `Bearer ${bridge.token}` } });
+  assert.equal((await good.json()).localOnly, true);
+  const runtimes = await fetch(`http://127.0.0.1:${bridge.port}/runtimes`, { headers: { authorization: `Bearer ${bridge.token}` } });
+  assert.equal(typeof (await runtimes.json()).ollama.running, "boolean");
+  assert.equal(fallbackOptions({ status: 429, localRuntimeAvailable: true }).choices.some(item => item.id === "use_local_model"), true);
+  await new Promise(resolve => bridge.server.close(resolve));
+  console.log("local desktop foundation tests passed");
+} finally { await rm(folder, { recursive: true, force: true }); }
