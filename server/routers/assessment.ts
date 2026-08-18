@@ -2,6 +2,7 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   createAiProviderSetting,
+  deleteMaterialForUser,
   createGeneratedQuestion,
   createGenerationRequest,
   createMaterial,
@@ -73,13 +74,13 @@ function materialContext(rows: Awaited<ReturnType<typeof getMaterialChunksForRag
 }
 
 export const assessmentRouter = router({
-  dashboard: protectedProcedure.query(() => dashboardStats()),
+  dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id, ctx.user.role === "admin")),
 
   materials: router({
     list: protectedProcedure.query(({ ctx }) => listMaterials(ctx.user.id)),
     upload: protectedProcedure.input(z.object({
       title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes),
-      fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), base64: base64File, sourceText: z.string().max(30000).optional(),
+      fileName: z.string().min(1).max(255), mimeType: z.string().min(1).max(120), base64: base64File, sourceText: z.string().max(30000).optional(), sourceLocation: z.string().max(255).optional(),
     })).mutation(async ({ ctx, input }) => {
       ensureFile(input);
       const bytes = Buffer.from(input.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
@@ -87,7 +88,7 @@ export const assessmentRouter = router({
       const isExtractable = input.mimeType.startsWith("image/") || input.mimeType === "application/pdf";
       const materialId = await createMaterial({
         ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType,
-        fileName: input.fileName, mimeType: input.mimeType, fileKey: stored.key, fileUrl: stored.url, sourceText: input.sourceText || null, ocrStatus: isExtractable ? "pending" : "not_required",
+        fileName: input.fileName, mimeType: input.mimeType, fileKey: stored.key, fileUrl: stored.url, sourceLocation: input.sourceLocation || null, sourceText: input.sourceText || null, ocrStatus: isExtractable ? "pending" : "not_required",
       });
       let extractedText = input.sourceText || "";
       let extraction = null as Awaited<ReturnType<typeof extractDocumentText>> | null;
@@ -105,11 +106,16 @@ export const assessmentRouter = router({
       }
       return { materialId, fileUrl: stored.url, ocrStatus: extraction ? "completed" : isExtractable ? "failed" : "not_required" };
     }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const deleted = await deleteMaterialForUser(input.id, ctx.user.id);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 참고 자료를 찾을 수 없습니다." });
+      return { success: true };
+    }),
     registerLink: protectedProcedure.input(z.object({
-      title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes), sourceUrl: z.string().url().max(2000), sourceText: z.string().max(30000).optional(),
+      title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes), sourceUrl: z.string().url().max(2000), sourceText: z.string().max(30000).optional(), sourceLocation: z.string().max(255).optional(),
     })).mutation(async ({ ctx, input }) => {
       const sourceUrl = ensureExternalUrl(input.sourceUrl);
-      const materialId = await createMaterial({ ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType, fileName: "웹 링크", mimeType: "text/uri-list", fileKey: sourceUrl, fileUrl: sourceUrl, sourceText: input.sourceText || null, ocrText: input.sourceText || null, ocrStructure: { sourceUrl, registrationMode: "link" }, ocrStatus: "not_required" });
+      const materialId = await createMaterial({ ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType, fileName: "웹 링크", mimeType: "text/uri-list", fileKey: sourceUrl, fileUrl: sourceUrl, sourceLocation: input.sourceLocation || null, sourceText: input.sourceText || null, ocrText: input.sourceText || null, ocrStructure: { sourceUrl, registrationMode: "link" }, ocrStatus: "not_required" });
       if (input.sourceText?.trim()) await replaceMaterialChunks(materialId, splitIntoChunks(input.sourceText).map(content => ({ content, embedding: createTextEmbedding(content) })));
       return { materialId, sourceUrl };
     }),
@@ -179,7 +185,7 @@ export const assessmentRouter = router({
     preparePrototype: protectedProcedure.mutation(({ ctx }) => ensurePrototypeSampleQuestions(ctx.user.id)),
     setSelection: protectedProcedure.input(z.object({ referenceQuestionId: z.number().int().positive(), useForGeneration: z.boolean() })).mutation(async ({ ctx, input }) => { await setReferenceQuestionSelection(ctx.user.id, input.referenceQuestionId, input.useForGeneration); return { success: true }; }),
     create: protectedProcedure.input(z.object({
-      subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
+      subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2), questionNumber: z.string().max(60).optional(), sourceLocation: z.string().max(255).optional(),
       questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
     })).mutation(async ({ ctx, input }) => {
       const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
@@ -187,7 +193,7 @@ export const assessmentRouter = router({
       return { id };
     }),
     update: protectedProcedure.input(z.object({
-      id: z.number().int().positive(), subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
+      id: z.number().int().positive(), subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2), questionNumber: z.string().max(60).optional(), sourceLocation: z.string().max(255).optional(),
       questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
     })).mutation(async ({ ctx, input }) => {
       const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
@@ -244,8 +250,8 @@ export const assessmentRouter = router({
         }
         if (!finalDraft || !finalValidation) throw new Error("문항 생성 결과를 만들지 못했습니다.");
         const sources = [
-          ...rankedChunks.map(({ item }) => ({ sourceType: item.material.materialType === "guideline" ? "guideline" as const : "material" as const, sourceId: item.material.id, excerpt: item.chunk.content.slice(0, 500) })),
-          ...rankedReferences.map(({ item }) => ({ sourceType: "reference_question" as const, sourceId: item.id, excerpt: item.intent })),
+          ...rankedChunks.map(({ item }) => ({ sourceType: item.material.materialType === "guideline" ? "guideline" as const : "material" as const, sourceId: item.material.id, excerpt: item.chunk.content.slice(0, 500), sourceSnapshot: { title: item.material.title, fileName: item.material.fileName, sourceLocation: item.material.sourceLocation || `검색 발췌 ${item.chunk.chunkIndex + 1}번`, chunkIndex: item.chunk.chunkIndex, materialType: item.material.materialType } })),
+          ...rankedReferences.map(({ item }) => ({ sourceType: "reference_question" as const, sourceId: item.id, excerpt: item.intent, sourceSnapshot: { source: item.source, year: item.year, questionNumber: item.questionNumber || null, sourceLocation: item.sourceLocation || null, questionType: item.questionType, intent: item.intent } })),
         ];
         const questionId = await createGeneratedQuestion({
           requestId, creatorId: ctx.user.id, questionText: finalDraft.draft.questionText, choices: finalDraft.draft.choices, answer: finalDraft.draft.answer, explanation: finalDraft.draft.explanation,
@@ -284,7 +290,7 @@ export const assessmentRouter = router({
   }),
 
   admin: router({
-    overview: adminProcedure.query(() => dashboardStats()),
+    overview: adminProcedure.query(() => dashboardStats(undefined, true)),
     users: adminProcedure.query(() => listWorkspaceUsers()),
     setRole: adminProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["teacher", "admin"]) })).mutation(async ({ ctx, input }) => {
       if (ctx.user.id === input.userId && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "본인의 관리자 권한은 해제할 수 없습니다." });

@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   createGenerationRequest: vi.fn().mockResolvedValue(501),
   createAiProviderSetting: vi.fn().mockResolvedValue(55),
   createMaterial: vi.fn().mockResolvedValue(701),
+  deleteMaterialForUser: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
   getMaterialChunksForRag: vi.fn().mockResolvedValue([]),
@@ -20,7 +21,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -40,6 +41,13 @@ function context(): TrpcContext {
 }
 
 describe("generation request evidence integration", () => {
+  it("soft-deletes only a material owned by the current teacher", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await caller.materials.remove({ id: 701 });
+
+    expect(db.deleteMaterialForUser).toHaveBeenCalledWith(701, 42);
+  });
+
   it("registers an external material link without fetching or copying its source", async () => {
     const caller = assessmentRouter.createCaller(context());
     await caller.materials.registerLink({ title: "학교 평가계획 안내", subject: "화학 I", unit: "공통", applicableYear: "2026", materialType: "guideline", sourceUrl: "https://school.example.kr/plan" });
@@ -50,10 +58,10 @@ describe("generation request evidence integration", () => {
   it("limits a teacher's past-exam list and update to their own workspace", async () => {
     const caller = assessmentRouter.createCaller(context());
     await caller.references.list();
-    await caller.references.update({ id: 31, subject: "화학 I", unit: "화학 결합", questionType: "자료 분석형", difficulty: "중", points: 3, year: "2025", source: "공식 기출", questionText: "소유권을 확인하는 테스트 문항", choices: ["1", "2"], answer: "1", explanation: "테스트 해설", intent: "테스트 의도" });
+    await caller.references.update({ id: 31, subject: "화학 I", unit: "화학 결합", questionType: "자료 분석형", difficulty: "중", points: 3, year: "2025", source: "공식 기출", questionNumber: "12번", sourceLocation: "문제지 p.4", questionText: "소유권을 확인하는 테스트 문항", choices: ["1", "2"], answer: "1", explanation: "테스트 해설", intent: "테스트 의도" });
 
     expect(db.listReferenceQuestions).toHaveBeenCalledWith(42, false);
-    expect(db.updateReferenceQuestion).toHaveBeenCalledWith(31, 42, expect.objectContaining({ source: "공식 기출" }), false);
+    expect(db.updateReferenceQuestion).toHaveBeenCalledWith(31, 42, expect.objectContaining({ source: "공식 기출", questionNumber: "12번", sourceLocation: "문제지 p.4" }), false);
   });
 
   it("passes selected official and prototype reference IDs into the generation request", async () => {
@@ -64,6 +72,14 @@ describe("generation request evidence integration", () => {
     expect(db.ensurePrototypeSampleQuestions).toHaveBeenCalledWith(42);
     expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ requesterId: 42 }), [7], [11]);
     expect(db.createGeneratedQuestion).toHaveBeenCalled();
+  });
+
+  it("stores the used material's file, location, and excerpt as evidence snapshot", async () => {
+    db.getMaterialChunksForRag.mockResolvedValueOnce([{ material: { id: 77, materialType: "teaching", title: "1학기 화학 I 자료", fileName: "화학I_평가계획.pdf", sourceLocation: "p.3 · 표 2" }, chunk: { chunkIndex: 2, content: "화학 결합의 극성과 분자 구조를 함께 판단한다.", embedding: [1] } }]);
+    const caller = assessmentRouter.createCaller(context());
+    await caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "자료 분석형", points: 3, questionCount: 1 });
+
+    expect(db.createGeneratedQuestion).toHaveBeenLastCalledWith(expect.anything(), expect.arrayContaining([expect.objectContaining({ sourceId: 77, excerpt: "화학 결합의 극성과 분자 구조를 함께 판단한다.", sourceSnapshot: expect.objectContaining({ fileName: "화학I_평가계획.pdf", sourceLocation: "p.3 · 표 2", chunkIndex: 2 }) })]));
   });
 
   it("records a selected local provider in the generation request", async () => {

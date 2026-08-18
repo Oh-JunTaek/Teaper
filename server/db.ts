@@ -1,4 +1,4 @@
-import { and, count, desc, eq, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   aiProviderSettings,
@@ -129,15 +129,27 @@ export async function createMaterial(values: typeof referenceMaterials.$inferIns
   return Number(result[0].insertId);
 }
 
-export async function getMaterial(id: number) {
+export async function getMaterial(id: number, includeDeleted = false) {
   const db = await requireDb();
-  return (await db.select().from(referenceMaterials).where(eq(referenceMaterials.id, id)).limit(1))[0];
+  const scope = includeDeleted ? eq(referenceMaterials.id, id) : and(eq(referenceMaterials.id, id), isNull(referenceMaterials.deletedAt));
+  return (await db.select().from(referenceMaterials).where(scope).limit(1))[0];
 }
 
 export async function listMaterials(ownerId?: number) {
   const db = await requireDb();
   const query = db.select().from(referenceMaterials);
-  return ownerId ? query.where(eq(referenceMaterials.ownerId, ownerId)).orderBy(desc(referenceMaterials.createdAt)) : query.orderBy(desc(referenceMaterials.createdAt));
+  const scope = [isNull(referenceMaterials.deletedAt)];
+  if (ownerId) scope.push(eq(referenceMaterials.ownerId, ownerId));
+  return query.where(and(...scope)).orderBy(desc(referenceMaterials.createdAt));
+}
+
+export async function deleteMaterialForUser(id: number, ownerId: number) {
+  const db = await requireDb();
+  const material = (await db.select().from(referenceMaterials).where(and(eq(referenceMaterials.id, id), eq(referenceMaterials.ownerId, ownerId), isNull(referenceMaterials.deletedAt))).limit(1))[0];
+  if (!material) return false;
+  await db.delete(materialChunks).where(eq(materialChunks.materialId, id));
+  await db.update(referenceMaterials).set({ deletedAt: new Date() }).where(eq(referenceMaterials.id, id));
+  return true;
 }
 
 export async function updateMaterialExtraction(id: number, values: { ocrText: string; ocrStructure: unknown; ocrStatus: "completed" | "failed" }) {
@@ -215,7 +227,7 @@ export async function getReferenceQuestionsForRag(subject: string, unit: string)
 
 export async function getMaterialChunksForRag(subject: string, unit: string, ownerId?: number) {
   const db = await requireDb();
-  const scope = [eq(referenceMaterials.subject, subject), or(eq(referenceMaterials.unit, unit), eq(referenceMaterials.unit, "공통"))];
+  const scope = [eq(referenceMaterials.subject, subject), or(eq(referenceMaterials.unit, unit), eq(referenceMaterials.unit, "공통")), isNull(referenceMaterials.deletedAt)];
   if (ownerId) scope.push(eq(referenceMaterials.ownerId, ownerId));
   return db
     .select({ chunk: materialChunks, material: referenceMaterials })
@@ -237,7 +249,7 @@ export async function createGenerationRequest(values: typeof generationRequests.
   return requestId;
 }
 
-export async function createGeneratedQuestion(values: typeof generatedQuestions.$inferInsert, sources: Array<{ sourceType: "material" | "reference_question" | "guideline"; sourceId: number; excerpt?: string }>) {
+export async function createGeneratedQuestion(values: typeof generatedQuestions.$inferInsert, sources: Array<{ sourceType: "material" | "reference_question" | "guideline"; sourceId: number; excerpt?: string; sourceSnapshot?: unknown }>) {
   const db = await requireDb();
   const result = await db.insert(generatedQuestions).values(values);
   const questionId = Number(result[0].insertId);
@@ -268,7 +280,10 @@ export async function getGeneratedQuestionDetail(id: number, viewerId?: number, 
   const referenceIds = sources.filter(s => s.sourceType === "reference_question").map(s => s.sourceId);
   const materials = materialIds.length ? await db.select().from(referenceMaterials).where(or(...materialIds.map(item => eq(referenceMaterials.id, item)))) : [];
   const references = referenceIds.length ? await db.select().from(referenceQuestions).where(or(...referenceIds.map(item => eq(referenceQuestions.id, item)))) : [];
-  return { question, generationRequest, sources, events, materials, references, officialDocuments: officialDocumentLinks };
+  const materialMap = new Map(materials.map(material => [material.id, material]));
+  const referenceMap = new Map(references.map(reference => [reference.id, reference]));
+  const sourceEvidence = sources.map(source => ({ ...source, material: source.sourceType === "reference_question" ? undefined : materialMap.get(source.sourceId), reference: source.sourceType === "reference_question" ? referenceMap.get(source.sourceId) : undefined }));
+  return { question, generationRequest, sources, sourceEvidence, events, materials, references, officialDocuments: officialDocumentLinks };
 }
 
 export async function reviewGeneratedQuestion(input: {
@@ -308,13 +323,17 @@ export async function reviewGeneratedQuestion(input: {
   });
 }
 
-export async function dashboardStats() {
-  await ensureOfficialCatalog();
+export async function dashboardStats(ownerId?: number, includeAll = false) {
   const db = await requireDb();
-  const [materialCount] = await db.select({ value: count() }).from(referenceMaterials);
-  const [referenceCount] = await db.select({ value: count() }).from(referenceQuestions);
-  const [reviewCount] = await db.select({ value: count() }).from(generatedQuestions).where(eq(generatedQuestions.status, "pending_review"));
-  const [approvedCount] = await db.select({ value: count() }).from(generatedQuestions).where(eq(generatedQuestions.status, "approved"));
+  const materialScope = !includeAll && ownerId ? and(eq(referenceMaterials.ownerId, ownerId), isNull(referenceMaterials.deletedAt)) : isNull(referenceMaterials.deletedAt);
+  const referenceScope = !includeAll && ownerId ? eq(referenceQuestions.ownerId, ownerId) : undefined;
+  const pendingScope = !includeAll && ownerId ? and(eq(generatedQuestions.status, "pending_review"), eq(generatedQuestions.creatorId, ownerId)) : eq(generatedQuestions.status, "pending_review");
+  const approvedScope = !includeAll && ownerId ? and(eq(generatedQuestions.status, "approved"), eq(generatedQuestions.creatorId, ownerId)) : eq(generatedQuestions.status, "approved");
+  const [materialCount] = await db.select({ value: count() }).from(referenceMaterials).where(materialScope);
+  const referenceQuery = db.select({ value: count() }).from(referenceQuestions);
+  const [referenceCount] = referenceScope ? await referenceQuery.where(referenceScope) : await referenceQuery;
+  const [reviewCount] = await db.select({ value: count() }).from(generatedQuestions).where(pendingScope);
+  const [approvedCount] = await db.select({ value: count() }).from(generatedQuestions).where(approvedScope);
   const [officialDocumentCount] = await db.select({ value: count() }).from(officialDocuments).where(eq(officialDocuments.catalogStatus, "published"));
   return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
 }
