@@ -25,6 +25,7 @@ vi.mock("../db", () => ({
 }));
 
 vi.mock("../services/assessmentAi", () => ({
+  buildQuestionVisual: vi.fn().mockReturnValue(null),
   cosineSimilarity: vi.fn().mockReturnValue(0.1),
   createTextEmbedding: vi.fn().mockReturnValue([1]),
   extractDocumentText: vi.fn(),

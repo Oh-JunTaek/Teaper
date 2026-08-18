@@ -39,7 +39,7 @@ import {
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
-import { cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
+import { buildQuestionVisual, cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { selectGenerationEvidence } from "../services/generationSelection";
@@ -47,6 +47,7 @@ import { canAccessGeneratedQuestion } from "../services/questionAccess";
 import { checkProviderConnection, resolveProvider, validateProviderUrl } from "../services/aiProviders";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { createMaterialStorageKey } from "../services/materialStorageKey";
+import { createReferenceStorageKey } from "../services/referenceStorageKey";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
@@ -77,6 +78,7 @@ export const assessmentRouter = router({
   dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id, ctx.user.role === "admin")),
 
   materials: router({
+    // 교사 개인 자료는 본인 소유 범위에서만 등록·조회·삭제합니다.
     list: protectedProcedure.query(({ ctx }) => listMaterials(ctx.user.id)),
     upload: protectedProcedure.input(z.object({
       title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes),
@@ -180,29 +182,35 @@ export const assessmentRouter = router({
   }),
 
   references: router({
+    // 기출문제는 원문을 기본 복제하지 않고, 교사가 등록한 유형·출처·PDF 연결을 개인 작업공간에 보관합니다.
     list: protectedProcedure.query(({ ctx }) => listReferenceQuestions(ctx.user.id, ctx.user.role === "admin")),
     prototypeSamples: protectedProcedure.query(({ ctx }) => listPrototypeSamplesForUser(ctx.user.id)),
     preparePrototype: protectedProcedure.mutation(({ ctx }) => ensurePrototypeSampleQuestions(ctx.user.id)),
     setSelection: protectedProcedure.input(z.object({ referenceQuestionId: z.number().int().positive(), useForGeneration: z.boolean() })).mutation(async ({ ctx, input }) => { await setReferenceQuestionSelection(ctx.user.id, input.referenceQuestionId, input.useForGeneration); return { success: true }; }),
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2), questionNumber: z.string().max(60).optional(), sourceLocation: z.string().max(255).optional(),
-      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
+      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2), sourcePdf: z.object({ fileName: z.string().min(1).max(255), mimeType: z.literal("application/pdf"), base64: base64File }).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
-      const id = await createReferenceQuestion({ ownerId: ctx.user.id, ...input, choices: input.choices || null, embedding });
+      const { sourcePdf, ...reference } = input;
+      const stored = sourcePdf ? await storagePut(createReferenceStorageKey(ctx.user.id, sourcePdf.fileName), Buffer.from(sourcePdf.base64.replace(/^data:[^;]+;base64,/, ""), "base64"), sourcePdf.mimeType) : null;
+      const embedding = createTextEmbedding([reference.questionText, ...(reference.choices || []), reference.answer, reference.explanation, reference.intent].join(" "));
+      const id = await createReferenceQuestion({ ownerId: ctx.user.id, ...reference, choices: reference.choices || null, embedding, sourceFileName: sourcePdf?.fileName || null, sourceFileKey: stored?.key || null, sourceFileUrl: stored?.url || null });
       return { id };
     }),
     update: protectedProcedure.input(z.object({
       id: z.number().int().positive(), subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2), questionNumber: z.string().max(60).optional(), sourceLocation: z.string().max(255).optional(),
-      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
+      questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2), sourcePdf: z.object({ fileName: z.string().min(1).max(255), mimeType: z.literal("application/pdf"), base64: base64File }).optional(),
     })).mutation(async ({ ctx, input }) => {
-      const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
-      await updateReferenceQuestion(input.id, ctx.user.id, { ...input, choices: input.choices || null, embedding }, ctx.user.role === "admin");
+      const { sourcePdf, ...reference } = input;
+      const stored = sourcePdf ? await storagePut(createReferenceStorageKey(ctx.user.id, sourcePdf.fileName), Buffer.from(sourcePdf.base64.replace(/^data:[^;]+;base64,/, ""), "base64"), sourcePdf.mimeType) : null;
+      const embedding = createTextEmbedding([reference.questionText, ...(reference.choices || []), reference.answer, reference.explanation, reference.intent].join(" "));
+      await updateReferenceQuestion(reference.id, ctx.user.id, { ...reference, choices: reference.choices || null, embedding, ...(stored ? { sourceFileName: sourcePdf?.fileName, sourceFileKey: stored.key, sourceFileUrl: stored.url } : {}) }, ctx.user.role === "admin");
       return { success: true };
     }),
   }),
 
   generation: router({
+    // 생성 단계는 선택 근거→초안→검증→근거 스냅샷을 한 요청 이력으로 묶습니다.
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
     })).mutation(async ({ ctx, input }) => {
@@ -256,7 +264,7 @@ export const assessmentRouter = router({
         const questionId = await createGeneratedQuestion({
           requestId, creatorId: ctx.user.id, questionText: finalDraft.draft.questionText, choices: finalDraft.draft.choices, answer: finalDraft.draft.answer, explanation: finalDraft.draft.explanation,
           intent: finalDraft.draft.intent, difficulty: input.difficulty, points: input.points, questionType: input.questionType, usedConcepts: finalDraft.draft.usedConcepts,
-          validationReport: finalValidation, model: finalDraft.model, promptVersion: "chem-rag-v1.0", status: finalValidation.pass ? "pending_review" : "validation_hold",
+          validationReport: finalValidation, visualSpec: finalDraft.draft.visualSpec || buildQuestionVisual(input), model: finalDraft.model, promptVersion: "chem-rag-v1.0", status: finalValidation.pass ? "pending_review" : "validation_hold",
         }, sources);
         created.push(questionId);
       }

@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { QuestionVisual } from "@/components/QuestionVisual";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, CheckCircle2, FileText, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
@@ -45,6 +46,8 @@ export default function Generate() {
   const materialCandidates = materials.data?.filter(item => item.subject === form.subject && (item.unit === form.unit || item.unit === "공통") && item.ocrStatus === "completed") ?? [];
   const selectedSampleCount = sampleRows.filter(item => item.useForGeneration).length;
   const maximumExternalCalls = form.questionCount * 4;
+  // 그래프 해석형은 생성 전부터 축·단위·범례가 있는 자료를 보여 주어 설명문만 생성되는 문제를 줄입니다.
+  const graphPreview = form.questionType === "그래프 해석형" ? { kind: "graph" as const, title: "원자 간 거리와 퍼텐셜 에너지", xAxis: { label: "원자 간 거리", unit: "r" }, yAxis: { label: "퍼텐셜 에너지", unit: "PE" }, series: [{ name: "X", color: "#176B87", points: [{ x: 0, y: 7 }, { x: 1, y: 0.8 }, { x: 2, y: -5 }, { x: 3, y: -2.1 }, { x: 4, y: 0.1 }, { x: 5, y: 1.1 }] }, { name: "Y", color: "#C46B35", points: [{ x: 0, y: 6 }, { x: 1, y: 2.2 }, { x: 2, y: -1.2 }, { x: 3, y: -2.8 }, { x: 4, y: -1.1 }, { x: 5, y: 0.7 }] }] } : null;
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (usesExternalProvider && !externalTransferConsent) return toast.error("개인 외부 AI로 전송될 자료 범위에 동의해 주세요.");
@@ -64,6 +67,7 @@ export default function Generate() {
           <div><Label>배점</Label><Input type="number" min="1" max="20" value={form.points} onChange={e => setForm({ ...form, points: Number(e.target.value) })} className="mt-1.5" /></div>
           <div><Label>문항 수 <span className="text-xs font-normal text-slate-400">(최대 5개)</span></Label><Input type="number" min="1" max="5" value={form.questionCount} onChange={e => setForm({ ...form, questionCount: Number(e.target.value) })} className="mt-1.5" /></div>
           <div className="sm:col-span-2"><Label>추가 요구사항 <span className="text-xs font-normal text-slate-400">(선택)</span></Label><Textarea value={form.additionalRequirements} onChange={e => setForm({ ...form, additionalRequirements: e.target.value })} className="mt-1.5 min-h-28" placeholder="예: 결합의 극성과 분자 모양의 관계를 판단하는 자료를 포함해 주세요." /></div>
+          {graphPreview ? <div className="sm:col-span-2 rounded-xl border border-[#B9DCCF] bg-[#F7FCF9] p-4"><Label>그래프 자료 미리보기</Label><p className="mt-1 text-xs leading-5 text-slate-500">생성·검수 문항에는 그래프 설명문 대신 아래와 같은 실제 축·단위·곡선 자료가 포함됩니다. 생성 후 과학적 정확성을 검수해 주세요.</p><div className="mt-3"><QuestionVisual spec={graphPreview} /></div></div> : null}
           <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
             <Label>AI 실행 방식</Label>
             <select value={providerId} onChange={event => { setProviderId(event.target.value); setExternalTransferConsent(false); }} className="mt-1.5 h-10 w-full rounded-md border border-input bg-white px-3 text-sm"><option value="managed">관리형 AI · 기본 제공</option>{providers.data?.map(provider => <option key={provider.id} value={String(provider.id)}>{provider.label} · {provider.model}</option>)}</select>

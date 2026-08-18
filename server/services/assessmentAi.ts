@@ -5,6 +5,11 @@ import type { ResolvedProvider } from "./aiProviders";
 export const PROMPT_VERSION = "chem-rag-v1.0";
 const VECTOR_SIZE = 128;
 
+// 그래프·표를 설명문으로 대신하지 않고 실제 렌더링 가능한 데이터로 저장하는 공통 계약입니다.
+export type QuestionVisualSpec =
+  | { kind: "graph"; title: string; xAxis: { label: string; unit?: string }; yAxis: { label: string; unit?: string }; series: Array<{ name: string; color?: string; points: Array<{ x: number; y: number }> }> }
+  | { kind: "table"; title: string; columns: string[]; rows: string[][] };
+
 export type Draft = {
   questionText: string;
   choices: string[];
@@ -12,6 +17,7 @@ export type Draft = {
   explanation: string;
   intent: string;
   usedConcepts: string[];
+  visualSpec?: QuestionVisualSpec | null;
 };
 
 export type Validation = {
@@ -76,6 +82,19 @@ export function splitIntoChunks(text: string, size = 900) {
 
 export function needsVisionFallback(text: string) {
   return text.replace(/\s+/g, "").length < 120;
+}
+
+// 시각 자료형 문항은 그래프를 문장으로만 설명하지 않도록, 렌더링 가능한 좌표·표 데이터의 기본값을 만듭니다.
+// 교사는 검수 화면에서 축, 단위, 곡선, 수치를 직접 확인·수정할 수 있습니다.
+export function buildQuestionVisual(input: { questionType: string; additionalRequirements?: string; unit: string }): QuestionVisualSpec | null {
+  const request = `${input.unit} ${input.additionalRequirements || ""}`;
+  if (input.questionType === "그래프 해석형") {
+    const potentialEnergy = /퍼텐셜|결합|원자.?간 거리|potential/i.test(request);
+    if (potentialEnergy) return { kind: "graph", title: "원자 간 거리와 퍼텐셜 에너지", xAxis: { label: "원자 간 거리", unit: "r" }, yAxis: { label: "퍼텐셜 에너지", unit: "PE" }, series: [{ name: "X", color: "#176B87", points: [{ x: 0, y: 7 }, { x: 1, y: 0.8 }, { x: 2, y: -5 }, { x: 3, y: -2.1 }, { x: 4, y: 0.1 }, { x: 5, y: 1.1 }] }, { name: "Y", color: "#C46B35", points: [{ x: 0, y: 6 }, { x: 1, y: 2.2 }, { x: 2, y: -1.2 }, { x: 3, y: -2.8 }, { x: 4, y: -1.1 }, { x: 5, y: 0.7 }] }] };
+    return { kind: "graph", title: `${input.unit} 변화 그래프`, xAxis: { label: "독립 변인", unit: "상대 단위" }, yAxis: { label: "관찰값", unit: "상대 단위" }, series: [{ name: "A", color: "#176B87", points: [{ x: 0, y: 1 }, { x: 1, y: 2 }, { x: 2, y: 4 }, { x: 3, y: 5 }] }, { name: "B", color: "#C46B35", points: [{ x: 0, y: 4 }, { x: 1, y: 3 }, { x: 2, y: 2 }, { x: 3, y: 1 }] }] };
+  }
+  if (input.questionType === "실험 자료형" || /표|table/i.test(request)) return { kind: "table", title: `${input.unit} 관찰 자료`, columns: ["조건", "관찰값", "해석 기준"], rows: [["가", "자료 A", "비교"], ["나", "자료 B", "추론"]] };
+  return null;
 }
 
 async function extractPdfTextFirst(signedUrl: string, fileName: string) {
@@ -159,7 +178,7 @@ const draftSchema = { type: "json_schema", json_schema: { name: "question_draft"
 export async function generateDraft(input: { subject: string; unit: string; difficulty: string; questionType: string; points: number; additionalRequirements?: string; curriculumContext: string; referenceContext: string; guidelineContext: string }, provider?: ResolvedProvider) {
   const model = await selectModel("generation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: "당신은 고등학교 평가 문항 초안을 만드는 출제 보조 AI입니다. 제공된 근거 밖의 사실을 쓰지 말고, 기출 문항의 문장·수치·선지 구성을 복제하지 마십시오. 교사가 최종 검수하는 초안이며, 출제 의도와 정답·해설이 논리적으로 일치해야 합니다." }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
+  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: "당신은 고등학교 평가 문항 초안을 만드는 출제 보조 AI입니다. 제공된 근거 밖의 사실을 쓰지 말고, 기출 문항의 문장·수치·선지 구성을 복제하지 마십시오. 교사가 최종 검수하는 초안이며, 출제 의도와 정답·해설이 논리적으로 일치해야 합니다. 그래프 해석형은 그래프의 모양을 괄호로 설명하지 말고 ‘다음 그래프’를 전제로 질문과 선지를 작성하십시오. 실제 그래프는 별도의 좌표 기반 시각 자료로 함께 표시됩니다." }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
   return { draft: JSON.parse(contentOf(response)) as Draft, model };
 }
 

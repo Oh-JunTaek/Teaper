@@ -123,6 +123,7 @@ export async function updateAiProviderVerification(id: number, userId: number, s
   await db.update(aiProviderSettings).set({ lastVerificationStatus: status, lastVerifiedAt: new Date() }).where(and(eq(aiProviderSettings.id, id), eq(aiProviderSettings.userId, userId)));
 }
 
+// 참고 자료는 원본 파일(S3)과 검색용 발췌(DB)를 분리합니다. 이후 삭제·근거 추적의 기준점이 됩니다.
 export async function createMaterial(values: typeof referenceMaterials.$inferInsert) {
   const db = await requireDb();
   const result = await db.insert(referenceMaterials).values(values);
@@ -143,6 +144,7 @@ export async function listMaterials(ownerId?: number) {
   return query.where(and(...scope)).orderBy(desc(referenceMaterials.createdAt));
 }
 
+// 삭제는 논리 삭제로 처리해 새 생성에서는 제외하되, 이미 검수한 문항의 근거 이력은 재현할 수 있게 합니다.
 export async function deleteMaterialForUser(id: number, ownerId: number) {
   const db = await requireDb();
   const material = (await db.select().from(referenceMaterials).where(and(eq(referenceMaterials.id, id), eq(referenceMaterials.ownerId, ownerId), isNull(referenceMaterials.deletedAt))).limit(1))[0];
@@ -236,6 +238,7 @@ export async function getMaterialChunksForRag(subject: string, unit: string, own
     .where(and(...scope));
 }
 
+// 생성 요청과 선택된 공식 문서·기출 유형을 함께 남겨, 나중에 어떤 근거로 초안을 만들었는지 확인합니다.
 export async function createGenerationRequest(values: typeof generationRequests.$inferInsert, officialDocumentIds: number[] = [], referenceQuestionIds: number[] = []) {
   const db = await requireDb();
   const result = await db.insert(generationRequests).values(values);
@@ -249,6 +252,7 @@ export async function createGenerationRequest(values: typeof generationRequests.
   return requestId;
 }
 
+// 문항 저장 시 실제 발췌·파일명·페이지·문항 번호를 스냅샷으로 보존해 자료가 변경돼도 검수 근거를 확인할 수 있게 합니다.
 export async function createGeneratedQuestion(values: typeof generatedQuestions.$inferInsert, sources: Array<{ sourceType: "material" | "reference_question" | "guideline"; sourceId: number; excerpt?: string; sourceSnapshot?: unknown }>) {
   const db = await requireDb();
   const result = await db.insert(generatedQuestions).values(values);
