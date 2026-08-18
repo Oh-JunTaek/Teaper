@@ -45,6 +45,7 @@ import { selectGenerationEvidence } from "../services/generationSelection";
 import { canAccessGeneratedQuestion } from "../services/questionAccess";
 import { checkProviderConnection, resolveProvider, validateProviderUrl } from "../services/aiProviders";
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
+import { createMaterialStorageKey } from "../services/materialStorageKey";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
@@ -82,7 +83,7 @@ export const assessmentRouter = router({
     })).mutation(async ({ ctx, input }) => {
       ensureFile(input);
       const bytes = Buffer.from(input.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
-      const stored = await storagePut(`teacher-assessment/${ctx.user.id}/materials/${input.fileName}`, bytes, input.mimeType);
+      const stored = await storagePut(createMaterialStorageKey(ctx.user.id, input.fileName), bytes, input.mimeType);
       const isExtractable = input.mimeType.startsWith("image/") || input.mimeType === "application/pdf";
       const materialId = await createMaterial({
         ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType,
