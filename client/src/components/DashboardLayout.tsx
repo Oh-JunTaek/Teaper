@@ -18,6 +18,7 @@ import {
   LogOut,
   PanelLeft,
   ShieldCheck,
+  ScrollText,
   Sparkles,
   UsersRound,
 } from "lucide-react";
@@ -31,6 +32,7 @@ const menuItems = [
   { icon: Cpu, label: "AI 설정", path: "/ai-settings" },
   { icon: ShieldCheck, label: "검수함", path: "/review" },
   { icon: BookOpenCheck, label: "승인 문항", path: "/approved" },
+  { icon: ScrollText, label: "운영 정책", path: "/policies" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

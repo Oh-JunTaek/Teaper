@@ -57,6 +57,12 @@ function ensureFile(input: { base64: string; fileName: string; mimeType: string 
   if (!input.fileName.trim()) throw new TRPCError({ code: "BAD_REQUEST", message: "파일명이 필요합니다." });
 }
 
+function ensureExternalUrl(value: string) {
+  const url = new URL(value);
+  if (url.protocol !== "https:" && url.protocol !== "http:") throw new TRPCError({ code: "BAD_REQUEST", message: "http 또는 https 웹 링크만 등록할 수 있습니다." });
+  return url.toString();
+}
+
 function rank<T extends { embedding: number[] }>(query: number[], items: T[]) {
   return items.map(item => ({ item, score: cosineSimilarity(query, item.embedding) })).sort((a, b) => b.score - a.score);
 }
@@ -97,6 +103,14 @@ export const assessmentRouter = router({
         await replaceMaterialChunks(materialId, splitIntoChunks(extractedText).map(content => ({ content, embedding: createTextEmbedding(content) })));
       }
       return { materialId, fileUrl: stored.url, ocrStatus: extraction ? "completed" : isExtractable ? "failed" : "not_required" };
+    }),
+    registerLink: protectedProcedure.input(z.object({
+      title: z.string().min(2).max(255), subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), applicableYear: z.string().min(2).max(20), materialType: z.enum(materialTypes), sourceUrl: z.string().url().max(2000), sourceText: z.string().max(30000).optional(),
+    })).mutation(async ({ ctx, input }) => {
+      const sourceUrl = ensureExternalUrl(input.sourceUrl);
+      const materialId = await createMaterial({ ownerId: ctx.user.id, title: input.title, subject: input.subject, unit: input.unit, applicableYear: input.applicableYear, materialType: input.materialType, fileName: "웹 링크", mimeType: "text/uri-list", fileKey: sourceUrl, fileUrl: sourceUrl, sourceText: input.sourceText || null, ocrText: input.sourceText || null, ocrStructure: { sourceUrl, registrationMode: "link" }, ocrStatus: "not_required" });
+      if (input.sourceText?.trim()) await replaceMaterialChunks(materialId, splitIntoChunks(input.sourceText).map(content => ({ content, embedding: createTextEmbedding(content) })));
+      return { materialId, sourceUrl };
     }),
   }),
 
@@ -159,7 +173,7 @@ export const assessmentRouter = router({
   }),
 
   references: router({
-    list: protectedProcedure.query(() => listReferenceQuestions()),
+    list: protectedProcedure.query(({ ctx }) => listReferenceQuestions(ctx.user.id, ctx.user.role === "admin")),
     prototypeSamples: protectedProcedure.query(({ ctx }) => listPrototypeSamplesForUser(ctx.user.id)),
     preparePrototype: protectedProcedure.mutation(({ ctx }) => ensurePrototypeSampleQuestions(ctx.user.id)),
     setSelection: protectedProcedure.input(z.object({ referenceQuestionId: z.number().int().positive(), useForGeneration: z.boolean() })).mutation(async ({ ctx, input }) => { await setReferenceQuestionSelection(ctx.user.id, input.referenceQuestionId, input.useForGeneration); return { success: true }; }),
@@ -174,9 +188,9 @@ export const assessmentRouter = router({
     update: protectedProcedure.input(z.object({
       id: z.number().int().positive(), subject: z.string().min(1), unit: z.string().min(1), questionType: z.string().min(1), difficulty: z.string().min(1), points: z.number().int().min(1).max(20), year: z.string().min(2), source: z.string().min(2),
       questionText: z.string().min(10), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1), explanation: z.string().min(2), intent: z.string().min(2),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ ctx, input }) => {
       const embedding = createTextEmbedding([input.questionText, ...(input.choices || []), input.answer, input.explanation, input.intent].join(" "));
-      await updateReferenceQuestion(input.id, { ...input, choices: input.choices || null, embedding });
+      await updateReferenceQuestion(input.id, ctx.user.id, { ...input, choices: input.choices || null, embedding }, ctx.user.role === "admin");
       return { success: true };
     }),
   }),

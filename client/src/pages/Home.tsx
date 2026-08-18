@@ -6,10 +6,10 @@ import { ArrowRight, BookOpen, ClipboardCheck, FileText, Sparkles } from "lucide
 import { useLocation } from "wouter";
 
 const cards = [
-  { key: "materialCount", label: "등록 참고 자료", detail: "교육과정·지침·교수 자료", icon: FileText, tone: "bg-[#E6F4EE] text-[#15856B]" },
-  { key: "referenceCount", label: "구조화된 기출문제", detail: "유형·난이도·출제 의도", icon: BookOpen, tone: "bg-[#E8EFF7] text-[#2D6496]" },
-  { key: "reviewCount", label: "검수 대기 문항", detail: "근거 및 검증 결과 확인", icon: ClipboardCheck, tone: "bg-[#FFF2D8] text-[#B56716]" },
-  { key: "approvedCount", label: "승인된 문항", detail: "CSV로 내보낼 수 있는 문항", icon: Sparkles, tone: "bg-[#F2EAFE] text-[#7B56B3]" },
+  { key: "materialCount", label: "등록 참고 자료", detail: "교육과정·지침·교수 자료", icon: FileText, tone: "bg-[#E6F4EE] text-[#15856B]", path: "/materials" },
+  { key: "referenceCount", label: "구조화된 기출문제", detail: "유형·난이도·출제 의도", icon: BookOpen, tone: "bg-[#E8EFF7] text-[#2D6496]", path: "/references" },
+  { key: "reviewCount", label: "검수 대기 문항", detail: "근거 및 검증 결과 확인", icon: ClipboardCheck, tone: "bg-[#FFF2D8] text-[#B56716]", path: "/review" },
+  { key: "approvedCount", label: "승인된 문항", detail: "CSV로 내보낼 수 있는 문항", icon: Sparkles, tone: "bg-[#F2EAFE] text-[#7B56B3]", path: "/approved" },
 ] as const;
 
 export default function Home() {
@@ -23,7 +23,7 @@ export default function Home() {
         <Button onClick={() => setLocation("/generate")} className="h-11 rounded-xl bg-[#15856B] px-5 hover:bg-[#106C58]"><Sparkles className="mr-2 h-4 w-4" />문항 생성 시작</Button>
       </div>
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {cards.map(card => <article key={card.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-start justify-between"><div className={`grid h-10 w-10 place-items-center rounded-xl ${card.tone}`}><card.icon className="h-5 w-5" /></div><span className="text-3xl font-bold tracking-tight text-[#183248]">{isLoading ? <Skeleton className="h-8 w-10" /> : data?.[card.key] ?? 0}</span></div><h2 className="mt-5 font-semibold text-[#183248]">{card.label}</h2><p className="mt-1 text-xs text-slate-500">{card.detail}</p></article>)}
+        {cards.map(card => <button key={card.key} onClick={() => setLocation(card.path)} className="rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-[#9CCFC0] hover:shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-[#15856B]"><div className="flex items-start justify-between"><div className={`grid h-10 w-10 place-items-center rounded-xl ${card.tone}`}><card.icon className="h-5 w-5" /></div><span className="text-3xl font-bold tracking-tight text-[#183248]">{isLoading ? <Skeleton className="h-8 w-10" /> : data?.[card.key] ?? 0}</span></div><h2 className="mt-5 font-semibold text-[#183248]">{card.label}</h2><p className="mt-1 text-xs text-slate-500">{card.detail}</p><p className="mt-3 text-xs font-semibold text-[#15856B]">열기 →</p></button>)}
       </section>
       <section className="mt-7 rounded-2xl border border-[#B9DCCF] bg-[#F2FBF6] p-5"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div><p className="text-sm font-semibold text-[#15856B]">기본 공식 문서</p><p className="mt-1 text-sm text-slate-600">화학·화학 I의 현재 적용 교육과정 문서를 기본으로 준비했습니다.</p></div><Button variant="outline" onClick={() => setLocation("/materials")} className="w-fit border-[#B9DCCF] bg-white text-[#15856B] hover:bg-white">문서 확인하기<ArrowRight className="ml-2 h-4 w-4" /></Button></div><div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">{officialDocuments?.map(({ document }) => <div key={document.id} className="rounded-xl border border-white bg-white/85 p-3"><p className="text-xs font-semibold text-[#183248]">{document.title}</p><p className="mt-1 text-[11px] text-slate-500">{document.applicableYear}</p></div>)}</div></section>
       <section className="mt-8 grid gap-5 lg:grid-cols-[1.2fr_0.8fr]">

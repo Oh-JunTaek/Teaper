@@ -159,9 +159,10 @@ export async function createReferenceQuestion(values: typeof referenceQuestions.
   return Number(result[0].insertId);
 }
 
-export async function listReferenceQuestions() {
+export async function listReferenceQuestions(ownerId?: number, includeAll = false) {
   const db = await requireDb();
-  return db.select().from(referenceQuestions).orderBy(desc(referenceQuestions.createdAt));
+  const query = db.select().from(referenceQuestions);
+  return !includeAll && ownerId ? query.where(eq(referenceQuestions.ownerId, ownerId)).orderBy(desc(referenceQuestions.createdAt)) : query.orderBy(desc(referenceQuestions.createdAt));
 }
 
 export async function ensurePrototypeSampleQuestions(ownerId: number) {
@@ -202,9 +203,9 @@ export async function getSelectedReferenceQuestionsForGeneration(userId: number,
   return db.select({ question: referenceQuestions, selection: referenceQuestionSelections }).from(referenceQuestionSelections).innerJoin(referenceQuestions, eq(referenceQuestionSelections.referenceQuestionId, referenceQuestions.id)).where(and(eq(referenceQuestionSelections.userId, userId), eq(referenceQuestionSelections.useForGeneration, 1), eq(referenceQuestions.subject, subject), or(eq(referenceQuestions.unit, unit), eq(referenceQuestions.unit, "공통"))));
 }
 
-export async function updateReferenceQuestion(id: number, values: Omit<typeof referenceQuestions.$inferInsert, "id" | "ownerId" | "createdAt" | "updatedAt">) {
+export async function updateReferenceQuestion(id: number, ownerId: number, values: Omit<typeof referenceQuestions.$inferInsert, "id" | "ownerId" | "createdAt" | "updatedAt">, includeAll = false) {
   const db = await requireDb();
-  await db.update(referenceQuestions).set(values).where(eq(referenceQuestions.id, id));
+  await db.update(referenceQuestions).set(values).where(!includeAll ? and(eq(referenceQuestions.id, id), eq(referenceQuestions.ownerId, ownerId)) : eq(referenceQuestions.id, id));
 }
 
 export async function getReferenceQuestionsForRag(subject: string, unit: string) {
