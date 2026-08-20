@@ -355,7 +355,8 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
 
 export async function listWorkspaceUsers() {
   const db = await requireDb();
-  return db.select({ id: users.id, name: users.name, email: users.email, role: users.role, lastSignedIn: users.lastSignedIn }).from(users).orderBy(desc(users.lastSignedIn));
+  // 역할 관리에는 이름·역할만 필요하므로 이메일과 최근 로그인 시각은 클라이언트로 전송하지 않습니다.
+  return db.select({ id: users.id, name: users.name, role: users.role }).from(users).orderBy(desc(users.lastSignedIn));
 }
 
 export async function setWorkspaceUserRole(userId: number, role: "teacher" | "admin") {

@@ -1,8 +1,9 @@
 import { invokeLLM, listLLMModels } from "../_core/llm";
 import { PDFParse } from "pdf-parse";
 import type { ResolvedProvider } from "./aiProviders";
+import { buildGenerationSystemPrompt, buildValidationSystemPrompt, PROMPT_CONTRACT_VERSION, type ProviderKind } from "./assessmentPrompt";
 
-export const PROMPT_VERSION = "chem-rag-v1.0";
+export const PROMPT_VERSION = PROMPT_CONTRACT_VERSION;
 const VECTOR_SIZE = 128;
 
 // 그래프·표를 설명문으로 대신하지 않고 실제 렌더링 가능한 데이터로 저장하는 공통 계약입니다.
@@ -178,7 +179,7 @@ const draftSchema = { type: "json_schema", json_schema: { name: "question_draft"
 export async function generateDraft(input: { subject: string; unit: string; difficulty: string; questionType: string; points: number; additionalRequirements?: string; curriculumContext: string; referenceContext: string; guidelineContext: string }, provider?: ResolvedProvider) {
   const model = await selectModel("generation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: "당신은 고등학교 평가 문항 초안을 만드는 출제 보조 AI입니다. 제공된 근거 밖의 사실을 쓰지 말고, 기출 문항의 문장·수치·선지 구성을 복제하지 마십시오. 교사가 최종 검수하는 초안이며, 출제 의도와 정답·해설이 논리적으로 일치해야 합니다. 그래프 해석형은 그래프의 모양을 괄호로 설명하지 말고 ‘다음 그래프’를 전제로 질문과 선지를 작성하십시오. 실제 그래프는 별도의 좌표 기반 시각 자료로 함께 표시됩니다." }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
+  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: buildGenerationSystemPrompt((provider?.kind || "managed") as ProviderKind) }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
   return { draft: JSON.parse(contentOf(response)) as Draft, model };
 }
 
@@ -187,7 +188,7 @@ const validationSchema = { type: "json_schema", json_schema: { name: "validation
 export async function validateDraft(input: { draft: Draft; subject: string; unit: string; difficulty: string; curriculumContext: string; guidelineContext: string; similarityScore: number; similarReferenceId: number | null; similarReference?: { questionText: string; choices: string[] | null; intent: string } }, provider?: ResolvedProvider) {
   const model = await selectModel("validation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: "당신은 엄격한 고등학교 시험문항 검증자입니다. 모호하거나 근거가 부족한 경우 false로 판정하십시오. 답과 해설의 논리적 일치, 요구 난이도 적합성, 단원 범위와 출제 지침 준수를 검사합니다." }, { role: "user", content: `과목: ${input.subject}\n단원: ${input.unit}\n목표 난이도: ${input.difficulty}\n교육과정 근거: ${input.curriculumContext || "없음"}\n출제 지침 근거: ${input.guidelineContext || "없음"}\n\n[생성 문항]\n문항: ${input.draft.questionText}\n보기: ${(input.draft.choices ?? []).join(" | ")}\n정답: ${input.draft.answer}\n해설: ${input.draft.explanation}\n출제 의도: ${input.draft.intent}\n\n[가장 가까운 기출문제]\n문항: ${input.similarReference?.questionText || "없음"}\n보기: ${(input.similarReference?.choices || []).join(" | ")}\n출제 의도: ${input.similarReference?.intent || "없음"}\n\n두 문항이 문장·수치·자료구성·사고 과정까지 실질적으로 동일하거나 지나치게 유사하면 tooSimilar를 true로 판정하십시오.` }], responseFormat: validationSchema });
+  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: buildValidationSystemPrompt((provider?.kind || "managed") as ProviderKind) }, { role: "user", content: `과목: ${input.subject}\n단원: ${input.unit}\n목표 난이도: ${input.difficulty}\n교육과정 근거: ${input.curriculumContext || "없음"}\n출제 지침 근거: ${input.guidelineContext || "없음"}\n\n[생성 문항]\n문항: ${input.draft.questionText}\n보기: ${(input.draft.choices ?? []).join(" | ")}\n정답: ${input.draft.answer}\n해설: ${input.draft.explanation}\n출제 의도: ${input.draft.intent}\n\n[가장 가까운 기출문제]\n문항: ${input.similarReference?.questionText || "없음"}\n보기: ${(input.similarReference?.choices || []).join(" | ")}\n출제 의도: ${input.similarReference?.intent || "없음"}\n\n두 문항이 문장·수치·자료구성·사고 과정까지 실질적으로 동일하거나 지나치게 유사하면 tooSimilar를 true로 판정하십시오.` }], responseFormat: validationSchema });
   const judged = JSON.parse(contentOf(response));
   const pass = Boolean(judged.inScope && judged.answerExplanationConsistent && judged.difficultyAppropriate && judged.guidanceCompliant && !judged.tooSimilar && input.similarityScore < 0.84);
   return { ...judged, similarityScore: input.similarityScore, similarReferenceId: input.similarReferenceId, pass, model } as Validation & { model: string };
