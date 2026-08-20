@@ -146,6 +146,20 @@ async function invokeForProvider(input: { provider?: ResolvedProvider; model?: s
     if (!response.ok) throw new Error(`개인 OpenAI 호환 API 호출 실패 (${response.status})`);
     return await response.json();
   }
+  if (provider.kind === "anthropic") {
+    const system = input.messages.find(message => message.role === "system")?.content || "";
+    const messages = input.messages.filter(message => message.role !== "system");
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": provider.apiKey || "", "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: provider.model, max_tokens: 4096, system, messages, output_config: { format: { type: "json_schema", schema: (input.responseFormat as any).json_schema?.schema } } }),
+      signal: AbortSignal.timeout(90_000),
+    });
+    if (!response.ok) throw new Error(`개인 Claude API 호출 실패 (${response.status})`);
+    const data = await response.json() as { model?: string; content?: Array<{ type?: string; text?: string }> };
+    const content = data.content?.find(part => part.type === "text")?.text || "";
+    return { model: data.model || provider.model, choices: [{ index: 0, message: { role: "assistant", content }, finish_reason: "stop" }] };
+  }
   const response = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", {
     method: "POST",
     headers: { "content-type": "application/json", "x-goog-api-key": provider.apiKey || "" },

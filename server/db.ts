@@ -66,7 +66,7 @@ export async function getUserByOpenId(openId: string) {
   return result[0];
 }
 
-export type ProviderType = "managed" | "ollama" | "openai_compatible" | "gemini";
+export type ProviderType = "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic";
 
 export async function listAiProviderSettings(userId: number) {
   const db = await requireDb();
@@ -103,7 +103,7 @@ export async function createAiProviderSetting(input: {
   externalTransferConsentAt?: Date | null;
 }) {
   const db = await requireDb();
-  const usesApiKey = input.providerType === "openai_compatible" || input.providerType === "gemini";
+  const usesApiKey = input.providerType === "openai_compatible" || input.providerType === "gemini" || input.providerType === "anthropic";
   if (usesApiKey && !input.apiKey?.trim()) throw new Error("개인 API 키가 필요합니다.");
   const result = await db.insert(aiProviderSettings).values({
     userId: input.userId,

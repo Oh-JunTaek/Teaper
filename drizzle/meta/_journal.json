@@ -85,6 +85,13 @@
       "when": 1787188824388,
       "tag": "0011_glamorous_queen_noir",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1787225334268,
+      "tag": "0012_gray_naoko",
+      "breakpoints": true
     }
   ]
 }

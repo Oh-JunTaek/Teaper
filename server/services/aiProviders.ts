@@ -1,6 +1,6 @@
 import { decryptPersonalApiKey } from "./personalApiCrypto";
 
-export type ProviderKind = "managed" | "ollama" | "openai_compatible" | "gemini";
+export type ProviderKind = "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic";
 
 export type ResolvedProvider = {
   kind: ProviderKind;
@@ -23,7 +23,7 @@ type StoredProvider = {
 
 const loopbackHosts = new Set(["localhost", "127.0.0.1", "::1"]);
 
-export function validateProviderUrl(kind: Exclude<ProviderKind, "managed" | "gemini">, rawUrl: string) {
+export function validateProviderUrl(kind: Exclude<ProviderKind, "managed" | "gemini" | "anthropic">, rawUrl: string) {
   let url: URL;
   try {
     url = new URL(rawUrl);
@@ -52,6 +52,9 @@ export function resolveProvider(stored?: StoredProvider, hasRequestConsent = fal
   if (stored.providerType === "gemini") {
     return { kind: "gemini", model: stored.model, apiKey: decryptPersonalApiKey(stored.encryptedApiKey), providerSettingId: stored.id, externalTransfer: true };
   }
+  if (stored.providerType === "anthropic") {
+    return { kind: "anthropic", model: stored.model, baseUrl: "https://api.anthropic.com", apiKey: decryptPersonalApiKey(stored.encryptedApiKey), providerSettingId: stored.id, externalTransfer: true };
+  }
   return { kind: "openai_compatible", model: stored.model, baseUrl: validateProviderUrl("openai_compatible", stored.baseUrl || ""), apiKey: decryptPersonalApiKey(stored.encryptedApiKey), providerSettingId: stored.id, externalTransfer: true };
 }
 
@@ -67,6 +70,12 @@ export async function checkProviderConnection(provider: ResolvedProvider) {
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models", { headers: { "x-goog-api-key": provider.apiKey || "" }, signal: AbortSignal.timeout(8_000) });
     if (!response.ok) throw new Error(`Gemini API 연결 실패 (${response.status})`);
     return { status: "ready", models: [provider.model], message: "개인 Gemini API 키를 확인했습니다." };
+  }
+  if (provider.kind === "anthropic") {
+    const response = await fetch("https://api.anthropic.com/v1/models", { headers: { "x-api-key": provider.apiKey || "", "anthropic-version": "2023-06-01" }, signal: AbortSignal.timeout(8_000) });
+    if (!response.ok) throw new Error(`개인 Claude API 연결 실패 (${response.status})`);
+    const data = await response.json() as { data?: Array<{ id?: string }> };
+    return { status: "ready", models: (data.data || []).map(model => model.id || "").filter(Boolean).slice(0, 12), message: "개인 Claude API 키를 확인했습니다." };
   }
   const response = await fetch(`${provider.baseUrl}/models`, { headers: { Authorization: `Bearer ${provider.apiKey}` }, signal: AbortSignal.timeout(8_000) });
   if (!response.ok) throw new Error(`개인 OpenAI 호환 API 연결 실패 (${response.status})`);

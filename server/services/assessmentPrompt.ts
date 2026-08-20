@@ -3,7 +3,7 @@
  * 모델마다 말투와 추론 방식은 달라도, 근거 사용·비복제·정답 검증·출력 형식의 기준은 같게 유지합니다.
  */
 export const PROMPT_CONTRACT_VERSION = "chem-rag-v1.1";
-export type ProviderKind = "managed" | "ollama" | "openai_compatible" | "gemini";
+export type ProviderKind = "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic";
 
 const commonGenerationRules = [
   "당신은 고등학교 평가 문항을 설계하는 출제 보조자입니다. 결과는 교사가 검수하는 문항이며, 최종 시험지로 단정하지 마십시오.",
@@ -24,6 +24,7 @@ const commonValidationRules = [
 function providerReinforcement(provider: ProviderKind) {
   if (provider === "ollama") return "\n로컬 모델용 형식 보강: 각 JSON 필드를 빠뜨리지 말고, 문자열 안에 줄바꿈·코드 블록·주석을 넣지 마십시오.";
   if (provider === "gemini") return "\nGemini 형식 보강: 응답 스키마의 필드명과 자료형을 정확히 지키고, 스키마 밖의 키를 추가하지 마십시오.";
+  if (provider === "anthropic") return "\nClaude 형식 보강: 응답 스키마의 필드명과 자료형을 정확히 지키고, 스키마 밖의 키를 추가하지 마십시오.";
   if (provider === "openai_compatible") return "\n호환 API 형식 보강: 응답 스키마의 필드명과 자료형을 정확히 지키고, 스키마 밖의 키를 추가하지 마십시오.";
   return "\n관리형 모델 형식 보강: 응답 스키마의 필드명과 자료형을 정확히 지키고, 스키마 밖의 키를 추가하지 마십시오.";
 }

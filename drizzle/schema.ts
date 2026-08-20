@@ -92,7 +92,7 @@ export const referenceQuestions = mysqlTable(
 export const generationRequests = mysqlTable("generation_requests", {
   id: int("id").autoincrement().primaryKey(),
   requesterId: int("requesterId").notNull(),
-  providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini"]).default("managed").notNull(),
+  providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini", "anthropic"]).default("managed").notNull(),
   providerSettingId: int("providerSettingId"),
   providerModel: varchar("providerModel", { length: 160 }).notNull().default("managed-default"),
   externalTransferConsentAt: timestamp("externalTransferConsentAt"),
@@ -111,7 +111,7 @@ export const aiProviderSettings = mysqlTable(
   {
     id: int("id").autoincrement().primaryKey(),
     userId: int("userId").notNull(),
-    providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini"]).notNull(),
+    providerType: mysqlEnum("providerType", ["managed", "ollama", "openai_compatible", "gemini", "anthropic"]).notNull(),
     label: varchar("label", { length: 120 }).notNull(),
     baseUrl: varchar("baseUrl", { length: 500 }),
     model: varchar("model", { length: 160 }).notNull(),

@@ -27,8 +27,8 @@ function sourceLink(source: Record<string, any>, snapshot: Record<string, any>, 
   return { url: page ? `${url}#page=${page}` : url, page, isPdf };
 }
 
-function ProviderHistory({ request, model }: { request?: { providerType: "managed" | "ollama" | "openai_compatible" | "gemini"; providerModel: string; externalTransferConsentAt: Date | null }; model: string }) {
-  const providerLabel = request?.providerType === "managed" ? "관리형 AI" : request?.providerType === "ollama" ? "로컬 Ollama" : request?.providerType === "gemini" ? "개인 Gemini API" : request?.providerType === "openai_compatible" ? "개인 OpenAI 호환 API" : "기록 없음";
+function ProviderHistory({ request, model }: { request?: { providerType: "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic"; providerModel: string; externalTransferConsentAt: Date | null }; model: string }) {
+  const providerLabel = request?.providerType === "managed" ? "관리형 AI" : request?.providerType === "ollama" ? "로컬 Ollama" : request?.providerType === "gemini" ? "개인 Gemini API" : request?.providerType === "anthropic" ? "개인 Claude API" : request?.providerType === "openai_compatible" ? "개인 OpenAI 호환 API" : "기록 없음";
   return <article className="rounded-2xl border border-[#B9DCCF] bg-[#F7FCF9] p-5 shadow-sm"><h2 className="flex items-center gap-2 font-bold text-[#183248]"><History className="h-4 w-4 text-[#15856B]" />AI 실행 이력</h2><dl className="mt-3 space-y-2 text-xs leading-5 text-slate-600"><div><dt className="inline font-semibold text-[#183248]">제공자 </dt><dd className="inline">{providerLabel}</dd></div><div><dt className="inline font-semibold text-[#183248]">모델 </dt><dd className="inline">{request?.providerModel || model}</dd></div><div><dt className="inline font-semibold text-[#183248]">외부 전송 </dt><dd className="inline">{request?.externalTransferConsentAt ? `요청별 동의 기록됨 · ${new Date(request.externalTransferConsentAt).toLocaleString("ko-KR")}` : "없음"}</dd></div></dl></article>;
 }
 

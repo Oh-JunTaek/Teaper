@@ -144,7 +144,7 @@ export const assessmentRouter = router({
       return { success: true };
     }),
     create: protectedProcedure.input(z.object({
-      providerType: z.enum(["ollama", "openai_compatible", "gemini"]),
+      providerType: z.enum(["ollama", "openai_compatible", "gemini", "anthropic"]),
       label: z.string().min(2).max(120),
       baseUrl: z.string().max(500).optional(),
       model: z.string().min(2).max(160),
@@ -158,6 +158,8 @@ export const assessmentRouter = router({
       try {
         const baseUrl = input.providerType === "gemini"
           ? "https://generativelanguage.googleapis.com"
+          : input.providerType === "anthropic"
+            ? "https://api.anthropic.com"
           : validateProviderUrl(input.providerType, input.baseUrl || (input.providerType === "ollama" ? "http://127.0.0.1:11434" : ""));
         const id = await createAiProviderSetting({
           userId: ctx.user.id,

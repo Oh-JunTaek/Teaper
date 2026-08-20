@@ -5,16 +5,18 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { trpc } from "@/lib/trpc";
+import { PERSONAL_PROVIDER_CATALOG, type PersonalProviderType } from "@shared/aiProviderCatalog";
 import { CheckCircle2, Cloud, ExternalLink, HelpCircle, KeyRound, Laptop, Loader2, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-type ProviderType = "ollama" | "openai_compatible" | "gemini";
+type ProviderType = "ollama" | PersonalProviderType;
 
 const defaults: Record<ProviderType, { label: string; baseUrl: string; model: string }> = {
   ollama: { label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b" },
-  openai_compatible: { label: "개인 OpenAI 호환 API", baseUrl: "https://api.openai.com/v1", model: "gpt-4.1-mini" },
-  gemini: { label: "개인 Gemini API", baseUrl: "", model: "gemini-2.5-flash" },
+  openai_compatible: { label: PERSONAL_PROVIDER_CATALOG.openai.label, baseUrl: "https://api.openai.com/v1", model: PERSONAL_PROVIDER_CATALOG.openai.defaultModel },
+  gemini: { label: PERSONAL_PROVIDER_CATALOG.gemini.label, baseUrl: "", model: PERSONAL_PROVIDER_CATALOG.gemini.defaultModel },
+  anthropic: { label: PERSONAL_PROVIDER_CATALOG.anthropic.label, baseUrl: "", model: PERSONAL_PROVIDER_CATALOG.anthropic.defaultModel },
 };
 
 const localRecommendations = [
@@ -40,6 +42,7 @@ export default function AiSettings() {
   const [consent, setConsent] = useState(false);
   const [customInstructions, setCustomInstructions] = useState("");
   const external = type !== "ollama";
+  const selectedCatalog = type === "gemini" ? PERSONAL_PROVIDER_CATALOG.gemini : type === "openai_compatible" ? PERSONAL_PROVIDER_CATALOG.openai : type === "anthropic" ? PERSONAL_PROVIDER_CATALOG.anthropic : null;
 
   useEffect(() => { if (preferences.data) setCustomInstructions(preferences.data.customInstructions); }, [preferences.data]);
 
@@ -79,11 +82,11 @@ export default function AiSettings() {
       <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-[#183248]">새 제공자 연결</h2>
         <div className="mt-5 grid gap-4">
-          <div><Label>실행 방식</Label><select value={type} onChange={event => changeType(event.target.value as ProviderType)} className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="ollama">내 PC의 Ollama (로컬)</option><option value="gemini">개인 Gemini API</option><option value="openai_compatible">개인 OpenAI 호환 API</option></select></div>
+          <div><Label>실행 방식</Label><select value={type} onChange={event => changeType(event.target.value as ProviderType)} className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="ollama">내 PC의 Ollama (로컬)</option><option value="gemini">개인 Gemini API</option><option value="openai_compatible">개인 OpenAI API</option><option value="anthropic">개인 Claude API</option></select></div>
           <div><Label>표시 이름</Label><Input value={label} onChange={event => setLabel(event.target.value)} className="mt-1.5" /></div>
-          {type !== "gemini" && type !== "ollama" && <div><Label>API 기본 주소<HelpTip>개인 API 제공자가 알려 준 기본 주소입니다. 보통 제공자가 안내한 값을 그대로 사용합니다.</HelpTip></Label><Input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={defaults[type].baseUrl} className="mt-1.5" /></div>}
+          {type !== "gemini" && type !== "ollama" && type !== "anthropic" && <div><Label>API 기본 주소<HelpTip>개인 API 제공자가 알려 준 기본 주소입니다. 보통 제공자가 안내한 값을 그대로 사용합니다.</HelpTip></Label><Input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={defaults[type].baseUrl} className="mt-1.5" /></div>}
           {type === "ollama" && <div className="rounded-xl border border-[#D6EBE2] bg-[#F2FBF6] p-3 text-xs leading-5 text-slate-600"><strong className="text-[#183248]">로컬 연결은 자동으로 처리됩니다.</strong> 주소를 입력할 필요가 없습니다. 데스크톱 앱이 교사 PC 안의 안전한 연결 주소만 사용합니다.<HelpTip>로컬 주소는 내 PC 안에서만 AI와 통신하는 연결 정보입니다. 외부 인터넷 주소가 아니므로 직접 수정하지 않아도 됩니다.</HelpTip></div>}
-          <div><Label>모델 이름<HelpTip>AI 모델의 이름입니다. 추천 버튼을 선택하면 자동 입력되며, 이미 설치한 다른 Ollama 모델이 있으면 직접 입력할 수도 있습니다.</HelpTip></Label><Input value={model} onChange={event => setModel(event.target.value)} className="mt-1.5" placeholder="예: qwen3:8b" />{type === "ollama" && <div className="mt-2 flex flex-wrap gap-2">{localRecommendations.map(item => <Button key={item.model} type="button" size="sm" variant={model === item.model ? "default" : "outline"} onClick={() => setModel(item.model)} className={model === item.model ? "bg-[#15856B] hover:bg-[#106C58]" : ""}>{item.tier} · {item.model}</Button>)}</div>}</div>
+          <div><Label>모델 이름<HelpTip>권장 모델을 누르면 이름이 자동 입력됩니다. 키별 지원 모델은 다를 수 있으므로 연결 확인 결과를 함께 확인하세요.</HelpTip></Label><Input value={model} onChange={event => setModel(event.target.value)} className="mt-1.5" placeholder="예: claude-sonnet-5" />{type === "ollama" && <div className="mt-2 flex flex-wrap gap-2">{localRecommendations.map(item => <Button key={item.model} type="button" size="sm" variant={model === item.model ? "default" : "outline"} onClick={() => setModel(item.model)} className={model === item.model ? "bg-[#15856B] hover:bg-[#106C58]" : ""}>{item.tier} · {item.model}</Button>)}</div>}{selectedCatalog && <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex items-center justify-between gap-3"><p className="text-xs font-semibold text-[#183248]">권장 모델</p><a href={selectedCatalog.documentationUrl} target="_blank" rel="noreferrer" className="text-xs font-medium text-[#15856B] hover:underline">공식 모델 안내</a></div><p className="mt-1 text-xs leading-5 text-slate-500">{selectedCatalog.apiLabel}. 품질·비용 정책은 제공자 계정에서 직접 확인하세요.</p><div className="mt-2 flex flex-wrap gap-2">{selectedCatalog.recommendedModels.map(item => <Button key={item.model} type="button" size="sm" variant={model === item.model ? "default" : "outline"} onClick={() => setModel(item.model)} className={model === item.model ? "bg-[#2773A7] hover:bg-[#1F5D8A]" : ""}>{item.tier} · {item.model}</Button>)}</div><p className="mt-2 text-[11px] leading-4 text-slate-500">{selectedCatalog.recommendedModels.find(item => item.model === model)?.description || "권장 목록 밖 모델입니다. 제공자 계정에서 이 모델의 사용 가능 여부를 확인하세요."}</p></div>}</div>
           {type === "ollama" && <div className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><strong className="text-[#183248]">수동 모델 연결도 가능합니다.</strong> Ollama에 이미 설치한 모델 이름을 직접 입력하세요. Gemma 3n은 저사양·모바일 연구 후보이며, 실제 시험 문항은 근거·정답·해설을 반드시 검수하세요.</div>}
           {external && <><div><Label>개인 API 키<HelpTip>개인 API 제공자가 발급한 비밀 키입니다. 저장 후에는 전체 값을 다시 표시하지 않습니다.</HelpTip></Label><Input required type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="저장 후에는 마지막 4자리만 표시됩니다." className="mt-1.5" /></div><label className="flex gap-2 rounded-xl border border-[#F3D6A3] bg-[#FFF9EC] p-3 text-sm leading-5 text-slate-700"><input required type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} className="mt-1" /><span>문항 조건, 선택한 근거 자료의 텍스트, 출제 요구사항이 선택한 외부 AI 제공자에게 전송됨을 확인했습니다.</span></label></>}
         </div>
