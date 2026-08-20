@@ -10,10 +10,12 @@ const db = vi.hoisted(() => ({
   deleteMaterialForUser: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
+  getUserAiPreferences: vi.fn().mockResolvedValue({ customInstructions: "계산 과정의 단위를 확인" }),
   getMaterialChunksForRag: vi.fn().mockResolvedValue([]),
   getReferenceQuestionsForRag: vi.fn().mockResolvedValue([{ id: 11, subject: "화학 I", unit: "화학 결합", questionType: "개념 확인형", difficulty: "중", points: 3, year: "프로토타입", source: "프로토타입 샘플", questionText: "샘플 문제", choices: ["A", "B"], answer: "1", explanation: "설명", intent: "의도", embedding: [1] }]),
   getSelectedOfficialDocumentsForGeneration: vi.fn().mockResolvedValue([{ document: { id: 7, title: "화학 I 공식 문서", subject: "화학 I", applicableYear: "2026", officialUrl: "https://ncic.re.kr/sample", summary: "공식 범위", rightsStatus: "link_only" }, source: { provider: "교육부" } }]),
   getSelectedReferenceQuestionsForGeneration: vi.fn().mockResolvedValue([{ question: { id: 11 }, selection: { useForGeneration: 1 } }]),
+  saveUserAiPreferences: vi.fn().mockResolvedValue(undefined),
   ensurePrototypeSampleQuestions: vi.fn().mockResolvedValue({ created: 2, ids: [11, 12], label: "프로토타입 샘플" }),
   listReferenceQuestions: vi.fn().mockResolvedValue([]),
   updateReferenceQuestion: vi.fn().mockResolvedValue(undefined),
@@ -21,7 +23,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -30,6 +32,7 @@ vi.mock("../services/assessmentAi", () => ({
   createTextEmbedding: vi.fn().mockReturnValue([1]),
   extractDocumentText: vi.fn(),
   generateDraft: vi.fn().mockResolvedValue({ model: "test-model", draft: { questionText: "새 문항", choices: ["A", "B"], answer: "1", explanation: "설명", intent: "의도", usedConcepts: ["화학 결합"] } }),
+  PROMPT_VERSION: "chem-rag-v1.1",
   splitIntoChunks: vi.fn(),
   validateDraft: vi.fn().mockResolvedValue({ inScope: true, answerExplanationConsistent: true, difficultyAppropriate: true, guidanceCompliant: true, notes: [], similarityScore: 0.1, similarReferenceId: 11, pass: true, model: "validator" }),
 }));
@@ -103,6 +106,12 @@ describe("generation request evidence integration", () => {
     await caller.aiProviders.create({ providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", confirmExternalTransfer: false });
 
     expect(db.createAiProviderSetting).toHaveBeenCalledWith(expect.objectContaining({ userId: 42, providerType: "ollama", allowExternalTransfer: false, baseUrl: "http://127.0.0.1:11434" }));
+  });
+
+  it("stores the teacher's additional writing preference in their own workspace", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await caller.aiProviders.savePreferences({ customInstructions: "계산 과정의 단위를 반드시 확인" });
+    expect(db.saveUserAiPreferences).toHaveBeenCalledWith(42, "계산 과정의 단위를 반드시 확인");
   });
 
   it("requires consent before creating an external personal API setting", async () => {

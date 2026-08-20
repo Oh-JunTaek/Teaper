@@ -128,6 +128,18 @@ export const aiProviderSettings = mysqlTable(
   table => [index("ai_provider_settings_user_idx").on(table.userId, table.providerType)],
 );
 
+// 교사가 원하는 문항 스타일·검수 관점을 저장합니다. 공통 안전 계약을 대체하지 않는 보조 지시문입니다.
+export const userAiPreferences = mysqlTable(
+  "user_ai_preferences",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    userId: int("userId").notNull().unique(),
+    customInstructions: text("customInstructions").notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [index("user_ai_preferences_user_idx").on(table.userId)],
+);
+
 export const generatedQuestions = mysqlTable(
   "generated_questions",
   {

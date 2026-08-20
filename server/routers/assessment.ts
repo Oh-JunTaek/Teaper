@@ -11,6 +11,7 @@ import {
   dashboardStats,
   ensureOfficialCatalog,
   getAiProviderSettingForUser,
+  getUserAiPreferences,
   getGeneratedQuestionDetail,
   getMaterial,
   getMaterialChunksForRag,
@@ -31,6 +32,7 @@ import {
   replaceMaterialChunks,
   reviewGeneratedQuestion,
   reviewOfficialSourceChange,
+  saveUserAiPreferences,
   setWorkspaceUserRole,
   setOfficialDocumentSelection,
   setReferenceQuestionSelection,
@@ -39,7 +41,7 @@ import {
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
-import { buildQuestionVisual, cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, splitIntoChunks, validateDraft } from "../services/assessmentAi";
+import { buildQuestionVisual, cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, PROMPT_VERSION, splitIntoChunks, validateDraft } from "../services/assessmentAi";
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { selectGenerationEvidence } from "../services/generationSelection";
@@ -133,6 +135,14 @@ export const assessmentRouter = router({
 
   aiProviders: router({
     list: protectedProcedure.query(({ ctx }) => listAiProviderSettings(ctx.user.id)),
+    preferences: protectedProcedure.query(async ({ ctx }) => {
+      const preferences = await getUserAiPreferences(ctx.user.id);
+      return { customInstructions: preferences?.customInstructions || "", updatedAt: preferences?.updatedAt || null };
+    }),
+    savePreferences: protectedProcedure.input(z.object({ customInstructions: z.string().max(1200) })).mutation(async ({ ctx, input }) => {
+      await saveUserAiPreferences(ctx.user.id, input.customInstructions.trim());
+      return { success: true };
+    }),
     create: protectedProcedure.input(z.object({
       providerType: z.enum(["ollama", "openai_compatible", "gemini"]),
       label: z.string().min(2).max(120),
@@ -242,12 +252,13 @@ export const assessmentRouter = router({
       if (!curriculumContext && !referenceContext && !guidelineContext && !selectedOfficialContext) {
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: "같은 과목·단원의 참고 자료 또는 기출문제를 먼저 등록해 주세요." });
       }
+      const preferences = await getUserAiPreferences(ctx.user.id);
       const created: number[] = [];
       for (let index = 0; index < input.questionCount; index += 1) {
         let finalDraft = null as Awaited<ReturnType<typeof generateDraft>> | null;
         let finalValidation = null as Awaited<ReturnType<typeof validateDraft>> | null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` }, provider);
+          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, customInstructions: preferences?.customInstructions, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` }, provider);
           const draftVector = createTextEmbedding([generated.draft.questionText, ...(generated.draft.choices || []), generated.draft.answer].join(" "));
           const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
           const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
@@ -264,7 +275,7 @@ export const assessmentRouter = router({
         const questionId = await createGeneratedQuestion({
           requestId, creatorId: ctx.user.id, questionText: finalDraft.draft.questionText, choices: finalDraft.draft.choices, answer: finalDraft.draft.answer, explanation: finalDraft.draft.explanation,
           intent: finalDraft.draft.intent, difficulty: input.difficulty, points: input.points, questionType: input.questionType, usedConcepts: finalDraft.draft.usedConcepts,
-          validationReport: finalValidation, visualSpec: finalDraft.draft.visualSpec || buildQuestionVisual(input), model: finalDraft.model, promptVersion: "chem-rag-v1.0", status: finalValidation.pass ? "pending_review" : "validation_hold",
+          validationReport: finalValidation, visualSpec: finalDraft.draft.visualSpec || buildQuestionVisual(input), model: finalDraft.model, promptVersion: PROMPT_VERSION, status: finalValidation.pass ? "pending_review" : "validation_hold",
         }, sources);
         created.push(questionId);
       }

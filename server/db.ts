@@ -17,6 +17,7 @@ import {
   referenceQuestionSelections,
   referenceQuestions,
   reviewEvents,
+  userAiPreferences,
   users,
 } from "../drizzle/schema";
 import { ENV } from "./_core/env";
@@ -121,6 +122,17 @@ export async function createAiProviderSetting(input: {
 export async function updateAiProviderVerification(id: number, userId: number, status: string) {
   const db = await requireDb();
   await db.update(aiProviderSettings).set({ lastVerificationStatus: status, lastVerifiedAt: new Date() }).where(and(eq(aiProviderSettings.id, id), eq(aiProviderSettings.userId, userId)));
+}
+
+// 개인화 지시문은 제공자와 독립적으로 보관하며, 문항 원문·근거가 아닌 교사의 작성 선호만 담습니다.
+export async function getUserAiPreferences(userId: number) {
+  const db = await requireDb();
+  return (await db.select().from(userAiPreferences).where(eq(userAiPreferences.userId, userId)).limit(1))[0];
+}
+
+export async function saveUserAiPreferences(userId: number, customInstructions: string) {
+  const db = await requireDb();
+  await db.insert(userAiPreferences).values({ userId, customInstructions }).onDuplicateKeyUpdate({ set: { customInstructions, updatedAt: new Date() } });
 }
 
 // 참고 자료는 원본 파일(S3)과 검색용 발췌(DB)를 분리합니다. 이후 삭제·근거 추적의 기준점이 됩니다.
