@@ -48,7 +48,7 @@ export default function Generate() {
     });
   };
   const selectedProvider = providers.data?.find(provider => String(provider.id) === providerId);
-  const usesExternalProvider = selectedProvider?.providerType === "gemini" || selectedProvider?.providerType === "openai_compatible";
+  const usesExternalProvider = selectedProvider?.providerType === "gemini" || selectedProvider?.providerType === "openai_compatible" || selectedProvider?.providerType === "anthropic";
   const selectedOfficialRows = official.data?.filter(row => row.useForGeneration) ?? [];
   const sampleRows = sampleQuestions.data?.filter(item => item.question.subject === form.subject) ?? [];
   const materialCandidates = materials.data?.filter(item => item.subject === form.subject && (item.unit === form.unit || item.unit === "공통") && item.ocrStatus === "completed") ?? [];

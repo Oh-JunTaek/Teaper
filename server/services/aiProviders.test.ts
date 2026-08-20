@@ -3,6 +3,10 @@ import { resolveProvider, validateProviderUrl } from "./aiProviders";
 import { encryptPersonalApiKey } from "./personalApiCrypto";
 
 describe("AI provider safety rules", () => {
+  it("uses the managed provider as the default when no personal setting is selected", () => {
+    expect(resolveProvider()).toMatchObject({ kind: "managed", model: "managed-default" });
+  });
+
   it("allows Ollama only on a loopback address", () => {
     expect(validateProviderUrl("ollama", "http://127.0.0.1:11434")).toBe("http://127.0.0.1:11434");
     expect(() => validateProviderUrl("ollama", "https://remote.example.com")).toThrow("localhost 또는 127.0.0.1");
