@@ -4,7 +4,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { QuestionVisual } from "@/components/QuestionVisual";
+import { CurriculumScopeSelect } from "@/components/CurriculumScopeSelect";
 import { trpc } from "@/lib/trpc";
+import type { SchoolLevel, SubjectGroup } from "@shared/curriculumScope";
 import { BookOpen, CheckCircle2, FileText, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -20,6 +22,8 @@ const generationStages = [
 export default function Generate() {
   const [, setLocation] = useLocation();
   const [form, setForm] = useState({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "자료 분석형", points: 3, questionCount: 1, additionalRequirements: "" });
+  const [schoolLevel, setSchoolLevel] = useState<SchoolLevel>("high");
+  const [subjectGroup, setSubjectGroup] = useState<SubjectGroup>("science");
   const [prototypeReady, setPrototypeReady] = useState(false);
   const [providerId, setProviderId] = useState("managed");
   const [externalTransferConsent, setExternalTransferConsent] = useState(false);
@@ -72,6 +76,7 @@ export default function Generate() {
     <section className="mt-8 grid gap-5 lg:grid-cols-[1fr_300px]">
       <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-[#183248]">출제 조건</h2>
+        <div className="mt-5"><CurriculumScopeSelect schoolLevel={schoolLevel} subjectGroup={subjectGroup} subject={form.subject} onChange={next => { setSchoolLevel(next.schoolLevel); setSubjectGroup(next.subjectGroup); setForm(current => ({ ...current, subject: next.subject, unit: "공통" })); }} /></div>
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div><Label>과목</Label><Input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} className="mt-1.5" /></div>
           <div><Label>단원</Label><Input required value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="예: 화학 결합" className="mt-1.5" /></div>
