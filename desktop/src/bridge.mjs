@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import { inspectHardware } from "./hardware.mjs";
 import { fallbackOptions } from "./fallback.mjs";
+import { isAllowedRecommendedModel, ollamaInstallPlan, recommendLocalModels } from "./setupPlan.mjs";
 
 const OLLAMA_URL = "http://127.0.0.1:11434";
 const LLAMA_CPP_URL = process.env.LLAMA_CPP_BASE_URL || "http://127.0.0.1:8080";
@@ -18,6 +19,12 @@ async function runtimeStatus() {
   return result;
 }
 
+async function setupPlan() {
+  const hardware = await inspectHardware();
+  const runtimes = await runtimeStatus();
+  return { localOnly: true, install: ollamaInstallPlan(), hardware, recommendation: recommendLocalModels(hardware), runtimes };
+}
+
 export async function createLocalBridge() {
   const token = crypto.randomBytes(32).toString("base64url");
   const server = http.createServer(async (request, response) => {
@@ -28,6 +35,14 @@ export async function createLocalBridge() {
       if (request.method === "GET" && request.url === "/hardware") return send(response, 200, await inspectHardware());
       if (request.method === "GET" && request.url === "/runtimes") return send(response, 200, await runtimeStatus());
       if (request.method === "GET" && request.url === "/models") return send(response, 200, await runtimeStatus());
+      if (request.method === "GET" && request.url === "/setup-plan") return send(response, 200, await setupPlan());
+      if (request.method === "POST" && request.url === "/models/pull") {
+        const input = await body(request);
+        if (typeof input.model !== "string" || !isAllowedRecommendedModel(input.model)) return send(response, 400, { error: "교사도우미 권장 모델만 준비할 수 있습니다." });
+        if (input.confirmDownload !== true) return send(response, 400, { error: "모델 다운로드와 해당 모델의 라이선스 확인에 동의해 주세요." });
+        const result = await ollama("/api/pull", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: input.model, stream: false }), signal: AbortSignal.timeout(30 * 60_000) });
+        return send(response, 200, { success: true, model: input.model, result, localOnly: true });
+      }
       if (request.method === "POST" && request.url === "/generate") {
         const input = await body(request);
         if (typeof input.model !== "string" || typeof input.prompt !== "string") return send(response, 400, { error: "model과 prompt가 필요합니다." });
