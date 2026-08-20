@@ -43,6 +43,16 @@ export function listCourses(schoolLevel: SchoolLevel, subjectGroup: SubjectGroup
   return courses[schoolLevel][subjectGroup];
 }
 
+// 준비 상태 필터는 화면 표시만 정리하며, 서버의 과목별 생성 허용 규칙과는 별개입니다.
+export function filterCoursesByReadiness(
+  schoolLevel: SchoolLevel,
+  subjectGroup: SubjectGroup,
+  readiness: "all" | CourseReadiness["status"],
+) {
+  const availableCourses = listCourses(schoolLevel, subjectGroup);
+  return readiness === "all" ? availableCourses : availableCourses.filter(course => courseReadiness(course.value).status === readiness);
+}
+
 export function defaultCourse(schoolLevel: SchoolLevel, subjectGroup: SubjectGroup) {
   return listCourses(schoolLevel, subjectGroup)[0].value;
 }
