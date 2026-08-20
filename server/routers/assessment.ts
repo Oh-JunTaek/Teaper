@@ -29,6 +29,8 @@ import {
   listOfficialSources,
   listReferenceQuestions,
   listWorkspaceUsers,
+  getManagedAiUsageReport,
+  recordManagedAiUsage,
   replaceMaterialChunks,
   reviewGeneratedQuestion,
   reviewOfficialSourceChange,
@@ -50,6 +52,7 @@ import { checkProviderConnection, resolveProvider, validateProviderUrl } from ".
 import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { createMaterialStorageKey } from "../services/materialStorageKey";
 import { createReferenceStorageKey } from "../services/referenceStorageKey";
+import { createManagedAiUsageEntry, managedAiOutcomeFromError } from "../services/managedAiUsage";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
@@ -99,9 +102,11 @@ export const assessmentRouter = router({
       if (isExtractable) {
         try {
           extraction = await extractDocumentText({ signedUrl: await storageGetSignedUrl(stored.key), mimeType: input.mimeType, fileName: input.fileName });
+          if (extraction.extractionMethod !== "pdf_text") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "vision_extract", outcome: "success", model: extraction.model, durationMs: 0 }));
           extractedText = [input.sourceText, extraction.plainText].filter(Boolean).join("\n\n");
           await updateMaterialExtraction(materialId, { ocrText: extractedText, ocrStructure: extraction, ocrStatus: "completed" });
         } catch (error) {
+          void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "vision_extract", outcome: managedAiOutcomeFromError(error), model: "managed-vision", durationMs: 0 }));
           await updateMaterialExtraction(materialId, { ocrText: input.sourceText || "", ocrStructure: { error: error instanceof Error ? error.message : "OCR 실패" }, ocrStatus: "failed" });
         }
       }
@@ -256,15 +261,26 @@ export const assessmentRouter = router({
       }
       const preferences = await getUserAiPreferences(ctx.user.id);
       const created: number[] = [];
+      const managedCall = async <T extends { model: string }>(operation: "generation" | "validation", run: () => Promise<T>) => {
+        const startedAt = Date.now();
+        try {
+          const result = await run();
+          if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation, outcome: "success", model: result.model, durationMs: Date.now() - startedAt }));
+          return result;
+        } catch (error) {
+          if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation, outcome: managedAiOutcomeFromError(error), model: provider.model, durationMs: Date.now() - startedAt }));
+          throw error;
+        }
+      };
       for (let index = 0; index < input.questionCount; index += 1) {
         let finalDraft = null as Awaited<ReturnType<typeof generateDraft>> | null;
         let finalValidation = null as Awaited<ReturnType<typeof validateDraft>> | null;
         for (let attempt = 0; attempt < 2; attempt += 1) {
-          const generated = await generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, customInstructions: preferences?.customInstructions, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` }, provider);
+          const generated = await managedCall("generation", () => generateDraft({ ...input, curriculumContext: [curriculumContext, selectedOfficialContext].filter(Boolean).join("\n\n"), referenceContext, guidelineContext, customInstructions: preferences?.customInstructions, additionalRequirements: `${input.additionalRequirements || ""}\n선택된 공식 문서: ${selectedOfficialDocuments.map(row => row.document.title).join(", ") || "없음"}\n재생성 시도: ${attempt + 1}` }, provider));
           const draftVector = createTextEmbedding([generated.draft.questionText, ...(generated.draft.choices || []), generated.draft.answer].join(" "));
           const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
           const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
-          const validation = await validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined }, provider);
+          const validation = await managedCall("validation", () => validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined }, provider));
           finalDraft = generated;
           finalValidation = validation;
           if (validation.pass) break;
@@ -312,6 +328,7 @@ export const assessmentRouter = router({
 
   admin: router({
     overview: adminProcedure.query(() => dashboardStats(undefined, true)),
+    managedAiUsage: adminProcedure.query(() => getManagedAiUsageReport()),
     users: adminProcedure.query(() => listWorkspaceUsers()),
     setRole: adminProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["teacher", "admin"]) })).mutation(async ({ ctx, input }) => {
       if (ctx.user.id === input.userId && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "본인의 관리자 권한은 해제할 수 없습니다." });

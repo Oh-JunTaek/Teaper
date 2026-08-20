@@ -18,12 +18,13 @@ const db = vi.hoisted(() => ({
   saveUserAiPreferences: vi.fn().mockResolvedValue(undefined),
   ensurePrototypeSampleQuestions: vi.fn().mockResolvedValue({ created: 2, ids: [11, 12], label: "프로토타입 샘플" }),
   listReferenceQuestions: vi.fn().mockResolvedValue([]),
+  recordManagedAiUsage: vi.fn().mockResolvedValue(undefined),
   updateReferenceQuestion: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -76,6 +77,17 @@ describe("generation request evidence integration", () => {
     expect(db.ensurePrototypeSampleQuestions).toHaveBeenCalledWith(42);
     expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ requesterId: 42 }), [7], [11]);
     expect(db.createGeneratedQuestion).toHaveBeenCalled();
+  });
+
+  it("records managed generation and validation as anonymized aggregate usage", async () => {
+    db.recordManagedAiUsage.mockClear();
+    const caller = assessmentRouter.createCaller(context());
+    await caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1 });
+
+    expect(db.recordManagedAiUsage).toHaveBeenCalledTimes(2);
+    expect(db.recordManagedAiUsage).toHaveBeenNthCalledWith(1, expect.objectContaining({ operation: "generation", outcome: "success", model: "test-model" }));
+    expect(db.recordManagedAiUsage).toHaveBeenNthCalledWith(2, expect.objectContaining({ operation: "validation", outcome: "success", model: "validator" }));
+    expect(db.recordManagedAiUsage.mock.calls.flat().every((entry: Record<string, unknown>) => !("userId" in entry) && !("prompt" in entry))).toBe(true);
   });
 
   it("stores the used material's file, location, and excerpt as evidence snapshot", async () => {

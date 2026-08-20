@@ -6,6 +6,7 @@ import {
   mysqlTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/mysql-core";
 
@@ -20,6 +21,27 @@ export const users = mysqlTable("users", {
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),
 });
+
+// 관리형 AI의 운영 규모만 확인하는 일별 합계입니다. 사용자 ID·IP·프롬프트·문항·원문은 저장하지 않습니다.
+export const managedAiUsageDaily = mysqlTable(
+  "managed_ai_usage_daily",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    usageDate: varchar("usageDate", { length: 10 }).notNull(),
+    operation: mysqlEnum("operation", ["generation", "validation", "vision_extract"]).notNull(),
+    outcome: mysqlEnum("outcome", ["success", "failure", "limited"]).notNull(),
+    model: varchar("model", { length: 160 }).notNull(),
+    durationBucket: mysqlEnum("durationBucket", ["under_5s", "5_to_15s", "15_to_45s", "over_45s"]).notNull(),
+    callCount: int("callCount").default(0).notNull(),
+    knownInputTokens: int("knownInputTokens").default(0).notNull(),
+    knownOutputTokens: int("knownOutputTokens").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("managed_ai_usage_daily_unique").on(table.usageDate, table.operation, table.outcome, table.model, table.durationBucket),
+    index("managed_ai_usage_daily_date_idx").on(table.usageDate),
+  ],
+);
 
 export const referenceMaterials = mysqlTable(
   "reference_materials",

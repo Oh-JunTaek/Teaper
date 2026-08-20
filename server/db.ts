@@ -1,4 +1,4 @@
-import { and, count, desc, eq, isNull, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, or, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import {
   aiProviderSettings,
@@ -9,6 +9,7 @@ import {
   generationRequests,
   InsertUser,
   materialChunks,
+  managedAiUsageDaily,
   officialDocumentSelections,
   officialDocuments,
   officialSourceChanges,
@@ -24,6 +25,7 @@ import { ENV } from "./_core/env";
 import { buildApprovedOfficialDocumentVersion } from "./services/officialCatalogVersion";
 import { createTextEmbedding } from "./services/assessmentAi";
 import { apiKeyHint, encryptPersonalApiKey } from "./services/personalApiCrypto";
+import type { ManagedAiUsageEntry } from "./services/managedAiUsage";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
@@ -67,6 +69,44 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export type ProviderType = "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic";
+
+export async function recordManagedAiUsage(entry: ManagedAiUsageEntry) {
+  const db = await getDb();
+  if (!db) return;
+  await db.insert(managedAiUsageDaily).values({
+    usageDate: entry.usageDate,
+    operation: entry.operation,
+    outcome: entry.outcome,
+    model: entry.model,
+    durationBucket: entry.durationBucket,
+    callCount: 1,
+    knownInputTokens: entry.knownInputTokens || 0,
+    knownOutputTokens: entry.knownOutputTokens || 0,
+  }).onDuplicateKeyUpdate({
+    set: {
+      callCount: sql`${managedAiUsageDaily.callCount} + 1`,
+      knownInputTokens: sql`${managedAiUsageDaily.knownInputTokens} + ${entry.knownInputTokens || 0}`,
+      knownOutputTokens: sql`${managedAiUsageDaily.knownOutputTokens} + ${entry.knownOutputTokens || 0}`,
+      updatedAt: new Date(),
+    },
+  });
+}
+
+export async function getManagedAiUsageReport(days = 14) {
+  const db = await requireDb();
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - Math.max(0, days - 1));
+  const cutoffDate = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}-${String(cutoff.getDate()).padStart(2, "0")}`;
+  const rows = await db.select().from(managedAiUsageDaily).orderBy(desc(managedAiUsageDaily.usageDate), desc(managedAiUsageDaily.updatedAt));
+  const recentRows = rows.filter(row => row.usageDate >= cutoffDate);
+  const summary = recentRows.reduce((result, row) => ({
+    callCount: result.callCount + row.callCount,
+    successCount: result.successCount + (row.outcome === "success" ? row.callCount : 0),
+    failureCount: result.failureCount + (row.outcome === "failure" ? row.callCount : 0),
+    limitedCount: result.limitedCount + (row.outcome === "limited" ? row.callCount : 0),
+  }), { callCount: 0, successCount: 0, failureCount: 0, limitedCount: 0 });
+  return { retentionDays: 90, days, summary, rows: recentRows };
+}
 
 export async function listAiProviderSettings(userId: number) {
   const db = await requireDb();
