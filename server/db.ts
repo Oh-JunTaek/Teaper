@@ -286,7 +286,18 @@ export async function getGeneratedQuestionDetail(id: number, viewerId?: number, 
   const references = referenceIds.length ? await db.select().from(referenceQuestions).where(or(...referenceIds.map(item => eq(referenceQuestions.id, item)))) : [];
   const materialMap = new Map(materials.map(material => [material.id, material]));
   const referenceMap = new Map(references.map(reference => [reference.id, reference]));
-  const sourceEvidence = sources.map(source => ({ ...source, material: source.sourceType === "reference_question" ? undefined : materialMap.get(source.sourceId), reference: source.sourceType === "reference_question" ? referenceMap.get(source.sourceId) : undefined }));
+  // 문항 접근 권한을 먼저 확인한 뒤에만, 검수용 근거에 원본 파일 정보와 형식을 함께 제공합니다.
+  const sourceEvidence = sources.map(source => {
+    const material = source.sourceType === "reference_question" ? undefined : materialMap.get(source.sourceId);
+    const reference = source.sourceType === "reference_question" ? referenceMap.get(source.sourceId) : undefined;
+    return {
+      ...source,
+      material,
+      reference,
+      sourceFileUrl: reference?.sourceFileUrl || material?.fileUrl || null,
+      sourceMimeType: reference?.sourceFileUrl ? "application/pdf" : material?.mimeType || null,
+    };
+  });
   return { question, generationRequest, sources, sourceEvidence, events, materials, references, officialDocuments: officialDocumentLinks };
 }
 

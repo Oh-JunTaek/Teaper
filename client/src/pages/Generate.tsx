@@ -6,9 +6,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { QuestionVisual } from "@/components/QuestionVisual";
 import { trpc } from "@/lib/trpc";
 import { BookOpen, CheckCircle2, FileText, Loader2, Sparkles, TriangleAlert } from "lucide-react";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+
+const generationStages = [
+  { title: "근거 자료 확인", detail: "교육과정·참고 자료·기출 유형을 확인하고 있습니다." },
+  { title: "문항 생성", detail: "출제 조건과 근거를 바탕으로 문항을 만들고 있습니다." },
+  { title: "답·해설 검증", detail: "정답 일치, 단원 범위, 유사도를 확인하고 있습니다." },
+  { title: "검수함 준비", detail: "근거와 검증 결과를 문항에 연결하고 있습니다." },
+];
 
 export default function Generate() {
   const [, setLocation] = useLocation();
@@ -16,6 +23,7 @@ export default function Generate() {
   const [prototypeReady, setPrototypeReady] = useState(false);
   const [providerId, setProviderId] = useState("managed");
   const [externalTransferConsent, setExternalTransferConsent] = useState(false);
+  const [generationStage, setGenerationStage] = useState(0);
   const officialInput = useMemo(() => ({ subject: form.subject }), [form.subject]);
   const utils = trpc.useUtils();
   const official = trpc.assessment.officialDocuments.list.useQuery(officialInput);
@@ -29,7 +37,7 @@ export default function Generate() {
     onError: error => toast.error(error.message),
   });
   const create = trpc.assessment.generation.create.useMutation({
-    onSuccess: result => { toast.success(`${result.questionIds.length}개 문항 초안이 생성되었습니다.`); setLocation("/review"); },
+    onSuccess: result => { toast.success(`${result.questionIds.length}개 문항이 생성되어 검수함에 준비되었습니다.`); setLocation("/review"); },
     onError: error => toast.error(error.message),
   });
 
@@ -48,6 +56,11 @@ export default function Generate() {
   const maximumExternalCalls = form.questionCount * 4;
   // 그래프 해석형은 생성 전부터 축·단위·범례가 있는 자료를 보여 주어 설명문만 생성되는 문제를 줄입니다.
   const graphPreview = form.questionType === "그래프 해석형" ? { kind: "graph" as const, title: "원자 간 거리와 퍼텐셜 에너지", xAxis: { label: "원자 간 거리", unit: "r" }, yAxis: { label: "퍼텐셜 에너지", unit: "PE" }, series: [{ name: "X", color: "#176B87", points: [{ x: 0, y: 7 }, { x: 1, y: 0.8 }, { x: 2, y: -5 }, { x: 3, y: -2.1 }, { x: 4, y: 0.1 }, { x: 5, y: 1.1 }] }, { name: "Y", color: "#C46B35", points: [{ x: 0, y: 6 }, { x: 1, y: 2.2 }, { x: 2, y: -1.2 }, { x: 3, y: -2.8 }, { x: 4, y: -1.1 }, { x: 5, y: 0.7 }] }] } : null;
+  useEffect(() => {
+    if (!create.isPending) { setGenerationStage(0); return; }
+    const timers = [900, 2400, 4200].map((delay, index) => window.setTimeout(() => setGenerationStage(index + 1), delay));
+    return () => timers.forEach(timer => window.clearTimeout(timer));
+  }, [create.isPending]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (usesExternalProvider && !externalTransferConsent) return toast.error("개인 외부 AI로 전송될 자료 범위에 동의해 주세요.");
@@ -55,7 +68,7 @@ export default function Generate() {
   };
 
   return <div className="mx-auto max-w-5xl">
-    <div className="text-center"><Badge className="bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]">근거 기반 문항 초안</Badge><h1 className="mt-3 text-3xl font-bold text-[#183248]">문항 생성 요청</h1><p className="mt-2 text-slate-500">등록된 교육과정·기출문제·출제 지침을 바탕으로 문항 초안을 생성합니다.</p></div>
+    <div className="text-center"><Badge className="bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]">근거 기반 문항 생성</Badge><h1 className="mt-3 text-3xl font-bold text-[#183248]">문항 생성 요청</h1><p className="mt-2 text-slate-500">등록된 교육과정·기출문제·출제 지침을 바탕으로 검수할 문항을 생성합니다.</p></div>
     <section className="mt-8 grid gap-5 lg:grid-cols-[1fr_300px]">
       <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-[#183248]">출제 조건</h2>
@@ -84,7 +97,7 @@ export default function Generate() {
             <a href="/ai-settings" className="mt-3 inline-block text-xs font-semibold text-[#116B58] underline underline-offset-4">AI 제공자 설정으로 이동</a>
           </div>
         </div>
-        <Button disabled={create.isPending} className="mt-6 h-12 w-full rounded-xl bg-[#15856B] text-base hover:bg-[#106C58]">{create.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />근거 확인·초안 작성·검증 중</> : <><Sparkles className="mr-2 h-5" />문항 초안 생성</>}</Button>
+        <Button disabled={create.isPending} className="mt-6 h-12 w-full rounded-xl bg-[#15856B] text-base hover:bg-[#106C58]">{create.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />문항 생성 중</> : <><Sparkles className="mr-2 h-5" />문항 생성</>}</Button>{create.isPending ? <div className="mt-4 rounded-xl border border-[#B9DCCF] bg-[#F7FCF9] p-4" role="status" aria-live="polite"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-[#183248]">{generationStages[generationStage].title}</p><span className="text-xs font-medium text-[#15856B]">{generationStage + 1} / {generationStages.length} 단계</span></div><p className="mt-1 text-xs leading-5 text-slate-500">{generationStages[generationStage].detail}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#DCEEE7]"><div className="h-full rounded-full bg-[#15856B] transition-all duration-500" style={{ width: `${Math.round(((generationStage + 1) / generationStages.length) * 100)}%` }} /></div><p className="mt-2 text-[11px] text-slate-400">처리 시간은 선택한 근거와 문항 수에 따라 달라질 수 있습니다.</p></div> : null}
       </form>
       <aside className="space-y-4">
         <div className="rounded-2xl border border-[#9CCFC0] bg-[#F2FBF6] p-5"><BookOpen className="h-5 w-5 text-[#15856B]" /><h2 className="mt-3 font-bold text-[#183248]">샘플 자료 빠른 준비</h2><p className="mt-2 text-sm leading-6 text-slate-600">화학 I 프로토타입 샘플 기출과 현재 공식 문서를 한 번에 선택합니다. 샘플 기출은 실제 국가 기출 원문이 아닌 테스트용 예시입니다.</p><Button type="button" onClick={prepareSamples} disabled={prepare.isPending} variant="outline" className="mt-4 w-full border-[#78BDAA] text-[#116B58]">{prepare.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}샘플 자료 한 번에 준비</Button><p className="mt-3 text-xs text-slate-500">현재 선택된 공식 문서 {selectedOfficialRows.length}개</p>{selectedOfficialRows.map(row => <p key={row.document.id} className="mt-1 text-xs text-slate-600"><strong>{row.document.title}</strong> · {row.source.provider} · {row.document.rightsStatus === "approved_for_rag" ? "본문 근거 사용" : "원문 링크·요약"}</p>)}{prototypeReady && <p className="mt-2 text-xs font-semibold text-[#15856B]">프로토타입 기출 샘플 {selectedSampleCount}개가 생성 근거로 첨부되었습니다.</p>}{sampleRows.length > 0 && <div className="mt-3 space-y-2 border-t border-[#D9EEE6] pt-3">{sampleRows.map(item => <label key={item.question.id} className="flex gap-2 text-xs text-slate-600"><input type="checkbox" checked={item.useForGeneration} onChange={event => setSampleSelection.mutate({ referenceQuestionId: item.question.id, useForGeneration: event.target.checked })} /> <span><strong>{item.question.questionText.slice(0, 54)}{item.question.questionText.length > 54 ? "…" : ""}</strong><br />{item.question.questionType} · {item.sourceLabel} · {item.useScope}</span></label>)}</div>}</div>
