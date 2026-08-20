@@ -66,7 +66,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <span><strong className="block text-[15px] tracking-tight">교사도우미</strong><small className="text-[11px] text-slate-300">근거 기반 출제 보조</small></span>
         </button>
         <nav className="space-y-1">
-          {[...menuItems, ...(user.role === "admin" ? [{ icon: UsersRound, label: "사용자 관리", path: "/admin" }] : [])].map(item => {
+          {[...menuItems, ...(user.role === "admin" ? [{ icon: UsersRound, label: "운영 도구", path: "/admin" }] : [])].map(item => {
             const active = location === item.path;
             return <button key={item.path} onClick={() => setLocation(item.path)} className={`flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm transition ${active ? "bg-white/14 font-semibold text-white" : "text-slate-300 hover:bg-white/8 hover:text-white"}`}>
               <item.icon className="h-4 w-4" />{item.label}
