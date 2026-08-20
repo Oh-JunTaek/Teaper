@@ -21,10 +21,11 @@ export function recommendLocalModels(hardware) {
   const memory = Number(hardware.memoryGb || 0); const vram = Number(hardware.vramGb || 0);
   if (vram >= 10 || memory >= 32) return { tier: "권장", model: "qwen3:14b", downloadSize: "상당한 저장공간 필요", reason: "복잡한 근거 종합과 해설 품질을 우선하는 PC", alternatives: ["qwen3:8b", "qwen3:4b"] };
   if (vram >= 6 || memory >= 16) return { tier: "표준", model: "qwen3:8b", downloadSize: "중간 저장공간 필요", reason: "일반적인 교사 PC에서 품질과 속도의 균형", alternatives: ["qwen3:4b"] };
-  if (memory >= 8) return { tier: "경량", model: "qwen3:4b", downloadSize: "상대적으로 적은 저장공간 필요", reason: "GPU가 없거나 메모리가 적은 PC의 시작 모델", alternatives: [] };
+  if (memory >= 12) return { tier: "경량", model: "gemma3n:e4b", downloadSize: "상대적으로 적은 저장공간 필요", reason: "저사양 PC에서 Gemma 경량 모델을 우선하는 경우", alternatives: ["qwen3:4b", "gemma3n:e2b"] };
+  if (memory >= 8) return { tier: "초경량", model: "gemma3n:e2b", downloadSize: "작은 저장공간 필요", reason: "저사양 PC 또는 향후 모바일 실행 가능성을 확인하는 시작 모델", alternatives: ["qwen3:4b"] };
   return { tier: "보류", model: null, downloadSize: "", reason: "시스템 메모리 8GB 미만에서는 안정적인 문항 생성이 어렵습니다.", alternatives: [] };
 }
 
 export function isAllowedRecommendedModel(model) {
-  return ["qwen3:4b", "qwen3:8b", "qwen3:14b"].includes(model);
+  return ["gemma3n:e2b", "gemma3n:e4b", "qwen3:4b", "qwen3:8b", "qwen3:14b"].includes(model);
 }

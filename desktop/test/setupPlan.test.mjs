@@ -10,10 +10,12 @@ describe("로컬 AI 설치 계획", () => {
   });
 
   it("사양에 따라 권장 모델을 단계적으로 고른다", () => {
-    assert.equal(recommendLocalModels({ memoryGb: 8, vramGb: 0 }).model, "qwen3:4b");
+    assert.equal(recommendLocalModels({ memoryGb: 8, vramGb: 0 }).model, "gemma3n:e2b");
+    assert.equal(recommendLocalModels({ memoryGb: 12, vramGb: 0 }).model, "gemma3n:e4b");
     assert.equal(recommendLocalModels({ memoryGb: 16, vramGb: 0 }).model, "qwen3:8b");
     assert.equal(recommendLocalModels({ memoryGb: 32, vramGb: 10 }).model, "qwen3:14b");
     assert.equal(isAllowedRecommendedModel("qwen3:8b"), true);
+    assert.equal(isAllowedRecommendedModel("gemma3n:e2b"), true);
     assert.equal(isAllowedRecommendedModel("arbitrary-model"), false);
   });
 });

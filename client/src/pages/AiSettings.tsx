@@ -3,8 +3,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { trpc } from "@/lib/trpc";
-import { CheckCircle2, Cloud, ExternalLink, KeyRound, Laptop, Loader2, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
+import { CheckCircle2, Cloud, ExternalLink, HelpCircle, KeyRound, Laptop, Loader2, ShieldCheck, SlidersHorizontal, TriangleAlert } from "lucide-react";
 import { FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,10 +18,15 @@ const defaults: Record<ProviderType, { label: string; baseUrl: string; model: st
 };
 
 const localRecommendations = [
-  { model: "qwen3:4b", tier: "경량", requirement: "메모리 8GB 이상", use: "처음 시작하거나 GPU가 없는 PC" },
+  { model: "gemma3n:e2b", tier: "초경량", requirement: "메모리 8GB 이상", use: "저사양 PC·모바일 확장 연구 후보" },
+  { model: "gemma3n:e4b", tier: "경량", requirement: "메모리 12GB 이상", use: "저사양 PC의 Gemma 대안" },
   { model: "qwen3:8b", tier: "표준", requirement: "메모리 16GB 또는 VRAM 6GB 이상", use: "일반 화학 I 출제 보조" },
   { model: "qwen3:14b", tier: "권장", requirement: "메모리 32GB 또는 VRAM 10GB 이상", use: "복잡한 근거와 해설 품질 우선" },
 ];
+
+function HelpTip({ children }: { children: React.ReactNode }) {
+  return <Tooltip><TooltipTrigger asChild><button type="button" aria-label="도움말" className="ml-1 inline-flex align-middle text-slate-400 hover:text-[#15856B]"><HelpCircle className="h-3.5 w-3.5" /></button></TooltipTrigger><TooltipContent className="max-w-64 leading-5">{children}</TooltipContent></Tooltip>;
+}
 
 export default function AiSettings() {
   const utils = trpc.useUtils();
@@ -75,10 +81,11 @@ export default function AiSettings() {
         <div className="mt-5 grid gap-4">
           <div><Label>실행 방식</Label><select value={type} onChange={event => changeType(event.target.value as ProviderType)} className="mt-1.5 h-10 w-full rounded-md border border-input bg-background px-3 text-sm"><option value="ollama">내 PC의 Ollama (로컬)</option><option value="gemini">개인 Gemini API</option><option value="openai_compatible">개인 OpenAI 호환 API</option></select></div>
           <div><Label>표시 이름</Label><Input value={label} onChange={event => setLabel(event.target.value)} className="mt-1.5" /></div>
-          {type !== "gemini" && <div><Label>{type === "ollama" ? "로컬 주소" : "API 기본 주소"}</Label><Input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={defaults[type].baseUrl} className="mt-1.5" />{type === "ollama" && <p className="mt-1.5 text-xs text-slate-500">웹앱에서는 이 주소가 교사 PC로 연결되지 않습니다. 데스크톱 앱에서만 local-only bridge를 통해 확인합니다.</p>}</div>}
-          <div><Label>모델 이름</Label><Input value={model} onChange={event => setModel(event.target.value)} className="mt-1.5" placeholder="예: qwen3:8b" />{type === "ollama" && <div className="mt-2 flex flex-wrap gap-2">{localRecommendations.map(item => <Button key={item.model} type="button" size="sm" variant={model === item.model ? "default" : "outline"} onClick={() => setModel(item.model)} className={model === item.model ? "bg-[#15856B] hover:bg-[#106C58]" : ""}>{item.tier} · {item.model}</Button>)}</div>}</div>
-          {type === "ollama" && <div className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><strong className="text-[#183248]">수동 모델 연결도 가능합니다.</strong> Ollama에 이미 설치한 모델 이름을 직접 입력하세요. 권장 모델은 데스크톱 앱이 PC 사양을 확인한 뒤 다시 제안합니다.</div>}
-          {external && <><div><Label>개인 API 키</Label><Input required type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="저장 후에는 마지막 4자리만 표시됩니다." className="mt-1.5" /></div><label className="flex gap-2 rounded-xl border border-[#F3D6A3] bg-[#FFF9EC] p-3 text-sm leading-5 text-slate-700"><input required type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} className="mt-1" /><span>문항 조건, 선택한 근거 자료의 텍스트, 출제 요구사항이 선택한 외부 AI 제공자에게 전송됨을 확인했습니다.</span></label></>}
+          {type !== "gemini" && type !== "ollama" && <div><Label>API 기본 주소<HelpTip>개인 API 제공자가 알려 준 기본 주소입니다. 보통 제공자가 안내한 값을 그대로 사용합니다.</HelpTip></Label><Input value={baseUrl} onChange={event => setBaseUrl(event.target.value)} placeholder={defaults[type].baseUrl} className="mt-1.5" /></div>}
+          {type === "ollama" && <div className="rounded-xl border border-[#D6EBE2] bg-[#F2FBF6] p-3 text-xs leading-5 text-slate-600"><strong className="text-[#183248]">로컬 연결은 자동으로 처리됩니다.</strong> 주소를 입력할 필요가 없습니다. 데스크톱 앱이 교사 PC 안의 안전한 연결 주소만 사용합니다.<HelpTip>로컬 주소는 내 PC 안에서만 AI와 통신하는 연결 정보입니다. 외부 인터넷 주소가 아니므로 직접 수정하지 않아도 됩니다.</HelpTip></div>}
+          <div><Label>모델 이름<HelpTip>AI 모델의 이름입니다. 추천 버튼을 선택하면 자동 입력되며, 이미 설치한 다른 Ollama 모델이 있으면 직접 입력할 수도 있습니다.</HelpTip></Label><Input value={model} onChange={event => setModel(event.target.value)} className="mt-1.5" placeholder="예: qwen3:8b" />{type === "ollama" && <div className="mt-2 flex flex-wrap gap-2">{localRecommendations.map(item => <Button key={item.model} type="button" size="sm" variant={model === item.model ? "default" : "outline"} onClick={() => setModel(item.model)} className={model === item.model ? "bg-[#15856B] hover:bg-[#106C58]" : ""}>{item.tier} · {item.model}</Button>)}</div>}</div>
+          {type === "ollama" && <div className="rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600"><strong className="text-[#183248]">수동 모델 연결도 가능합니다.</strong> Ollama에 이미 설치한 모델 이름을 직접 입력하세요. Gemma 3n은 저사양·모바일 연구 후보이며, 실제 시험 문항은 근거·정답·해설을 반드시 검수하세요.</div>}
+          {external && <><div><Label>개인 API 키<HelpTip>개인 API 제공자가 발급한 비밀 키입니다. 저장 후에는 전체 값을 다시 표시하지 않습니다.</HelpTip></Label><Input required type="password" autoComplete="off" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="저장 후에는 마지막 4자리만 표시됩니다." className="mt-1.5" /></div><label className="flex gap-2 rounded-xl border border-[#F3D6A3] bg-[#FFF9EC] p-3 text-sm leading-5 text-slate-700"><input required type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)} className="mt-1" /><span>문항 조건, 선택한 근거 자료의 텍스트, 출제 요구사항이 선택한 외부 AI 제공자에게 전송됨을 확인했습니다.</span></label></>}
         </div>
         <Button disabled={create.isPending} className="mt-6 w-full bg-[#173B53] hover:bg-[#102C40]">{create.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}안전하게 저장</Button>
       </form>
