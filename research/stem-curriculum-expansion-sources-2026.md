@@ -28,3 +28,13 @@
 2. 교육부, 「2022 개정 교육과정, 이렇게 바뀝니다! 3편」, 2022-11-16, <https://www.moe.go.kr/boardCnts/viewRenew.do?boardID=340&lev=0&statusYN=W&s=moe&m=020201&opType=N&boardSeq=93073>
 3. 국가교육과정 정보센터, 교육과정 원문·성취기준 탐색, <https://ncic.re.kr/>
 4. 부산광역시교육청 고교학점제 지원센터, 「과목 소개 - 2022 개정 교육과정」, <https://home.pen.go.kr/hscredit/cm/cntnts/cntntsView.do?cntntsId=3729&mi=17411>
+
+## 5. 수학 AI 신뢰도 메모
+
+현재 서비스는 생성 모델이 문항·정답·해설을 만든 뒤, 별도 AI 호출로 교육과정 범위·정답/해설 일치·난이도·지침·유사도를 다시 판단한다. 다만 이 단계도 AI 기반 교차 검증이며, 수식 계산 결과·조건 충족·동치 표현을 결정론적으로 증명하는 계산 엔진은 아직 연결되어 있지 않다.
+
+최근 연구는 최신 모델이 제한된 산술 벤치마크에서 매우 높은 정확도를 보일 수 있음을 보고하지만, 교육 평가에서 중요한 절차 오류·조건 누락·문제 해석 오류가 여전히 발생함을 함께 보여 준다. 따라서 서비스 정책은 ‘수학을 자동 채점·자동 확정’하는 방식이 아니라 ‘계산 가능한 초안을 만들고, 별도 계산 검증과 교사 검수를 거친다’로 유지해야 한다.
+
+5. Stanford SCALE AI, 「Mathematical Computation and Reasoning Errors by Large Language Models」, <https://scale.stanford.edu/ai/repository/mathematical-computation-and-reasoning-errors-large-language-models>
+6. OpenReview, 「How Large Language Models Perform Arithmetic Reasoning」, <https://openreview.net/forum?id=MYEr4iPFMn>
+7. OpenAI, 「Our First Proof submissions」, <https://openai.com/index/first-proof-submissions/>
