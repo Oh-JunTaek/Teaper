@@ -53,6 +53,8 @@ import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { createMaterialStorageKey } from "../services/materialStorageKey";
 import { createReferenceStorageKey } from "../services/referenceStorageKey";
 import { createManagedAiUsageEntry, managedAiOutcomeFromError } from "../services/managedAiUsage";
+import { verifyMiddleSchoolCalculation } from "../services/mathVerification";
+import { courseReadiness } from "../../shared/curriculumScope";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
@@ -231,6 +233,9 @@ export const assessmentRouter = router({
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1), unit: z.string().min(1), difficulty: z.string().min(1), questionType: z.string().min(1), points: z.number().int().min(1).max(20), questionCount: z.number().int().min(1).max(5), additionalRequirements: z.string().max(2000).optional(), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
     })).mutation(async ({ ctx, input }) => {
+      if (courseReadiness(input.subject).status === "preparing") {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "이 과목은 공식 문서·검수 기준을 준비 중이므로 아직 문항 생성을 지원하지 않습니다." });
+      }
       const providerSetting = input.providerSettingId ? await getAiProviderSettingForUser(ctx.user.id, input.providerSettingId) : undefined;
       if (input.providerSettingId && !providerSetting) {
         throw new TRPCError({ code: "NOT_FOUND", message: "선택한 AI 제공자 설정을 찾을 수 없거나 사용할 권한이 없습니다." });
@@ -281,9 +286,11 @@ export const assessmentRouter = router({
           const closest = references.map(item => ({ id: item.id, score: cosineSimilarity(draftVector, item.embedding) })).sort((a, b) => b.score - a.score)[0];
           const closestReference = closest ? references.find(item => item.id === closest.id) : undefined;
           const validation = await managedCall("validation", () => validateDraft({ draft: generated.draft, subject: input.subject, unit: input.unit, difficulty: input.difficulty, curriculumContext, guidelineContext, similarityScore: closest?.score || 0, similarReferenceId: closest?.id || null, similarReference: closestReference ? { questionText: closestReference.questionText, choices: closestReference.choices, intent: closestReference.intent } : undefined }, provider));
+          const calculationCheck = input.subject === "중등 수학" ? verifyMiddleSchoolCalculation(generated.draft.calculation) : undefined;
+          const verifiedValidation = { ...validation, calculationCheck, pass: validation.pass && calculationCheck?.status !== "mismatch" };
           finalDraft = generated;
-          finalValidation = validation;
-          if (validation.pass) break;
+          finalValidation = verifiedValidation;
+          if (verifiedValidation.pass) break;
         }
         if (!finalDraft || !finalValidation) throw new Error("문항 생성 결과를 만들지 못했습니다.");
         const sources = [
@@ -336,7 +343,7 @@ export const assessmentRouter = router({
       return { success: true };
     }),
     officialSources: adminProcedure.query(() => listOfficialSources()),
-    createOfficialSource: adminProcedure.input(z.object({ provider: z.string().min(2).max(160), title: z.string().min(2).max(255), sourceType: z.enum(["ministry", "curriculum_center", "education_office"]), listingUrl: z.string().url(), allowedUse: z.enum(["link_only", "metadata_only"]).default("link_only") })).mutation(async ({ input }) => {
+    createOfficialSource: adminProcedure.input(z.object({ provider: z.string().min(2).max(160), title: z.string().min(2).max(255), sourceType: z.enum(["ministry", "curriculum_center", "education_office", "evaluation_portal"]), listingUrl: z.string().url(), allowedUse: z.enum(["link_only", "metadata_only"]).default("link_only") })).mutation(async ({ input }) => {
       assertAllowedOfficialSourceUrl(input.listingUrl);
       const catalogKey = `${input.sourceType}-${crypto.randomUUID().slice(0, 12)}`;
       const id = await createOfficialSource({ catalogKey, ...input, enabled: 1 });

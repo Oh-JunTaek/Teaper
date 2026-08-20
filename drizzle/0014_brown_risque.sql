@@ -1,0 +1,1 @@
+ALTER TABLE `official_sources` MODIFY COLUMN `sourceType` enum('ministry','curriculum_center','education_office','evaluation_portal') NOT NULL;

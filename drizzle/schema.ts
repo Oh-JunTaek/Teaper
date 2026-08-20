@@ -227,7 +227,7 @@ export const officialSources = mysqlTable(
     catalogKey: varchar("catalogKey", { length: 100 }).notNull().unique(),
     provider: varchar("provider", { length: 160 }).notNull(),
     title: varchar("title", { length: 255 }).notNull(),
-    sourceType: mysqlEnum("sourceType", ["ministry", "curriculum_center", "education_office"]).notNull(),
+    sourceType: mysqlEnum("sourceType", ["ministry", "curriculum_center", "education_office", "evaluation_portal"]).notNull(),
     listingUrl: text("listingUrl").notNull(),
     allowedUse: mysqlEnum("allowedUse", ["link_only", "metadata_only", "approved_for_rag"]).default("link_only").notNull(),
     enabled: int("enabled").default(1).notNull(),

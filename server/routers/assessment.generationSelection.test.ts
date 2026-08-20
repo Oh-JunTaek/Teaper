@@ -39,6 +39,7 @@ vi.mock("../services/assessmentAi", () => ({
 }));
 
 import { assessmentRouter } from "./assessment";
+import { generateDraft } from "../services/assessmentAi";
 
 function context(): TrpcContext {
   const now = new Date();
@@ -77,6 +78,22 @@ describe("generation request evidence integration", () => {
     expect(db.ensurePrototypeSampleQuestions).toHaveBeenCalledWith(42);
     expect(db.createGenerationRequest).toHaveBeenCalledWith(expect.objectContaining({ requesterId: 42 }), [7], [11]);
     expect(db.createGeneratedQuestion).toHaveBeenCalled();
+  });
+
+  it("blocks a preparing subject before it can create a generation request", async () => {
+    db.createGenerationRequest.mockClear();
+    const caller = assessmentRouter.createCaller(context());
+
+    await expect(caller.generation.create({ subject: "미적분Ⅰ", unit: "공통", difficulty: "중", questionType: "계산형", points: 3, questionCount: 1 })).rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(db.createGenerationRequest).not.toHaveBeenCalled();
+  });
+
+  it("records a deterministic middle-school calculation check in the validation report", async () => {
+    vi.mocked(generateDraft).mockResolvedValueOnce({ model: "test-model", draft: { questionText: "2x+3=11일 때 x의 값은?", choices: ["3", "4", "5", "6"], answer: "4", explanation: "2x=8이므로 x=4이다.", intent: "일차방정식의 해", usedConcepts: ["일차방정식"], calculation: { kind: "linear_equation", expression: "2*x+3=11", expectedAnswer: "4" } } });
+    const caller = assessmentRouter.createCaller(context());
+    await caller.generation.create({ subject: "중등 수학", unit: "일차방정식", difficulty: "중", questionType: "계산형", points: 3, questionCount: 1 });
+
+    expect(db.createGeneratedQuestion).toHaveBeenLastCalledWith(expect.objectContaining({ validationReport: expect.objectContaining({ calculationCheck: expect.objectContaining({ status: "checked_match", computedAnswer: "4" }) }) }), expect.any(Array));
   });
 
   it("records managed generation and validation as anonymized aggregate usage", async () => {

@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { QuestionVisual } from "@/components/QuestionVisual";
 import { CurriculumScopeSelect } from "@/components/CurriculumScopeSelect";
 import { trpc } from "@/lib/trpc";
-import type { SchoolLevel, SubjectGroup } from "@shared/curriculumScope";
+import { courseReadiness, type SchoolLevel, type SubjectGroup } from "@shared/curriculumScope";
 import { BookOpen, CheckCircle2, FileText, Loader2, Sparkles, TriangleAlert } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -52,6 +52,7 @@ export default function Generate() {
     });
   };
   const selectedProvider = providers.data?.find(provider => String(provider.id) === providerId);
+  const currentReadiness = courseReadiness(form.subject);
   const usesExternalProvider = selectedProvider?.providerType === "gemini" || selectedProvider?.providerType === "openai_compatible" || selectedProvider?.providerType === "anthropic";
   const selectedOfficialRows = official.data?.filter(row => row.useForGeneration) ?? [];
   const sampleRows = sampleQuestions.data?.filter(item => item.question.subject === form.subject) ?? [];
@@ -67,6 +68,7 @@ export default function Generate() {
   }, [create.isPending]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (currentReadiness.status === "preparing") return toast.error("이 과목은 공식 문서·검수 기준을 준비 중입니다. 자료 등록과 공식 문서 확인을 먼저 이용해 주세요.");
     if (usesExternalProvider && !externalTransferConsent) return toast.error("개인 외부 AI로 전송될 자료 범위에 동의해 주세요.");
     create.mutate({ ...form, providerSettingId: providerId === "managed" ? undefined : Number(providerId), confirmExternalTransfer: usesExternalProvider ? externalTransferConsent : false });
   };
@@ -77,6 +79,7 @@ export default function Generate() {
       <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-[#183248]">출제 조건</h2>
         <div className="mt-5"><CurriculumScopeSelect schoolLevel={schoolLevel} subjectGroup={subjectGroup} subject={form.subject} onChange={next => { setSchoolLevel(next.schoolLevel); setSubjectGroup(next.subjectGroup); setForm(current => ({ ...current, subject: next.subject, unit: "공통" })); }} /></div>
+        {currentReadiness.status === "pilot" ? <div className="mt-4 rounded-xl border border-[#F3D6A3] bg-[#FFF9EC] p-3 text-xs leading-5 text-[#8A5A19]">이 과목은 제한 파일럿입니다. 생성된 문항은 공식 문서·학교 자료·계산 결과를 교사가 모두 확인한 뒤에만 승인해 주세요.</div> : null}
         <div className="mt-5 grid gap-4 sm:grid-cols-2">
           <div><Label>과목</Label><Input value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} className="mt-1.5" /></div>
           <div><Label>단원</Label><Input required value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} placeholder="예: 화학 결합" className="mt-1.5" /></div>
@@ -102,7 +105,7 @@ export default function Generate() {
             <a href="/ai-settings" className="mt-3 inline-block text-xs font-semibold text-[#116B58] underline underline-offset-4">AI 제공자 설정으로 이동</a>
           </div>
         </div>
-        <Button disabled={create.isPending} className="mt-6 h-12 w-full rounded-xl bg-[#15856B] text-base hover:bg-[#106C58]">{create.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />문항 생성 중</> : <><Sparkles className="mr-2 h-5" />문항 생성</>}</Button>{create.isPending ? <div className="mt-4 rounded-xl border border-[#B9DCCF] bg-[#F7FCF9] p-4" role="status" aria-live="polite"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-[#183248]">{generationStages[generationStage].title}</p><span className="text-xs font-medium text-[#15856B]">{generationStage + 1} / {generationStages.length} 단계</span></div><p className="mt-1 text-xs leading-5 text-slate-500">{generationStages[generationStage].detail}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#DCEEE7]"><div className="h-full rounded-full bg-[#15856B] transition-all duration-500" style={{ width: `${Math.round(((generationStage + 1) / generationStages.length) * 100)}%` }} /></div><p className="mt-2 text-[11px] text-slate-400">처리 시간은 선택한 근거와 문항 수에 따라 달라질 수 있습니다.</p></div> : null}
+        <Button disabled={create.isPending || currentReadiness.status === "preparing"} className="mt-6 h-12 w-full rounded-xl bg-[#15856B] text-base hover:bg-[#106C58]">{create.isPending ? <><Loader2 className="mr-2 h-5 w-5 animate-spin" />문항 생성 중</> : currentReadiness.status === "preparing" ? "과목 준비 중" : <><Sparkles className="mr-2 h-5" />문항 생성</>}</Button>{create.isPending ? <div className="mt-4 rounded-xl border border-[#B9DCCF] bg-[#F7FCF9] p-4" role="status" aria-live="polite"><div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold text-[#183248]">{generationStages[generationStage].title}</p><span className="text-xs font-medium text-[#15856B]">{generationStage + 1} / {generationStages.length} 단계</span></div><p className="mt-1 text-xs leading-5 text-slate-500">{generationStages[generationStage].detail}</p><div className="mt-3 h-2 overflow-hidden rounded-full bg-[#DCEEE7]"><div className="h-full rounded-full bg-[#15856B] transition-all duration-500" style={{ width: `${Math.round(((generationStage + 1) / generationStages.length) * 100)}%` }} /></div><p className="mt-2 text-[11px] text-slate-400">처리 시간은 선택한 근거와 문항 수에 따라 달라질 수 있습니다.</p></div> : null}
       </form>
       <aside className="space-y-4">
         <div className="rounded-2xl border border-[#9CCFC0] bg-[#F2FBF6] p-5"><BookOpen className="h-5 w-5 text-[#15856B]" /><h2 className="mt-3 font-bold text-[#183248]">샘플 자료 빠른 준비</h2><p className="mt-2 text-sm leading-6 text-slate-600">화학 I 프로토타입 샘플 기출과 현재 공식 문서를 한 번에 선택합니다. 샘플 기출은 실제 국가 기출 원문이 아닌 테스트용 예시입니다.</p><Button type="button" onClick={prepareSamples} disabled={prepare.isPending} variant="outline" className="mt-4 w-full border-[#78BDAA] text-[#116B58]">{prepare.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}샘플 자료 한 번에 준비</Button><p className="mt-3 text-xs text-slate-500">현재 선택된 공식 문서 {selectedOfficialRows.length}개</p>{selectedOfficialRows.map(row => <p key={row.document.id} className="mt-1 text-xs text-slate-600"><strong>{row.document.title}</strong> · {row.source.provider} · {row.document.rightsStatus === "approved_for_rag" ? "본문 근거 사용" : "원문 링크·요약"}</p>)}{prototypeReady && <p className="mt-2 text-xs font-semibold text-[#15856B]">프로토타입 기출 샘플 {selectedSampleCount}개가 생성 근거로 첨부되었습니다.</p>}{sampleRows.length > 0 && <div className="mt-3 space-y-2 border-t border-[#D9EEE6] pt-3">{sampleRows.map(item => <label key={item.question.id} className="flex gap-2 text-xs text-slate-600"><input type="checkbox" checked={item.useForGeneration} onChange={event => setSampleSelection.mutate({ referenceQuestionId: item.question.id, useForGeneration: event.target.checked })} /> <span><strong>{item.question.questionText.slice(0, 54)}{item.question.questionText.length > 54 ? "…" : ""}</strong><br />{item.question.questionType} · {item.sourceLabel} · {item.useScope}</span></label>)}</div>}</div>

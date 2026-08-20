@@ -2,6 +2,7 @@ import { invokeLLM, listLLMModels } from "../_core/llm";
 import { PDFParse } from "pdf-parse";
 import type { ResolvedProvider } from "./aiProviders";
 import { appendTeacherInstructions, buildGenerationSystemPrompt, buildValidationSystemPrompt, PROMPT_CONTRACT_VERSION, type ProviderKind } from "./assessmentPrompt";
+import type { CalculationSpec } from "./mathVerification";
 
 export const PROMPT_VERSION = PROMPT_CONTRACT_VERSION;
 const VECTOR_SIZE = 128;
@@ -19,6 +20,7 @@ export type Draft = {
   intent: string;
   usedConcepts: string[];
   visualSpec?: QuestionVisualSpec | null;
+  calculation?: CalculationSpec | null;
 };
 
 export type Validation = {
@@ -188,12 +190,13 @@ export async function extractDocumentText(input: { signedUrl: string; mimeType: 
   return { ...data, model, extractionMethod: input.mimeType === "application/pdf" ? "vision_pdf" : "vision_image" } as { title: string; plainText: string; headings: string[]; keywords: string[]; cautions: string[]; model: string; extractionMethod: "vision_pdf" | "vision_image" };
 }
 
-const draftSchema = { type: "json_schema", json_schema: { name: "question_draft", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts"], additionalProperties: false } } };
+const draftSchema = { type: "json_schema", json_schema: { name: "question_draft", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } }, calculation: { anyOf: [{ type: "null" }, { type: "object", properties: { kind: { type: "string", enum: ["numeric_expression", "linear_equation", "proportion", "basic_statistics"] }, expression: { type: "string" }, expectedAnswer: { type: "string" } }, required: ["kind", "expression", "expectedAnswer"], additionalProperties: false }] } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts", "calculation"], additionalProperties: false } } };
 
 export async function generateDraft(input: { subject: string; unit: string; difficulty: string; questionType: string; points: number; additionalRequirements?: string; curriculumContext: string; referenceContext: string; guidelineContext: string; customInstructions?: string }, provider?: ResolvedProvider) {
   const model = await selectModel("generation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: appendTeacherInstructions(buildGenerationSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
+  const calculationInstruction = input.subject === "중등 수학" ? "\n\n[중등 수학 계산 확인]\n수치 계산·일차식·비례·평균/중앙값을 포함한 문항이면 calculation에 계산기용 식과 수치 정답을 반드시 작성하십시오. kind는 numeric_expression, linear_equation, proportion, basic_statistics 중 하나입니다. expression은 숫자, x, + - * / ( ) 또는 mean(...), median(...)만 사용하고, expectedAnswer는 보기 번호가 아닌 계산 결과 숫자만 넣으십시오. 계산 대상이 아니면 calculation은 null입니다." : "\n\n계산 확인 대상이 아니면 calculation은 null입니다.";
+  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: appendTeacherInstructions(buildGenerationSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}${calculationInstruction}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
   return { draft: JSON.parse(contentOf(response)) as Draft, model };
 }
 
