@@ -68,7 +68,7 @@ export default function Generate() {
   };
 
   return <div className="mx-auto max-w-5xl">
-    <div className="text-center"><Badge className="bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]">근거 기반 문항 생성</Badge><h1 className="mt-3 text-3xl font-bold text-[#183248]">문항 생성 요청</h1><p className="mt-2 text-slate-500">등록된 교육과정·기출문제·출제 지침을 바탕으로 검수할 문항을 생성합니다.</p></div>
+    <div className="text-center"><Badge className="bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]">자료 기반 문항 생성</Badge><h1 className="mt-3 text-3xl font-bold text-[#183248]">문항 생성 요청</h1><p className="mt-2 text-slate-500">등록된 교육과정·기출문제·출제 지침 자료를 바탕으로 검수할 문항을 생성합니다.</p></div>
     <section className="mt-8 grid gap-5 lg:grid-cols-[1fr_300px]">
       <form onSubmit={submit} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="font-bold text-[#183248]">출제 조건</h2>

@@ -23,7 +23,7 @@ const localRecommendations = [
   { model: "gemma3n:e2b", tier: "초경량", requirement: "메모리 8GB 이상", use: "저사양 PC·모바일 확장 연구 후보" },
   { model: "gemma3n:e4b", tier: "경량", requirement: "메모리 12GB 이상", use: "저사양 PC의 Gemma 대안" },
   { model: "qwen3:8b", tier: "표준", requirement: "메모리 16GB 또는 VRAM 6GB 이상", use: "일반 화학 I 출제 보조" },
-  { model: "qwen3:14b", tier: "권장", requirement: "메모리 32GB 또는 VRAM 10GB 이상", use: "복잡한 근거와 해설 품질 우선" },
+  { model: "qwen3:14b", tier: "권장", requirement: "메모리 32GB 또는 VRAM 10GB 이상", use: "복잡한 자료와 해설 품질 우선" },
 ];
 
 function HelpTip({ children }: { children: React.ReactNode }) {

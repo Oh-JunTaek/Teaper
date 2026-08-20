@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-7xl">
       <div className="flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div><Badge className="rounded-md bg-[#E6F4EE] px-2.5 py-1 text-[#15856B] hover:bg-[#E6F4EE]">화학 I · 출제 워크스페이스</Badge><h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">오늘의 출제 업무</h1><p className="mt-2 text-slate-500">자료를 근거로 문항을 생성하고, 검수 이력을 남겨 관리합니다.</p></div>
+        <div><Badge className="rounded-md bg-[#E6F4EE] px-2.5 py-1 text-[#15856B] hover:bg-[#E6F4EE]">문제 출제 워크스페이스</Badge><h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">오늘의 출제 업무</h1><p className="mt-2 text-slate-500">준비한 자료를 바탕으로 문항을 생성하고, 검수 이력을 남겨 관리합니다.</p></div>
         <Button onClick={() => setLocation("/generate")} className="h-11 rounded-xl bg-[#15856B] px-5 hover:bg-[#106C58]"><Sparkles className="mr-2 h-4 w-4" />문항 생성 시작</Button>
       </div>
       <section className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

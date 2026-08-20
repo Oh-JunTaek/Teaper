@@ -76,8 +76,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <section className="w-full max-w-lg rounded-[2rem] border border-slate-200 bg-white p-9 shadow-[0_20px_70px_rgba(28,51,70,0.10)]">
           <div className="mb-7 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#173B53] text-white"><BookOpenCheck className="h-6 w-6" /></div>
           <p className="text-sm font-bold tracking-[0.14em] text-[#15856B]">TEACHER ASSESSMENT WORKSPACE</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">근거를 확인하며<br />문항을 만드세요.</h1>
-          <p className="mt-4 leading-7 text-slate-600">교사도우미는 교육과정, 기출문제, 출제 지침을 근거로 문항을 만들고 검수 과정을 기록하는 출제 보조 시스템입니다.</p>
+          <h1 className="mt-3 text-3xl font-bold tracking-tight text-[#183248]">자료를 확인하며<br />문항을 만드세요.</h1>
+          <p className="mt-4 leading-7 text-slate-600">교사도우미는 교육과정, 기출문제, 출제 지침 자료를 바탕으로 문항을 만들고 검수 과정을 기록하는 출제 보조 시스템입니다.</p>
           <Button className="mt-8 h-12 w-full rounded-xl bg-[#173B53] text-base hover:bg-[#102C40]" onClick={() => startLogin()}>교사 로그인</Button>
           <div className="mt-5 border-t border-slate-100 pt-5"><p className="text-sm font-semibold text-[#183248]">파일럿 게스트 로그인</p><p className="mt-1 text-xs leading-5 text-slate-500">ID는 <strong>guest</strong>로 고정된 1인 테스트용 계정입니다. 이 계정의 자료·문항은 같은 게스트 계정 사용자와 공유될 수 있습니다.</p><form className="mt-3 flex gap-2" onSubmit={event => { event.preventDefault(); guestLogin.mutate({ username: "guest", password: guestPassword }); }}><Input aria-label="게스트 비밀번호" type="password" value={guestPassword} onChange={event => setGuestPassword(event.target.value)} placeholder="게스트 비밀번호" autoComplete="current-password" /><Button type="submit" className="shrink-0 bg-[#15856B] hover:bg-[#106C58]" disabled={!guestPassword || guestLogin.isPending}>{guestLogin.isPending ? "로그인 중" : "게스트 로그인"}</Button></form></div>
           <p className="mt-4 text-center text-xs text-slate-400">AI가 작성한 결과는 교사의 최종 검수가 필요합니다.</p>
@@ -91,7 +91,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col border-r border-slate-200 bg-[#173B53] px-4 py-5 text-slate-100 md:flex">
         <button onClick={() => setLocation("/")} className="mb-10 flex items-center gap-3 px-2 text-left">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#52B788] text-[#123144]"><BookOpenCheck className="h-5 w-5" /></span>
-          <span><strong className="block text-[15px] tracking-tight">교사도우미</strong><small className="text-[11px] text-slate-300">근거 기반 출제 보조</small></span>
+          <span><strong className="block text-[15px] tracking-tight">교사도우미</strong><small className="text-[11px] text-slate-300">자료 기반 출제 보조</small></span>
         </button>
         <nav className="space-y-1">
           {[...menuItems, ...(user.role === "admin" ? [{ icon: UsersRound, label: "운영 도구", path: "/admin" }] : [])].map(item => {
@@ -107,7 +107,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200/90 bg-[#F6F7F5]/90 px-4 backdrop-blur md:ml-64 md:px-8">
         <button onClick={() => setLocation("/")} className="flex items-center gap-2 font-bold text-[#183248] md:hidden"><PanelLeft className="h-5 w-5" />교사도우미</button>
-        <div className="hidden text-sm text-slate-500 md:block">화학 I 파일럿 · 근거 기반 문항 관리</div>
+        <div className="hidden text-sm text-slate-500 md:block">문제 출제 워크스페이스 · 자료 기반 문항 관리</div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-xl p-1.5 text-left hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#15856B]">
