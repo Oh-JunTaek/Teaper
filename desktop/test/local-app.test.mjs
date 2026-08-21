@@ -6,6 +6,7 @@ import { setSecret, getSecret } from "../src/vault.mjs";
 import { createLocalBridge } from "../src/bridge.mjs";
 import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml } from "../src/store.mjs";
 import { fallbackOptions } from "../src/fallback.mjs";
+import { LOCAL_WINDOW_WEB_PREFERENCES, isAllowedLocalPage } from "../src/shellSecurity.mjs";
 
 const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
 process.env.LOCAL_APP_DATA_DIR = folder;
@@ -41,6 +42,10 @@ try {
   const runtimes = await fetch(`http://127.0.0.1:${bridge.port}/runtimes`, { headers: { authorization: `Bearer ${bridge.token}` } });
   assert.equal(typeof (await runtimes.json()).ollama.running, "boolean");
   assert.equal(fallbackOptions({ status: 429, localRuntimeAvailable: true }).choices.some(item => item.id === "use_local_model"), true);
+  assert.equal(LOCAL_WINDOW_WEB_PREFERENCES.nodeIntegration, false);
+  assert.equal(LOCAL_WINDOW_WEB_PREFERENCES.contextIsolation, true);
+  assert.equal(isAllowedLocalPage("file:///local/renderer/index.html"), true);
+  assert.equal(isAllowedLocalPage("https://outside.example"), false);
   await new Promise(resolve => bridge.server.close(resolve));
   console.log("local desktop foundation tests passed");
 } finally { await rm(folder, { recursive: true, force: true }); }

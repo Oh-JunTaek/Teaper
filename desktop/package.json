@@ -4,9 +4,13 @@
   "type": "module",
   "scripts": {
     "start": "LOCAL_APP_MODE=true node src/main.mjs",
+    "desktop": "LOCAL_APP_MODE=true electron src/shell.mjs",
     "test": "node test/local-app.test.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1"
   }
 }
