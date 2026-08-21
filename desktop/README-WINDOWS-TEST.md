@@ -56,6 +56,8 @@ Windows PowerShell에서 `Get-FileHash "파일경로" -Algorithm SHA256`을 실�
 
 이 파일은 **테스트용**이며 Windows 코드 서명·자동 업데이트·복구 설치 프로그램은 아직 적용하지 않았다. 앱 내부의 암호화 데이터 백업·복구는 제공하지만, 설치 프로그램 자체의 자동 복구와 자동 업데이트는 제공하지 않는다. 개발 중인 파일을 임의 배포하지 말고, 설치 실패·보안 경고·Ollama 실행 오류가 있으면 화면 문구와 Windows 버전을 함께 기록해 전달한다.
 
+소수 교사용 배포 범위, SHA-256 확인, 피드백 양식, 배포 회수·정식 전환 기준은 [`docs/windows-test-pilot-operation-2026-08.md`](../docs/windows-test-pilot-operation-2026-08.md)를 따른다.
+
 ## 참고 자료
 
 [1] [Electron Builder: NSIS 설치 파일 설정](https://www.electron.build/docs/nsis/)
