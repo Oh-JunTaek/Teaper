@@ -16,8 +16,8 @@
 3. 실제 기기에서 E2B 다운로드, 해시 검증, CPU/GPU fallback, 오프라인 응답, 삭제·재설치를 확인한다.
 4. E4B는 고성능 기기에서만 발열·배터리·메모리 측정을 포함해 별도로 검증한다.
 
-LiteRT-LM 의존성은 개발 중 `latest.release`를 사용한다. Google Play 비공개 테스트 전에는 검증한 특정 버전으로 고정하고, `com.eunmastudio.teacherworkspace` 앱 ID의 Play App Signing·Data safety·개인정보 처리방침을 준비한다.
+LiteRT-LM 의존성은 Android 컴파일로 검증한 `0.16.1`로 고정한다. 업데이트는 별도 기기 회귀 검증 후에만 반영한다. Google Play 비공개 테스트 전에는 `com.eunmastudio.teacherworkspace` 앱 ID의 Play App Signing·Data safety·개인정보 처리방침을 준비한다.
 
 ## 현재 범위와 다음 연결
 
-현재 구현 범위는 모델 기기 진단, E2B/E4B 다운로드·해시 검증·앱 전용 저장·LiteRT-LM 실행이다. 다음 단계에서 웹 서비스의 로그인, 자료·기출 관리, 검수 이력, 문서 공유를 Android 화면과 공통 도메인 계약으로 연결한다.
+현재 구현 범위는 모델 기기 진단, E2B/E4B 다운로드·해시 검증·앱 전용 저장·LiteRT-LM 실행, 자료·기출·공식 자료의 로컬 메모, 문항 생성·검수, 승인 문항의 DOCX·인쇄용 PDF 공유다. 원본 PDF·이미지의 내용 추출·페이지 근거와 실제 기기 성능 측정은 다음 단계에서 검증한다.

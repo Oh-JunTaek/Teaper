@@ -14,6 +14,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.DeviceProfile
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
@@ -21,6 +22,10 @@ import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.QuestionPromptContract
 import com.eunmastudio.teacherworkspace.ai.eligibility
+import com.eunmastudio.teacherworkspace.export.ApprovedQuestionExporter
+import com.eunmastudio.teacherworkspace.export.QuestionExportType
+import com.eunmastudio.teacherworkspace.source.SourceContentExtractor
+import com.eunmastudio.teacherworkspace.source.SourceExtraction
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -40,6 +45,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var result: TextView
     private lateinit var downloads: ModelDownloadManager
     private lateinit var runner: LiteRtLmRunner
+    private lateinit var questionExporter: ApprovedQuestionExporter
+    private lateinit var sourceExtractor: SourceContentExtractor
     private lateinit var store: LocalWorkspaceStore
     private lateinit var workspaceSummary: TextView
     private var activeModel: GemmaModel? = null
@@ -48,13 +55,26 @@ class MainActivity : ComponentActivity() {
     private val chooseSourceFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
         contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        showAddSourceDialog(selectedSourceKind, uri.toString())
+        lifecycleScope.launch {
+            status.text = "선택한 자료의 내용을 이 기기에서 읽는 중입니다."
+            val extracted = runCatching { sourceExtractor.extract(uri) }
+                .getOrElse {
+                    SourceExtraction(
+                        suggestedTitle = "선택한 자료",
+                        suggestedExcerpt = "자료 내용을 자동으로 읽지 못했습니다. 핵심 내용·쪽수·평가 요소를 직접 입력해 주세요.",
+                        extractionNotice = it.message,
+                    )
+                }
+            showAddSourceDialog(selectedSourceKind, uri.toString(), extracted)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         downloads = ModelDownloadManager(this)
         runner = LiteRtLmRunner(this)
+        questionExporter = ApprovedQuestionExporter(this)
+        sourceExtractor = SourceContentExtractor(this)
         store = LocalWorkspaceStore(this)
         setContentView(buildScreen())
         refreshDeviceState()
@@ -261,21 +281,51 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun showAddSourceDialog(kind: LocalSourceKind, sourceUri: String?) {
+    private fun showAddSourceDialog(kind: LocalSourceKind, sourceUri: String?, extraction: SourceExtraction? = null) {
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(42, 20, 42, 8)
         }
-        val title = EditText(this).apply { hint = "자료 이름 또는 출처" }
+        val title = EditText(this).apply {
+            hint = "자료 이름 또는 출처"
+            setText(extraction?.suggestedTitle.orEmpty())
+        }
         val excerpt = EditText(this).apply {
             hint = "문항 생성에 사용할 핵심 내용·쪽수·평가 요소를 적어 주세요"
             minLines = 5
             gravity = Gravity.TOP
+            setText(extraction?.suggestedExcerpt.orEmpty())
         }
         form.addView(title)
         form.addView(excerpt)
         if (sourceUri != null) {
-            form.addView(TextView(this).apply { text = "선택한 파일: ${sourceUri.substringAfterLast('/')}\n파일은 원본 위치로만 보관하며, 핵심 내용을 직접 확인해 입력해 주세요." })
+            form.addView(TextView(this).apply { text = "선택한 파일: ${sourceUri.substringAfterLast('/')}\n${extraction?.extractionNotice ?: "원본을 직접 대조해 핵심 내용을 입력해 주세요."}" })
+        }
+        extraction?.imageCachePath?.let { imagePath ->
+            form.addView(Button(this).apply {
+                text = "로컬 모델로 이미지 내용 읽기"
+                isEnabled = activeModel != null
+                setOnClickListener {
+                    lifecycleScope.launch {
+                        try {
+                            this@MainActivity.status.text = "이미지를 이 기기에서 읽는 중입니다. 원본과 대조해 저장해 주세요."
+                            val response = StringBuilder()
+                            runner.inspectImage(
+                                imagePath = imagePath,
+                                prompt = "이 교육 자료 이미지를 교사의 문항 근거로 정리해 주세요. 보이는 텍스트·표·그래프·단위만 기록하고, 불명확한 부분은 추정하지 말고 ‘원본 확인 필요’로 표시하세요.",
+                            ) { partial ->
+                                response.append(partial)
+                                runOnUiThread { excerpt.setText(response.toString()) }
+                            }
+                        } catch (error: Throwable) {
+                            this@MainActivity.status.text = error.message ?: "이미지 내용을 읽지 못했습니다. 원본을 직접 확인해 주세요."
+                        }
+                    }
+                }
+            })
+            if (activeModel == null) {
+                form.addView(TextView(this).apply { text = "이미지 내용 읽기는 먼저 E2B 또는 E4B 모델을 준비한 뒤 사용할 수 있습니다." })
+            }
         }
         AlertDialog.Builder(this)
             .setTitle("${kind.label} 등록")
@@ -288,7 +338,16 @@ class MainActivity : ComponentActivity() {
                     status.text = "자료의 핵심 내용·쪽수·평가 요소를 입력한 뒤 저장해 주세요."
                     return@setPositiveButton
                 }
-                store.saveSource(LocalSource(title = normalizedTitle, kind = kind, excerpt = normalizedExcerpt, sourceUri = sourceUri))
+                store.saveSource(
+                    LocalSource(
+                        title = normalizedTitle,
+                        kind = kind,
+                        excerpt = normalizedExcerpt,
+                        sourceUri = sourceUri,
+                        pageReferences = extraction?.pageReferences,
+                        extractionNotice = extraction?.extractionNotice,
+                    ),
+                )
                 refreshWorkspaceSummary()
                 status.text = "${kind.label}을 이 기기에 저장했습니다."
             }
@@ -298,7 +357,7 @@ class MainActivity : ComponentActivity() {
     private fun showSourceDetailDialog(source: LocalSource) {
         AlertDialog.Builder(this)
             .setTitle(source.title)
-            .setMessage("분류: ${source.kind.label}\n\n${source.excerpt}\n\n원본 위치: ${source.sourceUri ?: "직접 입력"}")
+            .setMessage("분류: ${source.kind.label}\n근거 위치: ${source.pageReferences ?: "교사 직접 확인"}\n\n${source.excerpt}\n\n${source.extractionNotice ?: ""}\n\n원본 위치: ${source.sourceUri ?: "직접 입력"}")
             .setNegativeButton("닫기", null)
             .setPositiveButton("삭제") { _, _ ->
                 store.deleteSource(source.id)
@@ -337,7 +396,7 @@ class MainActivity : ComponentActivity() {
     private fun generateQuestion(request: String) {
         val sources = store.sources()
         val sourceText = sources.joinToString("\n\n") { source ->
-            "[${source.kind.label}] ${source.title}\n${source.excerpt}"
+            "[${source.kind.label}] ${source.title}${source.pageReferences?.let { " · $it" } ?: ""}\n${source.excerpt}"
         }
         lifecycleScope.launch {
             try {
@@ -394,7 +453,7 @@ class MainActivity : ComponentActivity() {
             .setTitle("${question.title} · ${question.reviewStatus}")
             .setMessage(question.content)
             .setNegativeButton("닫기", null)
-            .setNeutralButton("공유") { _, _ -> shareQuestion(question) }
+            .setNeutralButton("내보내기") { _, _ -> showExportDialog(question) }
             .setPositiveButton("교사 검수") { _, _ -> runLocalReview(question) }
             .show()
     }
@@ -405,7 +464,7 @@ class MainActivity : ComponentActivity() {
             return
         }
         val sourceText = store.sources().filter { it.id in question.sourceIds }.joinToString("\n\n") { source ->
-            "[${source.kind.label}] ${source.title}\n${source.excerpt}"
+            "[${source.kind.label}] ${source.title}${source.pageReferences?.let { " · $it" } ?: ""}\n${source.excerpt}"
         }
         lifecycleScope.launch {
             try {
@@ -455,7 +514,37 @@ class MainActivity : ComponentActivity() {
             .show()
     }
 
-    private fun shareQuestion(question: LocalQuestion) {
+    private fun showExportDialog(question: LocalQuestion) {
+        if (question.reviewStatus != "승인") {
+            status.text = "검수 중인 문항입니다. 교사가 승인으로 표시한 뒤 문서로 내보낼 수 있습니다."
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("승인 문항 내보내기")
+            .setMessage("문서는 앱 전용 캐시에 생성한 뒤 선택한 앱으로만 공유합니다. 시험 보안과 최종 검수를 다시 확인해 주세요.")
+            .setNegativeButton("취소", null)
+            .setNeutralButton("인쇄용 PDF") { _, _ -> exportAndShare(question, QuestionExportType.PDF) }
+            .setPositiveButton("시험지 DOCX") { _, _ -> exportAndShare(question, QuestionExportType.DOCX) }
+            .show()
+    }
+
+    private fun exportAndShare(question: LocalQuestion, type: QuestionExportType) {
+        runCatching { questionExporter.export(question, type) }
+            .onSuccess { output ->
+                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", output)
+                val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                    this.type = type.mimeType
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, question.title)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(shareIntent, "${type.label} 공유"))
+                status.text = "${type.label}을 공유할 앱을 선택해 주세요."
+            }
+            .onFailure { error -> status.text = error.message ?: "문서 내보내기에 실패했습니다." }
+    }
+
+    private fun shareTextQuestion(question: LocalQuestion) {
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(Intent.EXTRA_SUBJECT, question.title)

@@ -17,6 +17,8 @@ data class LocalSource(
     val kind: LocalSourceKind,
     val excerpt: String,
     val sourceUri: String? = null,
+    val pageReferences: String? = null,
+    val extractionNotice: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -44,6 +46,8 @@ class LocalWorkspaceStore(context: Context) {
                 kind = LocalSourceKind.valueOf(item.getString("kind")),
                 excerpt = item.getString("excerpt"),
                 sourceUri = item.optString("sourceUri").ifBlank { null },
+                pageReferences = item.optString("pageReferences").ifBlank { null },
+                extractionNotice = item.optString("extractionNotice").ifBlank { null },
                 createdAt = item.getLong("createdAt"),
             )
         }.getOrNull()
@@ -99,6 +103,8 @@ class LocalWorkspaceStore(context: Context) {
                 put("kind", item.kind.name)
                 put("excerpt", item.excerpt)
                 put("sourceUri", item.sourceUri)
+                put("pageReferences", item.pageReferences)
+                put("extractionNotice", item.extractionNotice)
                 put("createdAt", item.createdAt)
             })
         }

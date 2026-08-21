@@ -2,6 +2,8 @@ package com.eunmastudio.teacherworkspace.ai
 
 import android.content.Context
 import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Engine
 import com.google.ai.edge.litertlm.EngineConfig
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +22,7 @@ class LiteRtLmRunner(private val context: Context) {
         val gpuConfig = EngineConfig(
             modelPath = modelFilePath,
             backend = Backend.GPU(),
+            visionBackend = Backend.GPU(),
             cacheDir = cacheDirectory.absolutePath,
         )
         return@withContext try {
@@ -30,6 +33,7 @@ class LiteRtLmRunner(private val context: Context) {
                 EngineConfig(
                     modelPath = modelFilePath,
                     backend = Backend.CPU(),
+                    visionBackend = Backend.CPU(),
                     cacheDir = cacheDirectory.absolutePath,
                 ),
             ).also { it.initialize() }
@@ -47,6 +51,22 @@ class LiteRtLmRunner(private val context: Context) {
             conversation.sendMessageAsync(prompt).collect { message ->
                 onPartialResponse(message.toString())
             }
+        }
+    }
+
+    suspend fun inspectImage(
+        imagePath: String,
+        prompt: String,
+        onPartialResponse: (String) -> Unit,
+    ) = withContext(Dispatchers.Default) {
+        val activeEngine = requireNotNull(engine) { "먼저 모델을 준비해 주세요." }
+        activeEngine.createConversation().use { conversation ->
+            conversation.sendMessageAsync(
+                Contents.of(
+                    Content.ImageFile(imagePath),
+                    Content.Text(prompt),
+                ),
+            ).collect { message -> onPartialResponse(message.toString()) }
         }
     }
 

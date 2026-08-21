@@ -49,9 +49,10 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 
-    // 공식 LiteRT-LM Android 런타임. 출시 전 특정 검증 버전으로 고정한다.
-    implementation("com.google.ai.edge.litertlm:litertlm-android:latest.release")
+    // Android 컴파일로 검증한 LiteRT-LM 런타임. 출시 전에는 자동 최신 버전을 사용하지 않는다.
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.16.1")
 
     testImplementation("junit:junit:4.13.2")
 }
