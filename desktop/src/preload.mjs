@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld("teacherLocal", {
   setOfficialDocumentSelection: input => ipcRenderer.invoke("local:set-official-document-selection", input),
   getPreferences: () => ipcRenderer.invoke("local:get-preferences"),
   savePreferences: input => ipcRenderer.invoke("local:save-preferences", input),
+  createBackup: input => ipcRenderer.invoke("local:create-backup", input),
+  restoreBackup: input => ipcRenderer.invoke("local:restore-backup", input),
   generateQuestion: input => ipcRenderer.invoke("local:generate-question", input),
   listQuestions: status => ipcRenderer.invoke("local:list-questions", status),
   reviewQuestion: input => ipcRenderer.invoke("local:review-question", input),

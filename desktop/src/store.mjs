@@ -53,6 +53,25 @@ export async function openLocalStore() {
     listQuestions(status) { const query = status ? db.prepare("SELECT status, question_json FROM generated_questions WHERE status = ? ORDER BY created_at DESC") : db.prepare("SELECT status, question_json FROM generated_questions ORDER BY created_at DESC"); return (status ? query.all(status) : query.all()).map(row => ({ ...JSON.parse(row.question_json), status: row.status })); },
     reviewQuestion(input) { db.prepare("UPDATE generated_questions SET status = ? WHERE id = ?").run(input.status, input.questionId); return db.prepare("INSERT INTO review_events VALUES (?, ?, ?, ?, ?)").run(input.id, input.questionId, input.status, input.reason || null, input.createdAt); },
     listApproved() { return this.listQuestions("approved"); },
+    createBackupSnapshot() {
+      const tables = ["reference_materials", "material_chunks", "reference_questions", "official_documents", "official_document_selections", "local_settings", "generation_requests", "generated_questions", "generated_question_sources", "generation_official_documents", "generation_reference_questions", "review_events", "audit_events"];
+      return { schemaVersion: 1, exportedAt: new Date().toISOString(), tables: Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()])) };
+    },
+    restoreBackupSnapshot(snapshot) {
+      const required = ["reference_materials", "material_chunks", "reference_questions", "official_documents", "official_document_selections", "local_settings", "generation_requests", "generated_questions", "generated_question_sources", "generation_official_documents", "generation_reference_questions", "review_events", "audit_events"];
+      if (!snapshot || snapshot.schemaVersion !== 1 || !snapshot.tables || required.some(table => !Array.isArray(snapshot.tables[table]))) throw new Error("지원하지 않거나 손상된 백업 내용입니다.");
+      const columns = {
+        reference_materials: ["id", "title", "subject", "unit", "material_type", "file_path", "content_sha256", "created_at"], material_chunks: ["id", "material_id", "chunk_index", "content", "embedding_json", "created_at"], reference_questions: ["id", "subject", "unit", "source", "question_number", "question_text", "intent", "created_at"], official_documents: ["catalog_key", "title", "subject", "unit", "applicable_year", "document_type", "official_url", "issue_number", "rights_status", "summary", "cached_at"], official_document_selections: ["catalog_key", "use_for_generation", "selected_at"], local_settings: ["setting_key", "setting_value", "updated_at"], generation_requests: ["id", "provider_type", "provider_model", "external_transfer_consent_at", "payload_json", "created_at"], generated_questions: ["id", "request_id", "status", "question_json", "validation_json", "created_at"], generated_question_sources: ["id", "question_id", "source_type", "source_id", "excerpt", "created_at"], generation_official_documents: ["request_id", "document_id", "document_json"], generation_reference_questions: ["request_id", "reference_question_id", "reference_json"], review_events: ["id", "question_id", "action", "reason", "created_at"], audit_events: ["id", "action", "payload_json", "created_at"] };
+      db.exec("BEGIN");
+      try {
+        for (const table of [...required].reverse()) db.exec(`DELETE FROM ${table}`);
+        for (const table of required) {
+          const fields = columns[table]; const insert = db.prepare(`INSERT INTO ${table} (${fields.join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`);
+          for (const row of snapshot.tables[table]) insert.run(...fields.map(field => row[field] ?? null));
+        }
+        db.exec("COMMIT");
+      } catch (error) { db.exec("ROLLBACK"); throw error; }
+    },
     close() { db.close(); },
   };
 }

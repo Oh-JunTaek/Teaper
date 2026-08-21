@@ -1,8 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, session } from "electron";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { createLocalBridge } from "./bridge.mjs";
+import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
 
@@ -79,6 +80,20 @@ function registerHandlers() {
   ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
   ipcMain.handle("local:get-preferences", () => ({ teacherInstructions: store.getSetting("teacher_instructions") }));
   ipcMain.handle("local:save-preferences", (_event, input) => { store.setSetting("teacher_instructions", String(input.teacherInstructions || "").trim().slice(0, 1200)); return { success: true }; });
+  ipcMain.handle("local:create-backup", async (_event, input) => {
+    const encrypted = sealBackup(store.createBackupSnapshot(), String(input.password || ""));
+    const result = await saveExportFile("문제-출제-워크스페이스-로컬-백업.eunmabackup", encrypted);
+    recordExportAudit("encrypted_backup", 0, result.saved ? "saved" : "cancelled");
+    return result;
+  });
+  ipcMain.handle("local:restore-backup", async (_event, input) => {
+    const chosen = await dialog.showOpenDialog(mainWindow, { title: "암호화 로컬 백업 열기", filters: [{ name: "문제 출제 워크스페이스 백업", extensions: ["eunmabackup"] }], properties: ["openFile"] });
+    if (chosen.canceled || !chosen.filePaths[0]) return { restored: false };
+    const snapshot = openBackup(await readFile(chosen.filePaths[0], "utf8"), String(input.password || ""));
+    store.restoreBackupSnapshot(snapshot);
+    recordExportAudit("encrypted_restore", 0, "restored");
+    return { restored: true };
+  });
   ipcMain.handle("local:generate-question", async (_event, input) => {
     const prompt = localGenerationPrompt(input); const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt, runtime: input.runtime || "ollama", options: { temperature: 0.2, maxTokens: 1200 } }) });
     const now = new Date().toISOString(); const requestId = randomUUID(); const questionId = randomUUID();

@@ -6,6 +6,7 @@ import { setSecret, getSecret } from "../src/vault.mjs";
 import { createLocalBridge } from "../src/bridge.mjs";
 import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml } from "../src/store.mjs";
 import { fallbackOptions } from "../src/fallback.mjs";
+import { openBackup, sealBackup } from "../src/backup.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, isAllowedLocalPage } from "../src/shellSecurity.mjs";
 
 const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
@@ -42,6 +43,14 @@ try {
   assert.match(csv, /문항/);
   assert.match(csv, /프롬프트 버전/);
   assert.equal(csv.split("\n")[0], '"ID","문제","보기","정답","해설","출제 의도","난이도","배점","유형","모델","프롬프트 버전","검수 상태"');
+  const sealedBackup = sealBackup(store.createBackupSnapshot(), "backup-password-2026");
+  assert.throws(() => openBackup(sealedBackup, "incorrect-password"));
+  const restoredSnapshot = openBackup(sealedBackup, "backup-password-2026");
+  store.deleteMaterial("m-1");
+  assert.equal(store.listMaterials().length, 0);
+  store.restoreBackupSnapshot(restoredSnapshot);
+  assert.equal(store.listMaterials().length, 1);
+  assert.equal(store.listQuestionSources("q-1").length, 1);
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");
   assert.ok(docx.length > 500);
