@@ -30,6 +30,8 @@ try {
   assert.equal(bad.status, 401);
   const good = await fetch(`http://127.0.0.1:${bridge.port}/health`, { headers: { authorization: `Bearer ${bridge.token}` } });
   assert.equal((await good.json()).localOnly, true);
+  const externalProvider = await fetch(`http://127.0.0.1:${bridge.port}/providers/gemini/generate`, { method: "POST", headers: { authorization: `Bearer ${bridge.token}`, "content-type": "application/json" }, body: JSON.stringify({ prompt: "외부 전송 시도" }) });
+  assert.equal(externalProvider.status, 404);
   const runtimes = await fetch(`http://127.0.0.1:${bridge.port}/runtimes`, { headers: { authorization: `Bearer ${bridge.token}` } });
   assert.equal(typeof (await runtimes.json()).ollama.running, "boolean");
   assert.equal(fallbackOptions({ status: 429, localRuntimeAvailable: true }).choices.some(item => item.id === "use_local_model"), true);
