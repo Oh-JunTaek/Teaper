@@ -105,14 +105,16 @@ class LiteRtLmRunner(private val context: Context) {
         // S25+에서 부분 토큰은 보인 뒤 프로세스가 종료되는 현상을 분리하기 위해,
         // 채팅은 스트리밍 콜백 대신 짧은 완성 응답을 한 번만 받아 UI·저장소에 전달한다.
         // 이는 응답 표시와 SharedPreferences 기록이 경쟁하지 않게 하는 안정성 우선 경로다.
-        val completedMessage = conversation.sendMessage(
-            latestUserMessage,
-            emptyMap(),
-            null,
-            null,
-            null,
-            ChatTurnPolicy.MAX_RESPONSE_TOKENS,
-        )
+        val completedMessage = ChatTurnPolicy.responseTokenLimit?.let { maxResponseTokens ->
+            conversation.sendMessage(
+                latestUserMessage,
+                emptyMap(),
+                null,
+                null,
+                null,
+                maxResponseTokens,
+            )
+        } ?: conversation.sendMessage(latestUserMessage)
         completedMessage.textContent().takeIf { it.isNotBlank() }?.let(onPartialResponse)
             ?: throw IllegalStateException("모델이 텍스트 응답을 반환하지 않았습니다.")
     }

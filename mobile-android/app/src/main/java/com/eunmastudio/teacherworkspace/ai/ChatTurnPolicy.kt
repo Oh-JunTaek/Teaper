@@ -6,8 +6,9 @@ package com.eunmastudio.teacherworkspace.ai
  */
 object ChatTurnPolicy {
     const val MAX_CONTEXT_TOKENS = 2_048
-    // E2B의 답변 품질을 높이되 S25+에서 검증한 짧은 컨텍스트·CPU 안정성 경로를 유지한다.
-    const val MAX_RESPONSE_TOKENS = 192
+    // alpha.13에서는 모델 기본 생성 상한을 쓰는 무제한 답변 시험을 진행한다.
+    // 컨텍스트 버퍼·최근 이력 상한은 그대로 유지해 KV 캐시 증가를 제한한다.
+    val responseTokenLimit: Int? = null
     const val MAX_HISTORY_MESSAGES = 4
     const val MAX_HISTORY_CHARACTERS = 600
 

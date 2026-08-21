@@ -1,6 +1,9 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Context
+import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
+import com.eunmastudio.teacherworkspace.ai.ChatTitlePolicy
+import com.eunmastudio.teacherworkspace.ai.PromptDisclosurePolicy
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -54,6 +57,7 @@ data class LocalChatMessage(
 data class LocalChatThread(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
+    val titleManuallyEdited: Boolean = false,
     val messages: List<LocalChatMessage> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
@@ -94,17 +98,35 @@ class LocalWorkspaceStore(context: Context) {
         }.getOrNull()
     }
 
-    fun chatThreads(): List<LocalChatThread> = readArray("chatThreads").mapNotNull { item ->
+    fun chatThreads(): List<LocalChatThread> {
+        val loaded = readArray("chatThreads").mapNotNull { item ->
         runCatching {
             LocalChatThread(
                 id = item.getString("id"),
                 title = item.getString("title"),
+                titleManuallyEdited = item.optBoolean("titleManuallyEdited", false),
                 messages = item.getJSONArray("messages").toChatMessages(),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
             )
         }.getOrNull()
-    }.sortedByDescending { it.updatedAt }
+        }
+        val sanitized = loaded.map { thread ->
+            val safeMessages = thread.messages.map { message ->
+                if (!message.isUser && PromptDisclosurePolicy.isPotentialDisclosure(message.content)) {
+                    message.copy(content = PromptDisclosurePolicy.SAFE_REPLY)
+                } else {
+                    message
+                }
+            }
+            val safeTitle = if (thread.titleManuallyEdited) thread.title else {
+                ChatTitlePolicy.suggest(safeMessages.map { ChatPromptMessage(it.isUser, it.content) })
+            }
+            thread.copy(title = safeTitle, messages = safeMessages)
+        }
+        if (sanitized != loaded) writeChatThreads(sanitized)
+        return sanitized.sortedByDescending { it.updatedAt }
+    }
 
     fun saveSource(source: LocalSource) {
         val next = sources().filterNot { it.id == source.id } + source
@@ -128,7 +150,7 @@ class LocalWorkspaceStore(context: Context) {
         writeQuestions(questions().filterNot { it.id == questionId })
     }
 
-    fun createChatThread(title: String = "새 온디바이스 대화"): LocalChatThread {
+    fun createChatThread(title: String = ChatTitlePolicy.DEFAULT_TITLE): LocalChatThread {
         val thread = LocalChatThread(title = title)
         writeChatThreads(chatThreads() + thread)
         return thread
@@ -140,11 +162,18 @@ class LocalWorkspaceStore(context: Context) {
         val message = LocalChatMessage(content = cleanContent, isUser = isUser)
         var updated: LocalChatThread? = null
         val next = chatThreads().map { thread ->
-            if (thread.id != threadId) thread else thread.copy(
-                title = if (thread.messages.isEmpty() && isUser) cleanContent.take(42) else thread.title,
-                messages = thread.messages + message,
-                updatedAt = message.createdAt,
-            ).also { updated = it }
+            if (thread.id != threadId) thread else {
+                val messages = thread.messages + message
+                thread.copy(
+                    title = if (!thread.titleManuallyEdited) {
+                        ChatTitlePolicy.suggest(messages.map { ChatPromptMessage(it.isUser, it.content) })
+                    } else {
+                        thread.title
+                    },
+                    messages = messages,
+                    updatedAt = message.createdAt,
+                ).also { updated = it }
+            }
         }
         writeChatThreads(next)
         return updated
@@ -152,6 +181,20 @@ class LocalWorkspaceStore(context: Context) {
 
     fun deleteChatThread(threadId: String) {
         writeChatThreads(chatThreads().filterNot { it.id == threadId })
+    }
+
+    fun renameChatThread(threadId: String, requestedTitle: String): LocalChatThread? {
+        val title = requestedTitle.trim().take(60).ifBlank { ChatTitlePolicy.DEFAULT_TITLE }
+        var updated: LocalChatThread? = null
+        val next = chatThreads().map { thread ->
+            if (thread.id != threadId) thread else thread.copy(
+                title = title,
+                titleManuallyEdited = true,
+                updatedAt = System.currentTimeMillis(),
+            ).also { updated = it }
+        }
+        writeChatThreads(next)
+        return updated
     }
 
     fun teacherInstructions(): String = preferences.getString("teacherInstructions", "") ?: ""
@@ -204,6 +247,7 @@ class LocalWorkspaceStore(context: Context) {
             array.put(JSONObject().apply {
                 put("id", thread.id)
                 put("title", thread.title)
+                put("titleManuallyEdited", thread.titleManuallyEdited)
                 put("messages", JSONArray().apply {
                     thread.messages.forEach { message ->
                         put(JSONObject().apply {

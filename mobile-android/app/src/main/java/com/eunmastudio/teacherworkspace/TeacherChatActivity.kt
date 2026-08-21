@@ -1,6 +1,7 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Intent
+import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -180,6 +181,7 @@ class TeacherChatActivity : AppCompatActivity() {
             try {
                 val persistedUser = store.appendChatMessage(thread.id, content, isUser = true)
                 ChatTurnPolicy.requirePersisted(content, persistedUser != null)
+                currentThread = persistedUser ?: currentThread
                 input.setText("")
                 addBubble(content, true)
                 // 모델 호출 전 차단해 내부 지시문이 생성·저장·화면에 남지 않게 한다.
@@ -214,6 +216,7 @@ class TeacherChatActivity : AppCompatActivity() {
                 val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
                 assistantBubble?.text = ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null)
                 messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
+                currentThread = persistedAssistant ?: currentThread
                 status.text = "${activeModel?.displayName ?: "로컬 모델"}이 이 기기에서 응답했습니다. 외부 전송을 사용하지 않습니다."
             } catch (error: Throwable) {
                 assistantBubble?.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
@@ -262,6 +265,12 @@ class TeacherChatActivity : AppCompatActivity() {
             text = "+ 새 대화"; isAllCaps = false
             setOnClickListener { loadThread(store.createChatThread()); (parent as? android.app.AlertDialog)?.dismiss() }
         })
+        currentThread?.let { current ->
+            container.addView(Button(this).apply {
+                text = "현재 대화 제목 수정"; isAllCaps = false
+                setOnClickListener { showRenameThreadDialog(current) }
+            })
+        }
         threads.forEach { thread ->
             container.addView(Button(this).apply {
                 text = "${thread.title}\n${thread.messages.lastOrNull()?.content?.take(50).orEmpty()}"; isAllCaps = false; gravity = Gravity.START
@@ -278,6 +287,26 @@ class TeacherChatActivity : AppCompatActivity() {
             }
             .create()
         dialog.show()
+    }
+
+    private fun showRenameThreadDialog(thread: LocalChatThread) {
+        val editor = EditText(this).apply {
+            setText(thread.title)
+            hint = "대화 제목"
+            setSelection(text.length)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("대화 제목 수정")
+            .setView(editor)
+            .setNegativeButton("취소", null)
+            .setPositiveButton("저장") { _, _ ->
+                val renamed = store.renameChatThread(thread.id, editor.text.toString())
+                if (renamed != null) {
+                    currentThread = renamed
+                    status.text = "대화 제목을 저장했습니다."
+                }
+            }
+            .show()
     }
 
     private fun addSystemHint(content: String) {

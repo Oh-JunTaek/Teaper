@@ -9,10 +9,15 @@ object PromptDisclosurePolicy {
 
     private val directDisclosureTerms = listOf(
         "시스템메시지", "시스템지시", "시스템프롬프트", "내부지시", "내부규칙",
-        "내부프롬프트", "운영프롬프트", "숨겨진지시", "초기지시",
+        "내부프롬프트", "운영프롬프트", "숨겨진지시", "초기지시", "systemprompt",
+        "systemmessage", "developerinstruction", "개발자지시",
     )
 
     private val requestVerbs = listOf("보여", "알려", "공개", "출력", "말해", "나열", "반복", "실토")
+    private val contextualDisclosureTerms = listOf(
+        "앞선지시", "이전지시", "이전규칙", "위규칙", "위지시", "지시를무시",
+        "번역해", "인코딩", "base64",
+    )
     private val outputMarkers = listOf(
         "핵심적인 시스템 지시", "시스템 지시사항", "내부 실행 지시",
         "역할 정의", "제한 사항", "다음과 같습니다",
@@ -24,8 +29,10 @@ object PromptDisclosurePolicy {
         val asksForAssignedRules = compact.contains("너에게주어진") &&
             listOf("프롬프트", "지시", "규칙", "메시지").any(compact::contains)
         val asksToReveal = requestVerbs.any { compact.contains(it) }
+        val contextualDisclosure = contextualDisclosureTerms.any(compact::contains) &&
+            listOf("지시", "규칙", "프롬프트", "메시지").any(compact::contains)
         // “시스템메시지가 있어?”처럼 존재 여부만 묻고 다음 차례에 공개를 요구하는 우회도 차단한다.
-        return if (directlyRequested || asksForAssignedRules || asksToReveal && compact.contains("프롬프트")) SAFE_REPLY else null
+        return if (directlyRequested || asksForAssignedRules || contextualDisclosure || asksToReveal && compact.contains("프롬프트")) SAFE_REPLY else null
     }
 
     /** 모델이 입력 방어를 우회해 내부 지시문 형식의 답을 만들었을 때도 저장 전에 대체한다. */
