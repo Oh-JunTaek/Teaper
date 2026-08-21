@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setSecret, getSecret } from "../src/vault.mjs";
 import { createLocalBridge } from "../src/bridge.mjs";
-import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx } from "../src/store.mjs";
+import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml } from "../src/store.mjs";
 import { fallbackOptions } from "../src/fallback.mjs";
 
 const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
@@ -27,6 +27,9 @@ try {
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");
   assert.ok(docx.length > 500);
+  const printHtml = exportQuestionsPrintHtml(store.listApproved(), "answer-sheet");
+  assert.match(printHtml, /정답 및 해설지/);
+  assert.match(printHtml, /해설/);
   store.close();
   const bridge = await createLocalBridge();
   const bad = await fetch(`http://127.0.0.1:${bridge.port}/health`);

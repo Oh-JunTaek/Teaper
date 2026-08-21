@@ -92,3 +92,19 @@ export async function exportQuestionsDocx(questions, kind = "question-paper") {
   });
   return Packer.toBuffer(new Document({ sections: [{ children }] }));
 }
+
+function escapeHtml(value) { return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\"/g, "&quot;").replace(/'/g, "&#39;"); }
+
+function localVisualHtml(spec) {
+  if (spec?.kind === "graph") return `<div class="visual graph">${graphToSvg(spec)}</div>`;
+  if (spec?.kind === "table") return `<section class="visual"><h3>${escapeHtml(spec.title)}</h3><table><thead><tr>${spec.columns.map(column => `<th>${escapeHtml(column)}</th>`).join("")}</tr></thead><tbody>${spec.rows.map(row => `<tr>${spec.columns.map((_, index) => `<td>${escapeHtml(row[index])}</td>`).join("")}</tr>`).join("")}</tbody></table></section>`;
+  return "";
+}
+
+// Electron·Tauri 셸은 이 HTML을 격리된 인쇄 창에 표시하고 운영체제의 PDF 저장 기능을 호출합니다.
+export function exportQuestionsPrintHtml(questions, kind = "question-paper") {
+  const answerSheet = kind === "answer-sheet";
+  const title = answerSheet ? "정답 및 해설지" : "문항 시험지";
+  const items = questions.map((question, index) => `<article><h2>${index + 1}. ${escapeHtml(question.questionText)}</h2><p class="meta">${escapeHtml(question.questionType)} · 난이도 ${escapeHtml(question.difficulty)} · ${question.points}점</p>${(question.choices || []).map((choice, choiceIndex) => `<p class="choice">${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${escapeHtml(choice)}</p>`).join("")}${localVisualHtml(question.visualSpec)}${answerSheet ? `<section class="answer"><p><strong>정답</strong> ${escapeHtml(question.answer)}</p><p><strong>해설</strong> ${escapeHtml(question.explanation)}</p><p><strong>출제 의도</strong> ${escapeHtml(question.intent)}</p></section>` : ""}</article>`).join("");
+  return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:18mm}body{font-family:"Noto Sans KR",Arial,sans-serif;color:#172033;line-height:1.6}h1{text-align:center;font-size:22px}h2{font-size:14px;white-space:pre-wrap}.meta{font-size:11px;color:#475569}.choice{margin:4px 0 4px 18px}.visual{margin:14px 0;break-inside:avoid}.graph svg{width:100%;height:auto}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #94a3b8;padding:6px;text-align:left}th{background:#e6f4ee}.answer{margin-top:12px;padding:10px 12px;background:#f8fafc;border-left:3px solid #15856b;font-size:12px}article{break-inside:avoid;margin:0 0 25px}@media print{article{page-break-inside:avoid}}</style></head><body><h1>${title}</h1><p style="text-align:center;font-size:11px;color:#64748b">${questions.length}문항 · 내보낸 뒤 실제 시험 범위와 교사 검수 내용을 다시 확인하세요.</p>${items}</body></html>`;
+}
