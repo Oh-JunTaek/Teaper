@@ -22,9 +22,9 @@
 
 | 항목 | 값 |
 |---|---|
-| 파일명 | `teacher-assessment-local-test-0.1.0-beta.2-setup.exe` |
+| 파일명 | `teacher-assessment-local-test-0.1.0-beta.3-setup.exe` |
 | 파일 크기 | 약 100 MB |
-| SHA-256 | `6452ae0165b917541dc75c21b0986e710d825e91b6e5806f029806ec5fba3dd4` |
+| SHA-256 | `827bf29e757534ff54f652d6775c346fe3cf08c1b051dbaacef302aa08dc41ab` |
 
 Windows PowerShell에서 `Get-FileHash "파일경로" -Algorithm SHA256`을 실행해 위 값과 일치하는지 확인할 수 있다. 값이 다르면 설치하지 말고 새 파일을 다시 받아야 한다.
 

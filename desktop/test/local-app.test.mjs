@@ -30,6 +30,9 @@ try {
   assert.match(chemistryCurriculum.official_url, /^https:\/\//);
   store.setOfficialDocumentSelection(chemistryCurriculum.catalog_key, true);
   assert.equal(store.listSelectedOfficialDocuments("화학 I", "공통").some(item => item.catalog_key === chemistryCurriculum.catalog_key), true);
+  assert.equal(store.getSetting("teacher_instructions"), "");
+  store.setSetting("teacher_instructions", "계산 과정의 단위를 확인");
+  assert.equal(store.getSetting("teacher_instructions"), "계산 과정의 단위를 확인");
   store.saveQuestion({ id: "q-1", requestId: "r-1", status: "approved", questionText: "문항", choices: ["1", "2"], answer: "1", explanation: "해설", intent: "의도", difficulty: "중", points: 3, questionType: "개념", validationReport: {}, createdAt: new Date().toISOString() });
   store.saveQuestionSource({ id: "s-1", questionId: "q-1", sourceType: "material", sourceId: "m-1", excerpt: "공유 결합", createdAt: new Date().toISOString() });
   store.saveOfficialEvidence({ requestId: "r-1", documentId: "o-1", document: { title: "교육과정" } });
