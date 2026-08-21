@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
@@ -14,6 +15,9 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
@@ -22,6 +26,7 @@ import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.ModelSelection
 import com.eunmastudio.teacherworkspace.ai.TeacherChatPromptContract
 import kotlinx.coroutines.launch
+import kotlin.math.max
 
 /**
  * GPT 형태의 질문·응답 흐름을 제공하되, 모델·대화·자료는 Android 앱 전용 저장소와 LiteRT-LM 안에서만 처리한다.
@@ -41,10 +46,13 @@ class TeacherChatActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSystemBars()
         store = LocalWorkspaceStore(this)
         downloads = ModelDownloadManager(this)
         runner = LiteRtLmRunner(this)
-        setContentView(buildScreen())
+        val screen = buildScreen()
+        setContentView(screen)
+        applyWindowInsets(screen)
         loadThread(store.chatThreads().firstOrNull() ?: store.createChatThread())
     }
 
@@ -93,11 +101,14 @@ class TeacherChatActivity : ComponentActivity() {
             messageScroll = ScrollView(this@TeacherChatActivity).apply { addView(messageList) }
             addView(messageScroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             addView(LinearLayout(this@TeacherChatActivity).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(0, dp(8), 0, 0)
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(10), dp(10), dp(10), dp(10))
+                background = solid(Color.rgb(22, 27, 36), dp(24))
                 input = EditText(this@TeacherChatActivity).apply {
                     hint = "질문을 입력하세요"; textSize = 16f; minLines = 1; maxLines = 5
                     setTextColor(Color.WHITE); setHintTextColor(Color.rgb(139, 151, 171))
-                    background = solid(Color.rgb(36, 41, 52), dp(22)); setPadding(dp(16), dp(10), dp(16), dp(10))
+                    background = solid(Color.rgb(43, 49, 62), dp(20)); setPadding(dp(16), dp(10), dp(16), dp(10))
                 }
                 addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
                 sendButton = Button(this@TeacherChatActivity).apply {
@@ -105,8 +116,38 @@ class TeacherChatActivity : ComponentActivity() {
                     background = solid(Color.rgb(126, 174, 255), dp(20)); setOnClickListener { sendMessage() }
                 }
                 addView(sendButton, LinearLayout.LayoutParams(dp(82), dp(52)))
-            })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
         }
+    }
+
+    private fun configureSystemBars() {
+        val surface = Color.rgb(14, 16, 21)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = surface
+        window.navigationBarColor = surface
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+    }
+
+    /** 키보드와 제스처·버튼 내비게이션 영역 중 더 큰 하단 인셋만큼 작성 바를 위로 올린다. */
+    private fun applyWindowInsets(screen: View) {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        ViewCompat.setOnApplyWindowInsetsListener(screen) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+            view.setPadding(
+                dp(18),
+                max(dp(12), bars.top + dp(8)),
+                dp(18),
+                max(bars.bottom, ime.bottom) + dp(8),
+            )
+            insets
+        }
+        ViewCompat.requestApplyInsets(screen)
     }
 
     private fun loadThread(thread: LocalChatThread) {

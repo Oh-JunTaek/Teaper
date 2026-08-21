@@ -21,6 +21,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -96,19 +99,44 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        configureSystemBars()
         downloads = ModelDownloadManager(this)
         runner = LiteRtLmRunner(this)
         questionExporter = ApprovedQuestionExporter(this)
         sourceExtractor = SourceContentExtractor(this)
         store = LocalWorkspaceStore(this)
         ModelDownloadSession.restore(this)
-        setContentView(buildScreen())
+        val screen = buildScreen()
+        setContentView(screen)
+        applySystemInsets(screen)
         refreshDeviceState()
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 ModelDownloadSession.state.collect { state -> renderDownloadState(state) }
             }
         }
+    }
+
+    private fun configureSystemBars() {
+        val surface = Color.rgb(14, 16, 21)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.statusBarColor = surface
+        window.navigationBarColor = surface
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isStatusBarContrastEnforced = false
+            window.isNavigationBarContrastEnforced = false
+        }
+    }
+
+    /** 카드 목록 마지막 항목이 제스처·버튼 내비게이션 바 아래로 들어가지 않도록 ScrollView 여백을 적용한다. */
+    private fun applySystemInsets(screen: ScrollView) {
+        ViewCompat.setOnApplyWindowInsetsListener(screen) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(0, bars.top, 0, bars.bottom)
+            insets
+        }
+        screen.clipToPadding = false
+        ViewCompat.requestApplyInsets(screen)
     }
 
     override fun onDestroy() {
