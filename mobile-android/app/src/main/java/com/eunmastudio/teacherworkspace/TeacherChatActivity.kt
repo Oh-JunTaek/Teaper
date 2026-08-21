@@ -158,6 +158,7 @@ class TeacherChatActivity : AppCompatActivity() {
     }
 
     private fun loadThread(thread: LocalChatThread) {
+        runner.resetChatConversation()
         currentThread = thread
         messageList.removeAllViews()
         if (thread.messages.isEmpty()) {
@@ -228,7 +229,9 @@ class TeacherChatActivity : AppCompatActivity() {
         }
         return try {
             status.text = "${selected.displayName}을 채팅용으로 준비하고 있습니다."
-            val mode = runner.initialize(downloads.installedFile(selected).absolutePath)
+            // S25+ 실기기에서 GPU 생성 완료 뒤 프로세스가 종료되는 현상을 분리하기 위해,
+            // 채팅은 우선 CPU 안정성 모드로 실행한다. 문항·이미지 경로의 GPU 정책과는 별개다.
+            val mode = runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false)
             activeModel = selected
             status.text = "${selected.displayName} 준비 완료 · $mode"
             true

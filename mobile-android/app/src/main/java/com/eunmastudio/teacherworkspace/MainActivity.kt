@@ -13,7 +13,9 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
@@ -59,7 +61,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var downloadDetail: TextView
-    private lateinit var modelSummary: TextView
     private lateinit var promptInput: EditText
     private lateinit var runButton: Button
     private lateinit var result: TextView
@@ -70,14 +71,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var store: LocalWorkspaceStore
     private lateinit var workspaceSummary: TextView
     private lateinit var appLockGate: AppLockGate
+    private lateinit var overflowButton: Button
     private var activeModel: GemmaModel? = null
     private var selectedSourceKind: LocalSourceKind = LocalSourceKind.REFERENCE
     private var notificationPermissionModel: GemmaModel? = null
 
     private data class WorkCardItem(
+        val id: String,
         val title: String,
         val subtitle: String,
-        val marker: String,
+        val iconRes: Int,
         val color: Int,
         val action: () -> Unit,
     )
@@ -160,7 +163,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired()
-        if (::modelSummary.isInitialized) refreshDeviceState()
+        if (::status.isInitialized) refreshDeviceState()
         if (::workspaceSummary.isInitialized) refreshWorkspaceSummary()
     }
 
@@ -179,47 +182,47 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(6), 0, dp(6))
         }
 
-        content.addView(text("EunmaStudio", 14f, Color.rgb(126, 174, 255)))
+        content.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(text("EunmaStudio", 14f, Color.rgb(126, 174, 255)), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            overflowButton = Button(this@MainActivity).apply {
+                text = "☰"; textSize = 22f; isAllCaps = false; setTextColor(Color.WHITE)
+                contentDescription = "설정 메뉴 열기"
+                background = roundedSurface(Color.rgb(29, 33, 42), dp(16))
+                setOnClickListener { showOverflowMenu() }
+            }
+            addView(overflowButton, LinearLayout.LayoutParams(dp(52), dp(44)))
+        })
         content.addView(text("문제 출제\n워크스페이스", 34f).apply { setLineSpacing(0f, 0.94f) })
         content.addView(text("자료를 준비하고, 문항을 만들고, 교사가 검수합니다.", 16f, Color.rgb(191, 200, 215)).apply { setPadding(0, dp(10), 0, dp(18)) })
-        content.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = roundedSurface(Color.rgb(31, 36, 47), dp(24))
-            setOnClickListener { startActivity(Intent(this@MainActivity, ModelManagerActivity::class.java)) }
-            addView(text("모델 관리", 14f, Color.rgb(143, 185, 255)))
-            modelSummary = text("기기 모델 상태를 확인하고 있습니다.", 18f).apply { setPadding(0, dp(3), 0, dp(3)) }
-            addView(modelSummary)
-            status = text("E2B 기본값 · 자료와 문항은 이 기기에서 처리", 14f, Color.rgb(191, 200, 215))
-            addView(status)
-            addView(text("탭하여 모델 설치·선택·라이선스를 관리", 14f, Color.rgb(126, 174, 255)))
-        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(20) })
-        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            isIndeterminate = false
-            max = 100
-            visibility = View.GONE
-        }
-        content.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)))
-        downloadDetail = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
-        content.addView(downloadDetail)
 
         content.addView(text("교사 작업", 22f).apply { setPadding(0, dp(4), 0, dp(8)) })
         workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f, Color.rgb(191, 200, 215))
         content.addView(workspaceSummary)
         val workItems = listOf(
-            WorkCardItem("온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어", "AI", Color.rgb(75, 126, 235)) {
+            WorkCardItem("chat", "온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어", R.drawable.ic_workspace_chat, Color.rgb(75, 126, 235)) {
                 startActivity(Intent(this@MainActivity, TeacherChatActivity::class.java))
             },
-            WorkCardItem("자료 준비", "참고 자료·기출 유형·공식 자료", "자", Color.rgb(65, 174, 152)) { showSourcesDialog() },
-            WorkCardItem("문항 생성", "선택한 자료로 문항 만들기", "문", Color.rgb(118, 156, 244)) { showGenerationDialog() },
-            WorkCardItem("검수함", "근거 대조·승인 문항 내보내기", "검", Color.rgb(238, 177, 77)) { showReviewDialog() },
+            WorkCardItem("source", "자료 준비", "참고 자료·기출 유형·공식 자료", R.drawable.ic_workspace_sources, Color.rgb(65, 174, 152)) { showSourcesDialog() },
+            WorkCardItem("generate", "문항 생성", "선택한 자료로 문항 만들기", R.drawable.ic_workspace_generate, Color.rgb(118, 156, 244)) { showGenerationDialog() },
+            WorkCardItem("review", "검수함", "근거 대조·승인 문항 내보내기", R.drawable.ic_workspace_review, Color.rgb(238, 177, 77)) { showReviewDialog() },
+            WorkCardItem("model", "모델 관리", "Gemma 4 E2B 상태·설치·라이선스", R.drawable.ic_workspace_model, Color.rgb(151, 112, 230)) {
+                startActivity(Intent(this@MainActivity, ModelManagerActivity::class.java))
+            },
         )
         if (store.homeCardLayout() == HomeCardLayout.ALBUM) {
             content.addView(albumCardGrid(workItems))
         } else {
             workItems.forEach { item -> content.addView(workCard(item)) }
         }
-        content.addView(workCard(WorkCardItem("교사 작성 선호", "표현·구성 선호와 홈 카드 보기 변경", "선", Color.rgb(186, 122, 232)) { showTeacherInstructionsDialog() }))
+        progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            isIndeterminate = false
+            max = 100
+            visibility = View.GONE
+        }
+        content.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(6) })
+        downloadDetail = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
+        content.addView(downloadDetail)
         promptInput = EditText(this).apply { visibility = View.GONE }
         runButton = Button(this).apply { visibility = View.GONE }
         result = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
@@ -239,14 +242,19 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { item.action() }
             minimumHeight = dp(100)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
-            addView(TextView(this@MainActivity).apply {
-                text = item.marker; textSize = 18f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            addView(ImageView(this@MainActivity).apply {
+                scaleType = ImageView.ScaleType.CENTER
+                setImageResource(item.iconRes)
+                setColorFilter(Color.WHITE)
                 background = roundedSurface(item.color, dp(18))
             }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { rightMargin = dp(16) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(TextView(this@MainActivity).apply { text = item.title; textSize = 20f; setTextColor(Color.WHITE); maxLines = 2 })
-                addView(TextView(this@MainActivity).apply { text = item.subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); maxLines = 3; setPadding(0, dp(3), 0, 0) })
+                addView(TextView(this@MainActivity).apply {
+                    text = item.subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); maxLines = 3; setPadding(0, dp(3), 0, 0)
+                    if (item.id == "model") status = this
+                })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@MainActivity).apply { text = "›"; textSize = 28f; setTextColor(Color.rgb(159, 171, 191)) })
         }
@@ -280,8 +288,10 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(14), dp(14), dp(14), dp(12))
             background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
             setOnClickListener { item.action() }
-            addView(TextView(this@MainActivity).apply {
-                text = item.marker; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+            addView(ImageView(this@MainActivity).apply {
+                scaleType = ImageView.ScaleType.CENTER
+                setImageResource(item.iconRes)
+                setColorFilter(Color.WHITE)
                 background = roundedSurface(item.color, dp(16))
             }, LinearLayout.LayoutParams(dp(46), dp(46)))
             addView(TextView(this@MainActivity).apply {
@@ -289,23 +299,40 @@ class MainActivity : AppCompatActivity() {
             })
             addView(TextView(this@MainActivity).apply {
                 text = item.subtitle; textSize = 12.5f; setTextColor(Color.rgb(185, 195, 209)); maxLines = 2; setPadding(0, dp(4), 0, 0)
+                if (item.id == "model") status = this
             })
         }
     }
 
     private fun roundedSurface(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
 
+    /** 모델·자료 작업과 분리된 앱 수준 설정을 우측 상단 메뉴로 모은다. */
+    private fun showOverflowMenu() {
+        PopupMenu(this, overflowButton).apply {
+            menu.add("설정")
+            menu.add("Gemma 라이선스·NOTICE")
+            setOnMenuItemClickListener { item ->
+                when (item.title.toString()) {
+                    "설정" -> showTeacherInstructionsDialog()
+                    "Gemma 라이선스·NOTICE" -> showModelLicenseDialog()
+                }
+                true
+            }
+            show()
+        }
+    }
+
     private fun refreshDeviceState() {
         val profile = DeviceProfile.read(this)
         val e2b = GemmaModel.E2B.eligibility(profile)
         val selected = ModelSelection.selected(this)
-        modelSummary.text = when {
+        val modelState = when {
             ModelDownloadSession.state.value.isRunning -> "${ModelDownloadSession.state.value.model?.displayName ?: "모델"} 다운로드 진행 중"
             selected != null && downloads.isInstalled(selected) -> "${selected.displayName} 선택됨"
             downloads.isInstalled(GemmaModel.E2B) -> "Gemma 4 E2B 준비됨"
             else -> "기본 모델 E2B를 준비해 주세요"
         }
-        status.text = "저장 공간 ${(profile.freeStorageBytes / 1_000_000_000)}GB 여유 · ${e2b.message}"
+        status.text = "$modelState\n저장 공간 ${(profile.freeStorageBytes / 1_000_000_000)}GB 여유"
     }
 
     private fun installOrPrepare(model: GemmaModel) {

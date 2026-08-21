@@ -3,6 +3,7 @@ package com.eunmastudio.teacherworkspace.ai
 import android.content.Context
 import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Content
+import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Contents
 import com.google.ai.edge.litertlm.Engine
@@ -19,10 +20,16 @@ import kotlinx.coroutines.withContext
  */
 class LiteRtLmRunner(private val context: Context) {
     private var engine: Engine? = null
+    private var chatConversation: Conversation? = null
+    private var chatSystemInstruction: String? = null
 
-    suspend fun initialize(modelFilePath: String): String = withContext(Dispatchers.Default) {
+    suspend fun initialize(modelFilePath: String, preferGpu: Boolean = true): String = withContext(Dispatchers.Default) {
         close()
         val cacheDirectory = context.cacheDir.resolve("litertlm-cache").apply { mkdirs() }
+        if (!preferGpu) {
+            engine = createCpuEngine(modelFilePath, cacheDirectory.absolutePath)
+            return@withContext "CPU 안정성 모드로 준비했습니다."
+        }
         val gpuConfig = EngineConfig(
             modelPath = modelFilePath,
             backend = Backend.GPU(),
@@ -33,17 +40,19 @@ class LiteRtLmRunner(private val context: Context) {
             engine = Engine(gpuConfig).also { it.initialize() }
             "GPU 가속으로 준비했습니다."
         } catch (_: Throwable) {
-            engine = Engine(
-                EngineConfig(
-                    modelPath = modelFilePath,
-                    backend = Backend.CPU(),
-                    visionBackend = Backend.CPU(),
-                    cacheDir = cacheDirectory.absolutePath,
-                ),
-            ).also { it.initialize() }
+            engine = createCpuEngine(modelFilePath, cacheDirectory.absolutePath)
             "GPU를 사용할 수 없어 CPU 모드로 준비했습니다."
         }
     }
+
+    private fun createCpuEngine(modelFilePath: String, cacheDirectory: String): Engine = Engine(
+        EngineConfig(
+            modelPath = modelFilePath,
+            backend = Backend.CPU(),
+            visionBackend = Backend.CPU(),
+            cacheDir = cacheDirectory,
+        ),
+    ).also { it.initialize() }
 
     suspend fun generate(
         prompt: String,
@@ -70,22 +79,30 @@ class LiteRtLmRunner(private val context: Context) {
         val lastUserIndex = history.indexOfLast { it.isUser }
         if (lastUserIndex < 0) throw IllegalArgumentException("보낼 질문이 없습니다.")
         val latestUserMessage = history[lastUserIndex].content
-        val initialMessages = history.take(lastUserIndex).map { message ->
-            if (message.isUser) Message.user(message.content) else Message.model(message.content)
-        }
-        val config = ConversationConfig(
-            systemInstruction = Contents.of(systemInstruction),
-            initialMessages = initialMessages,
-            samplerConfig = SamplerConfig(temperature = 0.35, topK = 20, topP = 0.9),
-        )
-        activeEngine.createConversation(config).use { conversation ->
-            conversation.sendMessageAsync(latestUserMessage)
-                .catch { throwable -> throw IllegalStateException("온디바이스 생성 중 오류가 발생했습니다: ${throwable.message}", throwable) }
-                .collect { message ->
-                    // Message.toString()은 디버그 표현일 수 있으므로 Contents.Text의 실제 모델 출력만 화면에 전달한다.
-                    message.textContent().takeIf { it.isNotBlank() }?.let(onPartialResponse)
+        val conversation = chatConversation?.takeIf { chatSystemInstruction == systemInstruction }
+            ?: run {
+                resetChatConversation()
+                val initialMessages = history.take(lastUserIndex).map { message ->
+                    if (message.isUser) Message.user(message.content) else Message.model(message.content)
                 }
-        }
+                activeEngine.createConversation(
+                    ConversationConfig(
+                        systemInstruction = Contents.of(systemInstruction),
+                        initialMessages = initialMessages,
+                        samplerConfig = SamplerConfig(temperature = 0.35, topK = 20, topP = 0.9),
+                    ),
+                ).also {
+                    chatConversation = it
+                    chatSystemInstruction = systemInstruction
+                }
+            }
+        // 짧은 교사용 응답으로 제한해 KV 캐시 과성장과 과도한 메모리 점유를 피한다.
+        conversation.sendMessageAsync(latestUserMessage, emptyMap(), null, null, null, 384)
+            .catch { throwable -> throw IllegalStateException("온디바이스 생성 중 오류가 발생했습니다: ${throwable.message}", throwable) }
+            .collect { message ->
+                // Message.toString()은 디버그 표현일 수 있으므로 Contents.Text의 실제 모델 출력만 화면에 전달한다.
+                message.textContent().takeIf { it.isNotBlank() }?.let(onPartialResponse)
+            }
     }
 
     suspend fun inspectImage(
@@ -111,7 +128,15 @@ class LiteRtLmRunner(private val context: Context) {
         .filterIsInstance<Content.Text>()
         .joinToString(separator = "") { it.text }
 
+    /** 대화 전환·화면 종료·모델 교체 때에만 Conversation을 닫아 네이티브 자원 해제를 일관되게 처리한다. */
+    fun resetChatConversation() {
+        chatConversation?.close()
+        chatConversation = null
+        chatSystemInstruction = null
+    }
+
     fun close() {
+        resetChatConversation()
         engine?.close()
         engine = null
     }
