@@ -73,4 +73,20 @@ class GemmaModelPolicyTest {
         assertTrue(prompt.contains("성취기준 A"))
         assertTrue(prompt.contains("표를 선호함"))
     }
+
+    @Test
+    fun `only active foreground download stages block another model download`() {
+        val activeStages = listOf(
+            ModelDownloadUiStage.CONNECTING,
+            ModelDownloadUiStage.DOWNLOADING,
+            ModelDownloadUiStage.VERIFYING,
+            ModelDownloadUiStage.SAVING,
+        )
+
+        activeStages.forEach { stage ->
+            assertTrue(ModelDownloadUiState(model = GemmaModel.E2B, stage = stage).isRunning)
+        }
+        assertFalse(ModelDownloadUiState(model = GemmaModel.E2B, stage = ModelDownloadUiStage.COMPLETED).isRunning)
+        assertFalse(ModelDownloadUiState(model = GemmaModel.E2B, stage = ModelDownloadUiStage.FAILED).isRunning)
+    }
 }
