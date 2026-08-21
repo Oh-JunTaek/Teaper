@@ -17,6 +17,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.DeviceProfile
+import com.eunmastudio.teacherworkspace.ai.DownloadStage
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
@@ -38,6 +39,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
+    private lateinit var downloadDetail: TextView
     private lateinit var e2bButton: Button
     private lateinit var e4bButton: Button
     private lateinit var promptInput: EditText
@@ -111,6 +113,8 @@ class MainActivity : ComponentActivity() {
             visibility = android.view.View.GONE
         }
         content.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)))
+        downloadDetail = text("", 14f).apply { visibility = android.view.View.GONE }
+        content.addView(downloadDetail)
         e2bButton = Button(this).apply { text = "기본 모델 Gemma 4 E2B 준비" }
         e4bButton = Button(this).apply { text = "고성능 기기용 Gemma 4 E4B 확인" }
         content.addView(e2bButton)
@@ -203,11 +207,14 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 progress.visibility = android.view.View.VISIBLE
+                downloadDetail.visibility = android.view.View.VISIBLE
+                e2bButton.isEnabled = false
+                e4bButton.isEnabled = false
                 if (!downloads.isInstalled(model)) {
-                    status.text = "${model.displayName}을 내려받는 중입니다. Wi‑Fi와 전원을 권장합니다."
+                    status.text = "${model.displayName} 다운로드 서버에 연결하고 있습니다."
                     downloads.download(model) { update ->
                         runOnUiThread {
-                            progress.progress = ((update.receivedBytes * 100) / update.totalBytes).toInt()
+                            updateDownloadUi(model, update.stage, update.receivedBytes, update.totalBytes, update.bytesPerSecond)
                         }
                     }
                 }
@@ -217,9 +224,41 @@ class MainActivity : ComponentActivity() {
                 status.text = "${model.displayName} 준비 완료. $executionMode"
                 runButton.isEnabled = true
             } catch (error: Throwable) {
-                status.text = error.message ?: "모델 준비에 실패했습니다."
+                status.text = "${error.message ?: "모델 준비에 실패했습니다."} 다시 누르면 저장된 부분부터 이어받기를 시도합니다."
             } finally {
                 progress.visibility = android.view.View.GONE
+                downloadDetail.visibility = android.view.View.GONE
+                refreshDeviceState()
+            }
+        }
+    }
+
+    private fun updateDownloadUi(model: GemmaModel, stage: DownloadStage, received: Long, total: Long, bytesPerSecond: Long) {
+        val percent = ((received * 100L) / total.coerceAtLeast(1L)).toInt().coerceIn(0, 100)
+        when (stage) {
+            DownloadStage.CONNECTING -> {
+                progress.isIndeterminate = true
+                status.text = "${model.displayName} 다운로드 서버에 연결하고 있습니다."
+                downloadDetail.text = "연결 중 · 진행이 60초 이상 멈추면 Wi‑Fi를 확인한 뒤 다시 시도해 주세요."
+            }
+            DownloadStage.DOWNLOADING -> {
+                progress.isIndeterminate = false
+                progress.progress = percent
+                val receivedGb = "%.2f".format(received / 1_000_000_000.0)
+                val totalGb = "%.2f".format(total / 1_000_000_000.0)
+                val speedMb = "%.1f".format(bytesPerSecond / 1_000_000.0)
+                status.text = "${model.displayName}을 내려받는 중입니다."
+                downloadDetail.text = "$percent% · $receivedGb GB / $totalGb GB · ${speedMb} MB/s"
+            }
+            DownloadStage.VERIFYING -> {
+                progress.isIndeterminate = true
+                status.text = "다운로드가 끝났습니다. 파일 무결성을 확인하고 있습니다."
+                downloadDetail.text = "SHA-256 확인 중 · 앱을 종료하지 마세요."
+            }
+            DownloadStage.SAVING -> {
+                progress.isIndeterminate = true
+                status.text = "검증한 모델을 이 기기에 저장하고 있습니다."
+                downloadDetail.text = "앱 전용 저장소에 저장 중"
             }
         }
     }
