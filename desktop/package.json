@@ -1,16 +1,61 @@
 {
   "name": "teacher-assessment-local",
+  "version": "0.1.0-beta.1",
+  "description": "EunmaStudio 문제 출제 워크스페이스 로컬 모델 전용 테스트 앱",
+  "author": "EunmaStudio",
+  "license": "UNLICENSED",
+  "main": "src/shell.mjs",
   "private": true,
   "type": "module",
   "scripts": {
     "start": "LOCAL_APP_MODE=true node src/main.mjs",
     "desktop": "LOCAL_APP_MODE=true electron src/shell.mjs",
+    "package:win:test": "electron-builder --win nsis --x64 --publish never",
     "test": "node test/local-app.test.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1"
   },
   "devDependencies": {
-    "electron": "^43.4.1"
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.eunmastudio.teacherassessment.local",
+    "productName": "문제 출제 워크스페이스",
+    "artifactName": "${productName}-로컬-테스트-${version}-setup.${ext}",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asar": true,
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.invalid/eunmastudio-teacher-test"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": false,
+      "shortcutName": "문제 출제 워크스페이스 로컬"
+    }
   }
 }

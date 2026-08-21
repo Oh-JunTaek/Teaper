@@ -92,6 +92,7 @@ function registerHandlers() {
 }
 
 app.whenReady().then(async () => {
+  app.setAppUserModelId("com.eunmastudio.teacherassessment.local");
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   bridge = await createLocalBridge();
   store = await openLocalStore();
