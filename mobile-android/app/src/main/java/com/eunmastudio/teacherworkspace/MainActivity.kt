@@ -1,10 +1,15 @@
 package com.eunmastudio.teacherworkspace
 
 import android.app.AlertDialog
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
@@ -15,12 +20,20 @@ import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.eunmastudio.teacherworkspace.ai.DeviceProfile
 import com.eunmastudio.teacherworkspace.ai.DownloadStage
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
+import com.eunmastudio.teacherworkspace.ai.ModelDownloadService
+import com.eunmastudio.teacherworkspace.ai.ModelDownloadSession
+import com.eunmastudio.teacherworkspace.ai.ModelDownloadUiStage
+import com.eunmastudio.teacherworkspace.ai.ModelDownloadUiState
+import com.eunmastudio.teacherworkspace.ai.ModelSelection
 import com.eunmastudio.teacherworkspace.ai.QuestionPromptContract
 import com.eunmastudio.teacherworkspace.ai.eligibility
 import com.eunmastudio.teacherworkspace.export.ApprovedQuestionExporter
@@ -40,8 +53,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var downloadDetail: TextView
-    private lateinit var e2bButton: Button
-    private lateinit var e4bButton: Button
+    private lateinit var modelSummary: TextView
     private lateinit var promptInput: EditText
     private lateinit var runButton: Button
     private lateinit var result: TextView
@@ -53,6 +65,17 @@ class MainActivity : ComponentActivity() {
     private lateinit var workspaceSummary: TextView
     private var activeModel: GemmaModel? = null
     private var selectedSourceKind: LocalSourceKind = LocalSourceKind.REFERENCE
+    private var notificationPermissionModel: GemmaModel? = null
+
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val model = notificationPermissionModel
+        notificationPermissionModel = null
+        if (granted && model != null) {
+            ModelDownloadService.start(this, model)
+        } else {
+            status.text = "백그라운드 다운로드 진행 상태를 알림으로 보여 주려면 알림 허용이 필요합니다."
+        }
+    }
 
     private val chooseSourceFile = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri ?: return@registerForActivityResult
@@ -78,8 +101,14 @@ class MainActivity : ComponentActivity() {
         questionExporter = ApprovedQuestionExporter(this)
         sourceExtractor = SourceContentExtractor(this)
         store = LocalWorkspaceStore(this)
+        ModelDownloadSession.restore(this)
         setContentView(buildScreen())
         refreshDeviceState()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                ModelDownloadSession.state.collect { state -> renderDownloadState(state) }
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -87,98 +116,110 @@ class MainActivity : ComponentActivity() {
         super.onDestroy()
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (::modelSummary.isInitialized) refreshDeviceState()
+        if (::workspaceSummary.isInitialized) refreshWorkspaceSummary()
+    }
+
     private fun buildScreen(): ScrollView {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(28))
-            setBackgroundColor(Color.WHITE)
+            setPadding(dp(22), dp(28), dp(22), dp(36))
+            setBackgroundColor(Color.rgb(14, 16, 21))
         }
-        fun text(value: String, size: Float = 16f) = TextView(this).apply {
+        fun text(value: String, size: Float = 16f, color: Int = Color.WHITE) = TextView(this).apply {
             this.text = value
             textSize = size
-            setTextColor(Color.rgb(26, 43, 60))
+            setTextColor(color)
             setPadding(0, dp(6), 0, dp(6))
         }
 
-        content.addView(text("문제 출제 워크스페이스", 26f))
-        content.addView(text("Android 로컬 AI 파일럿 · EunmaStudio", 14f))
-        content.addView(text("모델과 자료는 이 기기에서 처리합니다. 초기 파일럿에서는 Gemma 4 E2B·E4B만 사용할 수 있습니다.", 15f))
-        status = text("기기 상태를 확인하고 있습니다.", 15f)
-        content.addView(status)
+        content.addView(text("EunmaStudio", 14f, Color.rgb(126, 174, 255)))
+        content.addView(text("문제 출제\n워크스페이스", 34f).apply { setLineSpacing(0f, 0.94f) })
+        content.addView(text("자료를 준비하고, 문항을 만들고, 교사가 검수합니다.", 16f, Color.rgb(191, 200, 215)).apply { setPadding(0, dp(10), 0, dp(18)) })
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = roundedSurface(Color.rgb(31, 36, 47), dp(24))
+            setOnClickListener { startActivity(Intent(this@MainActivity, ModelManagerActivity::class.java)) }
+            addView(text("모델 관리", 14f, Color.rgb(143, 185, 255)))
+            modelSummary = text("기기 모델 상태를 확인하고 있습니다.", 18f).apply { setPadding(0, dp(3), 0, dp(3)) }
+            addView(modelSummary)
+            status = text("E2B 기본값 · 자료와 문항은 이 기기에서 처리", 14f, Color.rgb(191, 200, 215))
+            addView(status)
+            addView(text("탭하여 모델 설치·선택·라이선스를 관리", 14f, Color.rgb(126, 174, 255)))
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(20) })
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             isIndeterminate = false
             max = 100
-            visibility = android.view.View.GONE
+            visibility = View.GONE
         }
         content.addView(progress, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)))
-        downloadDetail = text("", 14f).apply { visibility = android.view.View.GONE }
+        downloadDetail = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
         content.addView(downloadDetail)
-        e2bButton = Button(this).apply { text = "기본 모델 Gemma 4 E2B 준비" }
-        e4bButton = Button(this).apply { text = "고성능 기기용 Gemma 4 E4B 확인" }
-        content.addView(e2bButton)
-        content.addView(e4bButton)
-        content.addView(text("E4B는 고성능 기기에서만 권장됩니다. 기기 메모리·저장 공간·발열 상태가 좋지 않으면 E2B를 사용하세요.", 14f))
-        content.addView(Button(this).apply {
-            text = "Gemma 모델 라이선스·NOTICE"
-            setOnClickListener { showModelLicenseDialog() }
-        })
 
-        content.addView(text("교사 작업", 20f))
-        workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f)
+        content.addView(text("교사 작업", 22f).apply { setPadding(0, dp(4), 0, dp(8)) })
+        workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f, Color.rgb(191, 200, 215))
         content.addView(workspaceSummary)
-        content.addView(Button(this).apply {
-            text = "1. 자료 준비"
-            setOnClickListener { showSourcesDialog() }
-        })
-        content.addView(Button(this).apply {
-            text = "2. 문항 생성"
-            setOnClickListener { showGenerationDialog() }
-        })
-        content.addView(Button(this).apply {
-            text = "3. 검수함"
-            setOnClickListener { showReviewDialog() }
-        })
-        content.addView(Button(this).apply {
-            text = "교사 추가 작성 선호"
-            setOnClickListener { showTeacherInstructionsDialog() }
-        })
-
-        promptInput = EditText(this).apply {
-            hint = "빠른 로컬 요청: 자료 정리 또는 검수 질문"
-            minLines = 3
-            gravity = Gravity.TOP
-        }
-        content.addView(promptInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(150)))
-        runButton = Button(this).apply {
-            text = "로컬 모델로 실행"
-            isEnabled = false
-        }
-        content.addView(runButton)
-        result = text("결과는 이 기기에서만 표시됩니다.", 15f)
+        content.addView(workCard("자료 준비", "참고 자료 · 기출 유형 · 공식 자료", "자", Color.rgb(65, 174, 152)) { showSourcesDialog() })
+        content.addView(workCard("문항 생성", "선택한 자료를 바탕으로 문항 만들기", "문", Color.rgb(118, 156, 244)) { showGenerationDialog() })
+        content.addView(workCard("검수함", "근거를 대조하고 승인 문항 내보내기", "검", Color.rgb(238, 177, 77)) { showReviewDialog() })
+        content.addView(workCard("교사 작성 선호", "표현과 구성에 대한 개인 선호 저장", "선", Color.rgb(186, 122, 232)) { showTeacherInstructionsDialog() })
+        promptInput = EditText(this).apply { visibility = View.GONE }
+        runButton = Button(this).apply { visibility = View.GONE }
+        result = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
         content.addView(result)
-
-        e2bButton.setOnClickListener { installOrPrepare(GemmaModel.E2B) }
-        e4bButton.setOnClickListener { installOrPrepare(GemmaModel.E4B) }
-        runButton.setOnClickListener { runPrompt() }
         refreshWorkspaceSummary()
         return ScrollView(this).apply { addView(content) }
     }
 
-    private fun refreshDeviceState() {
-        val profile = DeviceProfile.read(this)
-        val e2b = GemmaModel.E2B.eligibility(profile)
-        val e4b = GemmaModel.E4B.eligibility(profile)
-        status.text = "기기 확인: 저장 공간 ${(profile.freeStorageBytes / 1_000_000_000)}GB 여유. E2B: ${e2b.message}"
-        e2bButton.isEnabled = e2b.canInstall
-        e4bButton.isEnabled = e4b.canInstall
-        if (!e4b.isRecommended) {
-            e4bButton.text = "Gemma 4 E4B는 현재 기기에서 권장하지 않음"
+    private fun workCard(title: String, subtitle: String, marker: String, color: Int, action: () -> Unit): LinearLayout {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
+            setOnClickListener { action() }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply { bottomMargin = dp(10) }
+            addView(TextView(this@MainActivity).apply {
+                text = marker; textSize = 18f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+                background = roundedSurface(color, dp(18))
+            }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { rightMargin = dp(16) })
+            addView(LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(TextView(this@MainActivity).apply { text = title; textSize = 20f; setTextColor(Color.WHITE) })
+                addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); setPadding(0, dp(3), 0, 0) })
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(TextView(this@MainActivity).apply { text = "›"; textSize = 28f; setTextColor(Color.rgb(159, 171, 191)) })
         }
     }
 
+    private fun roundedSurface(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
+
+    private fun refreshDeviceState() {
+        val profile = DeviceProfile.read(this)
+        val e2b = GemmaModel.E2B.eligibility(profile)
+        val selected = ModelSelection.selected(this)
+        modelSummary.text = when {
+            ModelDownloadSession.state.value.isRunning -> "${ModelDownloadSession.state.value.model?.displayName ?: "모델"} 다운로드 진행 중"
+            selected != null && downloads.isInstalled(selected) -> "${selected.displayName} 선택됨"
+            downloads.isInstalled(GemmaModel.E2B) -> "Gemma 4 E2B 준비됨"
+            else -> "기본 모델 E2B를 준비해 주세요"
+        }
+        status.text = "저장 공간 ${(profile.freeStorageBytes / 1_000_000_000)}GB 여유 · ${e2b.message}"
+    }
+
     private fun installOrPrepare(model: GemmaModel) {
+        val existingDownload = ModelDownloadSession.state.value
+        if (existingDownload.isRunning) {
+            status.text = "${existingDownload.model?.displayName ?: "모델"} 다운로드가 진행 중입니다. 상단 진행 상태 또는 알림에서 확인해 주세요."
+            return
+        }
         val eligibility = model.eligibility(DeviceProfile.read(this))
         if (!eligibility.canInstall) {
             status.text = eligibility.message
@@ -196,70 +237,88 @@ class MainActivity : ComponentActivity() {
                         "교사는 생성·검수 결과를 최종 확인해야 합니다.",
                 )
                 .setNegativeButton("취소", null)
-                .setPositiveButton("동의하고 준비") { _, _ -> prepareModel(model) }
+                .setPositiveButton("동의하고 다운로드") { _, _ -> requestBackgroundDownload(model) }
                 .show()
         } else {
-            prepareModel(model)
+            prepareInstalledModel(model)
         }
     }
 
-    private fun prepareModel(model: GemmaModel) {
+    private fun requestBackgroundDownload(model: GemmaModel) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionModel = model
+            AlertDialog.Builder(this)
+                .setTitle("다운로드 진행 알림")
+                .setMessage("약 ${(model.byteSize / 1_000_000_000.0).let { "%.2f".format(it) }}GB 모델을 받는 동안 화면을 닫아도 계속하려면 진행 알림이 필요합니다.")
+                .setNegativeButton("취소", null)
+                .setPositiveButton("알림 허용") { _, _ -> notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+                .show()
+        } else {
+            ModelDownloadService.start(this, model)
+        }
+    }
+
+    private fun prepareInstalledModel(model: GemmaModel, afterReady: (() -> Unit)? = null) {
         lifecycleScope.launch {
             try {
-                progress.visibility = android.view.View.VISIBLE
-                downloadDetail.visibility = android.view.View.VISIBLE
-                e2bButton.isEnabled = false
-                e4bButton.isEnabled = false
-                if (!downloads.isInstalled(model)) {
-                    status.text = "${model.displayName} 다운로드 서버에 연결하고 있습니다."
-                    downloads.download(model) { update ->
-                        runOnUiThread {
-                            updateDownloadUi(model, update.stage, update.receivedBytes, update.totalBytes, update.bytesPerSecond)
-                        }
-                    }
-                }
                 status.text = "${model.displayName}을 준비하는 중입니다. 처음에는 시간이 걸릴 수 있습니다."
                 val executionMode = runner.initialize(downloads.installedFile(model).absolutePath)
                 activeModel = model
                 status.text = "${model.displayName} 준비 완료. $executionMode"
-                runButton.isEnabled = true
+                afterReady?.invoke()
             } catch (error: Throwable) {
-                status.text = "${error.message ?: "모델 준비에 실패했습니다."} 다시 누르면 저장된 부분부터 이어받기를 시도합니다."
+                status.text = error.message ?: "모델 준비에 실패했습니다."
             } finally {
-                progress.visibility = android.view.View.GONE
-                downloadDetail.visibility = android.view.View.GONE
                 refreshDeviceState()
             }
         }
     }
 
-    private fun updateDownloadUi(model: GemmaModel, stage: DownloadStage, received: Long, total: Long, bytesPerSecond: Long) {
-        val percent = ((received * 100L) / total.coerceAtLeast(1L)).toInt().coerceIn(0, 100)
-        when (stage) {
-            DownloadStage.CONNECTING -> {
+    private fun renderDownloadState(state: ModelDownloadUiState) {
+        if (!::downloadDetail.isInitialized) return
+        if (!state.isRunning) {
+            progress.visibility = android.view.View.GONE
+            downloadDetail.visibility = android.view.View.GONE
+            if (state.stage == ModelDownloadUiStage.COMPLETED) {
+                status.text = state.message.orEmpty()
+            } else if (state.stage == ModelDownloadUiStage.FAILED) {
+                status.text = "${state.message.orEmpty()} 다시 누르면 부분 파일부터 이어받기를 시도합니다."
+            }
+            refreshDeviceState()
+            return
+        }
+        progress.visibility = android.view.View.VISIBLE
+        downloadDetail.visibility = android.view.View.VISIBLE
+        val model = state.model ?: return
+        val percent = ((state.receivedBytes * 100L) / state.totalBytes.coerceAtLeast(1L)).toInt().coerceIn(0, 100)
+        when (state.stage) {
+            ModelDownloadUiStage.CONNECTING -> {
                 progress.isIndeterminate = true
                 status.text = "${model.displayName} 다운로드 서버에 연결하고 있습니다."
                 downloadDetail.text = "연결 중 · 진행이 60초 이상 멈추면 Wi‑Fi를 확인한 뒤 다시 시도해 주세요."
             }
-            DownloadStage.DOWNLOADING -> {
+            ModelDownloadUiStage.DOWNLOADING -> {
                 progress.isIndeterminate = false
                 progress.progress = percent
-                val receivedGb = "%.2f".format(received / 1_000_000_000.0)
-                val totalGb = "%.2f".format(total / 1_000_000_000.0)
-                val speedMb = "%.1f".format(bytesPerSecond / 1_000_000.0)
+                val receivedGb = "%.2f".format(state.receivedBytes / 1_000_000_000.0)
+                val totalGb = "%.2f".format(state.totalBytes / 1_000_000_000.0)
+                val speedMb = "%.1f".format(state.bytesPerSecond / 1_000_000.0)
                 status.text = "${model.displayName}을 내려받는 중입니다."
                 downloadDetail.text = "$percent% · $receivedGb GB / $totalGb GB · ${speedMb} MB/s"
             }
-            DownloadStage.VERIFYING -> {
+            ModelDownloadUiStage.VERIFYING -> {
                 progress.isIndeterminate = true
                 status.text = "다운로드가 끝났습니다. 파일 무결성을 확인하고 있습니다."
                 downloadDetail.text = "SHA-256 확인 중 · 앱을 종료하지 마세요."
             }
-            DownloadStage.SAVING -> {
+            ModelDownloadUiStage.SAVING -> {
                 progress.isIndeterminate = true
                 status.text = "검증한 모델을 이 기기에 저장하고 있습니다."
                 downloadDetail.text = "앱 전용 저장소에 저장 중"
             }
+            else -> Unit
         }
     }
 
@@ -408,7 +467,13 @@ class MainActivity : ComponentActivity() {
 
     private fun showGenerationDialog() {
         if (activeModel == null) {
-            status.text = "먼저 기본 모델 E2B를 준비해 주세요."
+            val selected = ModelSelection.selected(this)
+            if (selected != null && downloads.isInstalled(selected)) {
+                status.text = "${selected.displayName}을 준비한 뒤 문항 생성 화면을 엽니다."
+                prepareInstalledModel(selected) { showGenerationDialog() }
+            } else {
+                status.text = "모델 관리에서 기본 모델 E2B를 내려받아 준비해 주세요."
+            }
             return
         }
         val request = EditText(this).apply {
@@ -440,6 +505,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             try {
                 runButton.isEnabled = false
+                result.visibility = View.VISIBLE
                 result.text = "자료 확인 후 문항을 생성하고 있습니다."
                 val response = StringBuilder()
                 runner.generate(QuestionPromptContract.generationPrompt(request, sourceText, store.teacherInstructions())) { partial ->
@@ -499,7 +565,13 @@ class MainActivity : ComponentActivity() {
 
     private fun runLocalReview(question: LocalQuestion) {
         if (activeModel == null) {
-            status.text = "자동 검수를 사용하려면 먼저 모델을 준비해 주세요. 교사는 원문을 직접 검수할 수 있습니다."
+            val selected = ModelSelection.selected(this)
+            if (selected != null && downloads.isInstalled(selected)) {
+                status.text = "${selected.displayName}을 준비한 뒤 자동 검수를 시작합니다."
+                prepareInstalledModel(selected) { runLocalReview(question) }
+            } else {
+                status.text = "자동 검수를 사용하려면 모델 관리에서 E2B를 준비해 주세요. 교사는 원문을 직접 검수할 수 있습니다."
+            }
             return
         }
         val sourceText = store.sources().filter { it.id in question.sourceIds }.joinToString("\n\n") { source ->
@@ -507,6 +579,7 @@ class MainActivity : ComponentActivity() {
         }
         lifecycleScope.launch {
             try {
+                result.visibility = View.VISIBLE
                 result.text = "근거와 문항을 대조하는 중입니다."
                 val response = StringBuilder()
                 runner.generate(QuestionPromptContract.reviewPrompt(question.content, sourceText)) { partial ->

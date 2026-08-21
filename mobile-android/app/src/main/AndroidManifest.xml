@@ -1,5 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:allowBackup="false"
@@ -20,6 +23,16 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/export_file_paths" />
         </provider>
+
+        <!-- 사용자가 시작한 대용량 모델 다운로드를 화면 밖에서도 알림과 함께 계속한다. -->
+        <service
+            android:name=".ai.ModelDownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <activity
+            android:name=".ModelManagerActivity"
+            android:exported="false" />
 
         <activity
             android:name=".MainActivity"
