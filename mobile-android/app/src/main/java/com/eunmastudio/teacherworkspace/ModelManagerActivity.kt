@@ -15,8 +15,8 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
-import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -32,8 +32,9 @@ import com.eunmastudio.teacherworkspace.ai.eligibility
 import kotlinx.coroutines.launch
 
 /** 모델 설치·선택·삭제·라이선스 확인을 한 화면에서 제공하는 Android 전용 관리 화면이다. */
-class ModelManagerActivity : ComponentActivity() {
+class ModelManagerActivity : AppCompatActivity() {
     private lateinit var downloadManager: ModelDownloadManager
+    private lateinit var appLockGate: AppLockGate
     private lateinit var e2Status: TextView
     private lateinit var e2Action: Button
     private lateinit var e2Delete: Button
@@ -58,12 +59,19 @@ class ModelManagerActivity : ComponentActivity() {
         window.navigationBarColor = Color.rgb(14, 16, 21)
         downloadManager = ModelDownloadManager(this)
         ModelDownloadSession.restore(this)
-        setContentView(buildScreen())
+        val screen = buildScreen()
+        appLockGate = AppLockGate(this)
+        setContentView(appLockGate.attach(screen))
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 ModelDownloadSession.state.collect { state -> renderState(state) }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired()
     }
 
     private fun buildScreen(): ScrollView {

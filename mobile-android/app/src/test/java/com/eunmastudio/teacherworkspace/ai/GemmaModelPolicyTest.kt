@@ -1,6 +1,7 @@
 package com.eunmastudio.teacherworkspace.ai
 
 import android.os.PowerManager
+import com.eunmastudio.teacherworkspace.AppLockPolicy
 import com.eunmastudio.teacherworkspace.HomeCardLayout
 import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
 import org.junit.Assert.assertFalse
@@ -117,5 +118,12 @@ class GemmaModelPolicyTest {
         assertTrue(HomeCardLayoutPolicy.defaultLayout == HomeCardLayout.ALBUM)
         assertTrue(HomeCardLayoutPolicy.fromStored("LIST") == HomeCardLayout.LIST)
         assertTrue(HomeCardLayoutPolicy.fromStored("unexpected") == HomeCardLayout.ALBUM)
+    }
+
+    @Test
+    fun `app lock requires authentication only for enabled locked sessions`() {
+        assertTrue(AppLockPolicy.shouldRequireAuthentication(enabled = true, sessionLocked = true))
+        assertFalse(AppLockPolicy.shouldRequireAuthentication(enabled = false, sessionLocked = true))
+        assertFalse(AppLockPolicy.shouldRequireAuthentication(enabled = true, sessionLocked = false))
     }
 }

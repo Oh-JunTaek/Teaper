@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
+        android:name=".TeacherWorkspaceApplication"
         android:allowBackup="false"
         android:label="문제 출제 워크스페이스"
         android:usesCleartextTraffic="false"

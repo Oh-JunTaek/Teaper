@@ -18,9 +18,10 @@ import android.widget.ProgressBar
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
-import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -54,7 +55,7 @@ import java.util.Locale
  * 초기 Android 파일럿 화면이다. 모델은 E2B·E4B만 보여 주며 E2B가 기본값이다.
  * 이후 웹의 자료·기출·생성·검수 도메인 화면을 이 앱에 단계적으로 연결한다.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : AppCompatActivity() {
     private lateinit var status: TextView
     private lateinit var progress: ProgressBar
     private lateinit var downloadDetail: TextView
@@ -68,6 +69,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var sourceExtractor: SourceContentExtractor
     private lateinit var store: LocalWorkspaceStore
     private lateinit var workspaceSummary: TextView
+    private lateinit var appLockGate: AppLockGate
     private var activeModel: GemmaModel? = null
     private var selectedSourceKind: LocalSourceKind = LocalSourceKind.REFERENCE
     private var notificationPermissionModel: GemmaModel? = null
@@ -117,7 +119,8 @@ class MainActivity : ComponentActivity() {
         store = LocalWorkspaceStore(this)
         ModelDownloadSession.restore(this)
         val screen = buildScreen()
-        setContentView(screen)
+        appLockGate = AppLockGate(this)
+        setContentView(appLockGate.attach(screen))
         applySystemInsets(screen)
         refreshDeviceState()
         lifecycleScope.launch {
@@ -156,6 +159,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired()
         if (::modelSummary.isInitialized) refreshDeviceState()
         if (::workspaceSummary.isInitialized) refreshWorkspaceSummary()
     }
@@ -712,6 +716,10 @@ class MainActivity : ComponentActivity() {
             text = "일자형 카드"
             isChecked = store.homeCardLayout() == HomeCardLayout.LIST
         }
+        val appLockOption = Switch(this).apply {
+            text = "앱 잠금 사용"
+            isChecked = AppLockGate.isEnabled(this@MainActivity)
+        }
         layoutGroup.addView(albumOption)
         layoutGroup.addView(listOption)
         val panel = LinearLayout(this).apply {
@@ -719,6 +727,8 @@ class MainActivity : ComponentActivity() {
             setPadding(8, 8, 8, 8)
             addView(TextView(this@MainActivity).apply { text = "홈 카드 보기"; textSize = 16f })
             addView(layoutGroup)
+            addView(TextView(this@MainActivity).apply { text = "로컬 자료 보호"; textSize = 16f; setPadding(0, 18, 0, 6) })
+            addView(appLockOption)
             addView(TextView(this@MainActivity).apply { text = "교사 추가 작성 선호"; textSize = 16f; setPadding(0, 18, 0, 6) })
             addView(input)
         }
@@ -730,7 +740,8 @@ class MainActivity : ComponentActivity() {
             .setPositiveButton("로컬에 저장") { _, _ ->
                 store.saveTeacherInstructions(input.text.toString())
                 store.saveHomeCardLayout(if (albumOption.isChecked) HomeCardLayout.ALBUM else HomeCardLayout.LIST)
-                status.text = "교사 추가 작성 선호와 홈 카드 보기를 이 기기에 저장했습니다."
+                AppLockGate.setEnabled(this, appLockOption.isChecked)
+                status.text = "교사 추가 작성 선호·홈 카드 보기·앱 잠금 설정을 이 기기에 저장했습니다."
                 recreate()
             }
             .show()

@@ -14,7 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -31,7 +31,7 @@ import kotlin.math.max
 /**
  * GPT 형태의 질문·응답 흐름을 제공하되, 모델·대화·자료는 Android 앱 전용 저장소와 LiteRT-LM 안에서만 처리한다.
  */
-class TeacherChatActivity : ComponentActivity() {
+class TeacherChatActivity : AppCompatActivity() {
     private lateinit var store: LocalWorkspaceStore
     private lateinit var downloads: ModelDownloadManager
     private lateinit var runner: LiteRtLmRunner
@@ -41,6 +41,7 @@ class TeacherChatActivity : ComponentActivity() {
     private lateinit var sendButton: Button
     private lateinit var status: TextView
     private lateinit var sourceSwitch: Switch
+    private lateinit var appLockGate: AppLockGate
     private var currentThread: LocalChatThread? = null
     private var activeModel: GemmaModel? = null
 
@@ -51,9 +52,15 @@ class TeacherChatActivity : ComponentActivity() {
         downloads = ModelDownloadManager(this)
         runner = LiteRtLmRunner(this)
         val screen = buildScreen()
-        setContentView(screen)
+        appLockGate = AppLockGate(this)
+        setContentView(appLockGate.attach(screen))
         applyWindowInsets(screen)
         loadThread(store.chatThreads().firstOrNull() ?: store.createChatThread())
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired()
     }
 
     override fun onDestroy() {
