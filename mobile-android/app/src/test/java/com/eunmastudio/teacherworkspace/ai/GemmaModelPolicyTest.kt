@@ -1,6 +1,8 @@
 package com.eunmastudio.teacherworkspace.ai
 
 import android.os.PowerManager
+import com.eunmastudio.teacherworkspace.HomeCardLayout
+import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -108,5 +110,12 @@ class GemmaModelPolicyTest {
         assertTrue(prompt.contains("성취기준 A"))
         assertTrue(prompt.contains("교사: 화학 결합을 설명해 주세요"))
         assertTrue(prompt.contains("AI 보조자: 자료를 확인해 보겠습니다"))
+    }
+
+    @Test
+    fun `home card layout defaults to album and safely restores list selection`() {
+        assertTrue(HomeCardLayoutPolicy.defaultLayout == HomeCardLayout.ALBUM)
+        assertTrue(HomeCardLayoutPolicy.fromStored("LIST") == HomeCardLayout.LIST)
+        assertTrue(HomeCardLayoutPolicy.fromStored("unexpected") == HomeCardLayout.ALBUM)
     }
 }

@@ -15,6 +15,8 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
+import android.widget.RadioButton
+import android.widget.RadioGroup
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.ComponentActivity
@@ -69,6 +71,14 @@ class MainActivity : ComponentActivity() {
     private var activeModel: GemmaModel? = null
     private var selectedSourceKind: LocalSourceKind = LocalSourceKind.REFERENCE
     private var notificationPermissionModel: GemmaModel? = null
+
+    private data class WorkCardItem(
+        val title: String,
+        val subtitle: String,
+        val marker: String,
+        val color: Int,
+        val action: () -> Unit,
+    )
 
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val model = notificationPermissionModel
@@ -192,13 +202,20 @@ class MainActivity : ComponentActivity() {
         content.addView(text("교사 작업", 22f).apply { setPadding(0, dp(4), 0, dp(8)) })
         workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f, Color.rgb(191, 200, 215))
         content.addView(workspaceSummary)
-        content.addView(workCard("온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어를 이 기기에서", "AI", Color.rgb(75, 126, 235)) {
-            startActivity(Intent(this@MainActivity, TeacherChatActivity::class.java))
-        })
-        content.addView(workCard("자료 준비", "참고 자료 · 기출 유형 · 공식 자료", "자", Color.rgb(65, 174, 152)) { showSourcesDialog() })
-        content.addView(workCard("문항 생성", "선택한 자료를 바탕으로 문항 만들기", "문", Color.rgb(118, 156, 244)) { showGenerationDialog() })
-        content.addView(workCard("검수함", "근거를 대조하고 승인 문항 내보내기", "검", Color.rgb(238, 177, 77)) { showReviewDialog() })
-        content.addView(workCard("교사 작성 선호", "표현과 구성에 대한 개인 선호 저장", "선", Color.rgb(186, 122, 232)) { showTeacherInstructionsDialog() })
+        val workItems = listOf(
+            WorkCardItem("온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어", "AI", Color.rgb(75, 126, 235)) {
+                startActivity(Intent(this@MainActivity, TeacherChatActivity::class.java))
+            },
+            WorkCardItem("자료 준비", "참고 자료·기출 유형·공식 자료", "자", Color.rgb(65, 174, 152)) { showSourcesDialog() },
+            WorkCardItem("문항 생성", "선택한 자료로 문항 만들기", "문", Color.rgb(118, 156, 244)) { showGenerationDialog() },
+            WorkCardItem("검수함", "근거 대조·승인 문항 내보내기", "검", Color.rgb(238, 177, 77)) { showReviewDialog() },
+        )
+        if (store.homeCardLayout() == HomeCardLayout.ALBUM) {
+            content.addView(albumCardGrid(workItems))
+        } else {
+            workItems.forEach { item -> content.addView(workCard(item)) }
+        }
+        content.addView(workCard(WorkCardItem("교사 작성 선호", "표현·구성 선호와 홈 카드 보기 변경", "선", Color.rgb(186, 122, 232)) { showTeacherInstructionsDialog() }))
         promptInput = EditText(this).apply { visibility = View.GONE }
         runButton = Button(this).apply { visibility = View.GONE }
         result = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
@@ -207,7 +224,7 @@ class MainActivity : ComponentActivity() {
         return ScrollView(this).apply { addView(content) }
     }
 
-    private fun workCard(title: String, subtitle: String, marker: String, color: Int, action: () -> Unit): LinearLayout {
+    private fun workCard(item: WorkCardItem): LinearLayout {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         return LinearLayout(this).apply {
@@ -215,18 +232,59 @@ class MainActivity : ComponentActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(16))
             background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
-            setOnClickListener { action() }
+            setOnClickListener { item.action() }
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply { bottomMargin = dp(10) }
             addView(TextView(this@MainActivity).apply {
-                text = marker; textSize = 18f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
-                background = roundedSurface(color, dp(18))
+                text = item.marker; textSize = 18f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+                background = roundedSurface(item.color, dp(18))
             }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { rightMargin = dp(16) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(TextView(this@MainActivity).apply { text = title; textSize = 20f; setTextColor(Color.WHITE) })
-                addView(TextView(this@MainActivity).apply { text = subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); setPadding(0, dp(3), 0, 0) })
+                addView(TextView(this@MainActivity).apply { text = item.title; textSize = 20f; setTextColor(Color.WHITE) })
+                addView(TextView(this@MainActivity).apply { text = item.subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); setPadding(0, dp(3), 0, 0) })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@MainActivity).apply { text = "›"; textSize = 28f; setTextColor(Color.rgb(159, 171, 191)) })
+        }
+    }
+
+    /** 기본 앨범형 보기: 자주 쓰는 교사 작업을 두 칸씩 묶어 시선 이동을 줄인다. */
+    private fun albumCardGrid(items: List<WorkCardItem>): LinearLayout {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            items.chunked(2).forEach { rowItems ->
+                addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    rowItems.forEachIndexed { index, item ->
+                        addView(albumCard(item), LinearLayout.LayoutParams(0, dp(166), 1f).apply {
+                            if (index == 0 && rowItems.size == 2) rightMargin = dp(10)
+                        })
+                    }
+                    if (rowItems.size == 1) addView(View(this@MainActivity), LinearLayout.LayoutParams(0, dp(166), 1f))
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(166)).apply { bottomMargin = dp(10) })
+            }
+        }
+    }
+
+    private fun albumCard(item: WorkCardItem): LinearLayout {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(12))
+            background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
+            setOnClickListener { item.action() }
+            addView(TextView(this@MainActivity).apply {
+                text = item.marker; textSize = 16f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
+                background = roundedSurface(item.color, dp(16))
+            }, LinearLayout.LayoutParams(dp(46), dp(46)))
+            addView(TextView(this@MainActivity).apply {
+                text = item.title; textSize = 17f; setTextColor(Color.WHITE); maxLines = 2; setPadding(0, dp(10), 0, 0)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = item.subtitle; textSize = 12.5f; setTextColor(Color.rgb(185, 195, 209)); maxLines = 2; setPadding(0, dp(4), 0, 0)
+            })
         }
     }
 
@@ -645,14 +703,35 @@ class MainActivity : ComponentActivity() {
             minLines = 5
             gravity = Gravity.TOP
         }
+        val layoutGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        val albumOption = RadioButton(this).apply {
+            text = "2열 앨범형 카드 (기본값)"
+            isChecked = store.homeCardLayout() == HomeCardLayout.ALBUM
+        }
+        val listOption = RadioButton(this).apply {
+            text = "일자형 카드"
+            isChecked = store.homeCardLayout() == HomeCardLayout.LIST
+        }
+        layoutGroup.addView(albumOption)
+        layoutGroup.addView(listOption)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(8, 8, 8, 8)
+            addView(TextView(this@MainActivity).apply { text = "홈 카드 보기"; textSize = 16f })
+            addView(layoutGroup)
+            addView(TextView(this@MainActivity).apply { text = "교사 추가 작성 선호"; textSize = 16f; setPadding(0, 18, 0, 6) })
+            addView(input)
+        }
         AlertDialog.Builder(this)
             .setTitle("교사 추가 작성 선호")
-            .setMessage("표현·구성의 개인 선호를 적을 수 있습니다. 근거 사용·비복제·교사 검수 원칙과 충돌하면 공통 원칙이 우선합니다.")
-            .setView(input)
+            .setMessage("홈 카드 보기와 표현·구성의 개인 선호를 이 기기에 저장합니다. 공통 안전 원칙이 우선합니다.")
+            .setView(panel)
             .setNegativeButton("취소", null)
             .setPositiveButton("로컬에 저장") { _, _ ->
                 store.saveTeacherInstructions(input.text.toString())
-                status.text = "교사 추가 작성 선호를 이 기기에 저장했습니다."
+                store.saveHomeCardLayout(if (albumOption.isChecked) HomeCardLayout.ALBUM else HomeCardLayout.LIST)
+                status.text = "교사 추가 작성 선호와 홈 카드 보기를 이 기기에 저장했습니다."
+                recreate()
             }
             .show()
     }

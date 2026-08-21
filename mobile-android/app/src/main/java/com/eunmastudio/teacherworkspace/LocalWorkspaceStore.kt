@@ -11,6 +11,19 @@ enum class LocalSourceKind(val label: String) {
     OFFICIAL("공식 자료"),
 }
 
+enum class HomeCardLayout(val label: String) {
+    ALBUM("2열 앨범형"),
+    LIST("일자형"),
+}
+
+object HomeCardLayoutPolicy {
+    val defaultLayout = HomeCardLayout.ALBUM
+
+    fun fromStored(value: String?): HomeCardLayout = runCatching {
+        HomeCardLayout.valueOf(value ?: defaultLayout.name)
+    }.getOrDefault(defaultLayout)
+}
+
 data class LocalSource(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
@@ -145,6 +158,12 @@ class LocalWorkspaceStore(context: Context) {
 
     fun saveTeacherInstructions(value: String) {
         preferences.edit().putString("teacherInstructions", value.trim()).apply()
+    }
+
+    fun homeCardLayout(): HomeCardLayout = HomeCardLayoutPolicy.fromStored(preferences.getString("homeCardLayout", null))
+
+    fun saveHomeCardLayout(layout: HomeCardLayout) {
+        preferences.edit().putString("homeCardLayout", layout.name).apply()
     }
 
     private fun writeSources(items: List<LocalSource>) {
