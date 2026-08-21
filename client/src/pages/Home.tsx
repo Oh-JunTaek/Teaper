@@ -12,7 +12,7 @@ const cards = [
   { key: "materialCount", label: "등록 참고 자료", detail: "교육과정·지침·교수 자료", icon: FileText, tone: "bg-[#E6F4EE] text-[#15856B]", path: "/materials" },
   { key: "referenceCount", label: "구조화된 기출문제", detail: "유형·난이도·출제 의도", icon: BookOpen, tone: "bg-[#E8EFF7] text-[#2D6496]", path: "/references" },
   { key: "reviewCount", label: "검수 대기 문항", detail: "근거 및 검증 결과 확인", icon: ClipboardCheck, tone: "bg-[#FFF2D8] text-[#B56716]", path: "/review" },
-  { key: "approvedCount", label: "승인된 문항", detail: "CSV로 내보낼 수 있는 문항", icon: Sparkles, tone: "bg-[#F2EAFE] text-[#7B56B3]", path: "/approved" },
+  { key: "approvedCount", label: "승인된 문항", detail: "문서·PDF·CSV로 내보낼 수 있는 문항", icon: Sparkles, tone: "bg-[#F2EAFE] text-[#7B56B3]", path: "/approved" },
 ] as const;
 
 export default function Home() {

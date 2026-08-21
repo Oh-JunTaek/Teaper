@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setSecret, getSecret } from "../src/vault.mjs";
 import { createLocalBridge } from "../src/bridge.mjs";
-import { openLocalStore, exportQuestionsCsv } from "../src/store.mjs";
+import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx } from "../src/store.mjs";
 import { fallbackOptions } from "../src/fallback.mjs";
 
 const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
@@ -24,6 +24,9 @@ try {
   store.saveReferenceEvidence({ requestId: "r-1", referenceQuestionId: "ref-1", reference: { intent: "비교" } });
   assert.equal(store.listQuestionSources("q-1").length, 1);
   assert.match(exportQuestionsCsv(store.listApproved()), /문항/);
+  const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
+  assert.equal(docx.subarray(0, 2).toString(), "PK");
+  assert.ok(docx.length > 500);
   store.close();
   const bridge = await createLocalBridge();
   const bad = await fetch(`http://127.0.0.1:${bridge.port}/health`);
