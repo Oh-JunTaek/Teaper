@@ -164,6 +164,9 @@ class MainActivity : ComponentActivity() {
         content.addView(text("교사 작업", 22f).apply { setPadding(0, dp(4), 0, dp(8)) })
         workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f, Color.rgb(191, 200, 215))
         content.addView(workspaceSummary)
+        content.addView(workCard("온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어를 이 기기에서", "AI", Color.rgb(75, 126, 235)) {
+            startActivity(Intent(this@MainActivity, TeacherChatActivity::class.java))
+        })
         content.addView(workCard("자료 준비", "참고 자료 · 기출 유형 · 공식 자료", "자", Color.rgb(65, 174, 152)) { showSourcesDialog() })
         content.addView(workCard("문항 생성", "선택한 자료를 바탕으로 문항 만들기", "문", Color.rgb(118, 156, 244)) { showGenerationDialog() })
         content.addView(workCard("검수함", "근거를 대조하고 승인 문항 내보내기", "검", Color.rgb(238, 177, 77)) { showReviewDialog() })

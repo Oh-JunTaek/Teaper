@@ -31,6 +31,21 @@ data class LocalQuestion(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+data class LocalChatMessage(
+    val id: String = UUID.randomUUID().toString(),
+    val content: String,
+    val isUser: Boolean,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
+data class LocalChatThread(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val messages: List<LocalChatMessage> = emptyList(),
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
+)
+
 /**
  * 자료 원문·문항·검수 상태는 Android 앱의 private SharedPreferences에만 보관한다.
  * 자동 백업을 끄고, 사용자 명시 삭제 외에는 서버에 전송하지 않는다.
@@ -66,6 +81,18 @@ class LocalWorkspaceStore(context: Context) {
         }.getOrNull()
     }
 
+    fun chatThreads(): List<LocalChatThread> = readArray("chatThreads").mapNotNull { item ->
+        runCatching {
+            LocalChatThread(
+                id = item.getString("id"),
+                title = item.getString("title"),
+                messages = item.getJSONArray("messages").toChatMessages(),
+                createdAt = item.getLong("createdAt"),
+                updatedAt = item.getLong("updatedAt"),
+            )
+        }.getOrNull()
+    }.sortedByDescending { it.updatedAt }
+
     fun saveSource(source: LocalSource) {
         val next = sources().filterNot { it.id == source.id } + source
         writeSources(next)
@@ -86,6 +113,32 @@ class LocalWorkspaceStore(context: Context) {
 
     fun deleteQuestion(questionId: String) {
         writeQuestions(questions().filterNot { it.id == questionId })
+    }
+
+    fun createChatThread(title: String = "새 온디바이스 대화"): LocalChatThread {
+        val thread = LocalChatThread(title = title)
+        writeChatThreads(chatThreads() + thread)
+        return thread
+    }
+
+    fun appendChatMessage(threadId: String, content: String, isUser: Boolean): LocalChatThread? {
+        val cleanContent = content.trim()
+        if (cleanContent.isBlank()) return null
+        val message = LocalChatMessage(content = cleanContent, isUser = isUser)
+        var updated: LocalChatThread? = null
+        val next = chatThreads().map { thread ->
+            if (thread.id != threadId) thread else thread.copy(
+                title = if (thread.messages.isEmpty() && isUser) cleanContent.take(42) else thread.title,
+                messages = thread.messages + message,
+                updatedAt = message.createdAt,
+            ).also { updated = it }
+        }
+        writeChatThreads(next)
+        return updated
+    }
+
+    fun deleteChatThread(threadId: String) {
+        writeChatThreads(chatThreads().filterNot { it.id == threadId })
     }
 
     fun teacherInstructions(): String = preferences.getString("teacherInstructions", "") ?: ""
@@ -126,6 +179,29 @@ class LocalWorkspaceStore(context: Context) {
         preferences.edit().putString("questions", array.toString()).apply()
     }
 
+    private fun writeChatThreads(items: List<LocalChatThread>) {
+        val array = JSONArray()
+        items.forEach { thread ->
+            array.put(JSONObject().apply {
+                put("id", thread.id)
+                put("title", thread.title)
+                put("messages", JSONArray().apply {
+                    thread.messages.forEach { message ->
+                        put(JSONObject().apply {
+                            put("id", message.id)
+                            put("content", message.content)
+                            put("isUser", message.isUser)
+                            put("createdAt", message.createdAt)
+                        })
+                    }
+                })
+                put("createdAt", thread.createdAt)
+                put("updatedAt", thread.updatedAt)
+            })
+        }
+        preferences.edit().putString("chatThreads", array.toString()).apply()
+    }
+
     private fun readArray(key: String): List<JSONObject> = runCatching {
         val array = JSONArray(preferences.getString(key, "[]"))
         List(array.length()) { array.getJSONObject(it) }
@@ -133,3 +209,14 @@ class LocalWorkspaceStore(context: Context) {
 }
 
 private fun JSONArray.toStringList(): List<String> = List(length()) { getString(it) }
+
+private fun JSONArray.toChatMessages(): List<LocalChatMessage> = List(length()) { index ->
+    getJSONObject(index).let { item ->
+        LocalChatMessage(
+            id = item.getString("id"),
+            content = item.getString("content"),
+            isUser = item.getBoolean("isUser"),
+            createdAt = item.getLong("createdAt"),
+        )
+    }
+}

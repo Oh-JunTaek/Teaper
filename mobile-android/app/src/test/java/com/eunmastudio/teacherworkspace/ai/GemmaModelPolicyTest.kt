@@ -89,4 +89,24 @@ class GemmaModelPolicyTest {
         assertFalse(ModelDownloadUiState(model = GemmaModel.E2B, stage = ModelDownloadUiStage.COMPLETED).isRunning)
         assertFalse(ModelDownloadUiState(model = GemmaModel.E2B, stage = ModelDownloadUiStage.FAILED).isRunning)
     }
+
+    @Test
+    fun `teacher chat prompt preserves on-device source and review boundaries`() {
+        val prompt = TeacherChatPromptContract.conversationPrompt(
+            history = listOf(
+                ChatPromptMessage(isUser = true, content = "화학 결합을 설명해 주세요"),
+                ChatPromptMessage(isUser = false, content = "자료를 확인해 보겠습니다"),
+            ),
+            sourceSummaries = "[공식 자료] 성취기준 A · 2쪽\n원자 간 결합",
+            teacherInstructions = "표로 정리",
+        )
+
+        assertTrue(prompt.contains("기기 안에서만"))
+        assertTrue(prompt.contains("웹 검색"))
+        assertTrue(prompt.contains("복제"))
+        assertTrue(prompt.contains("교사 최종 검수"))
+        assertTrue(prompt.contains("성취기준 A"))
+        assertTrue(prompt.contains("교사: 화학 결합을 설명해 주세요"))
+        assertTrue(prompt.contains("AI 보조자: 자료를 확인해 보겠습니다"))
+    }
 }
