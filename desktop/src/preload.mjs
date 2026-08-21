@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("teacherLocal", {
   deleteMaterial: id => ipcRenderer.invoke("local:delete-material", id),
   listReferences: input => ipcRenderer.invoke("local:list-references", input),
   saveReference: input => ipcRenderer.invoke("local:save-reference", input),
+  listOfficialDocuments: input => ipcRenderer.invoke("local:list-official-documents", input),
+  setOfficialDocumentSelection: input => ipcRenderer.invoke("local:set-official-document-selection", input),
   generateQuestion: input => ipcRenderer.invoke("local:generate-question", input),
   listQuestions: status => ipcRenderer.invoke("local:list-questions", status),
   reviewQuestion: input => ipcRenderer.invoke("local:review-question", input),

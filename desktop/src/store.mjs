@@ -3,6 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { LOCAL_OFFICIAL_DOCUMENTS, documentsForScope } from "./officialCatalog.mjs";
 
 function databasePath() { return process.env.LOCAL_DATA_DB_PATH || join(process.env.LOCAL_APP_DATA_DIR || join(homedir(), ".teacher-assessment-assistant"), "teacher-assessment.sqlite"); }
 export async function openLocalStore() {
@@ -13,6 +14,8 @@ export async function openLocalStore() {
     CREATE TABLE IF NOT EXISTS reference_materials (id TEXT PRIMARY KEY, title TEXT NOT NULL, subject TEXT NOT NULL, unit TEXT NOT NULL, material_type TEXT NOT NULL, file_path TEXT NOT NULL, content_sha256 TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS material_chunks (id TEXT PRIMARY KEY, material_id TEXT NOT NULL, chunk_index INTEGER NOT NULL, content TEXT NOT NULL, embedding_json TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS reference_questions (id TEXT PRIMARY KEY, subject TEXT NOT NULL, unit TEXT NOT NULL, source TEXT NOT NULL, question_number TEXT, question_text TEXT NOT NULL, intent TEXT, created_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS official_documents (catalog_key TEXT PRIMARY KEY, title TEXT NOT NULL, subject TEXT NOT NULL, unit TEXT NOT NULL, applicable_year TEXT NOT NULL, document_type TEXT NOT NULL, official_url TEXT NOT NULL, issue_number TEXT NOT NULL, rights_status TEXT NOT NULL, summary TEXT NOT NULL, cached_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS official_document_selections (catalog_key TEXT PRIMARY KEY, use_for_generation INTEGER NOT NULL DEFAULT 0, selected_at TEXT);
     CREATE TABLE IF NOT EXISTS generation_requests (id TEXT PRIMARY KEY, provider_type TEXT NOT NULL, provider_model TEXT NOT NULL, external_transfer_consent_at TEXT, payload_json TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS generated_questions (id TEXT PRIMARY KEY, request_id TEXT NOT NULL, status TEXT NOT NULL, question_json TEXT NOT NULL, validation_json TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS generated_question_sources (id TEXT PRIMARY KEY, question_id TEXT NOT NULL, source_type TEXT NOT NULL, source_id TEXT NOT NULL, excerpt TEXT, created_at TEXT NOT NULL);
@@ -20,6 +23,9 @@ export async function openLocalStore() {
     CREATE TABLE IF NOT EXISTS generation_reference_questions (request_id TEXT NOT NULL, reference_question_id TEXT NOT NULL, reference_json TEXT NOT NULL, PRIMARY KEY (request_id, reference_question_id));
     CREATE TABLE IF NOT EXISTS review_events (id TEXT PRIMARY KEY, question_id TEXT NOT NULL, action TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, action TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL);`);
+  const cacheOfficialDocument = db.prepare("INSERT INTO official_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(catalog_key) DO UPDATE SET title = excluded.title, subject = excluded.subject, unit = excluded.unit, applicable_year = excluded.applicable_year, document_type = excluded.document_type, official_url = excluded.official_url, issue_number = excluded.issue_number, rights_status = excluded.rights_status, summary = excluded.summary, cached_at = excluded.cached_at");
+  const cachedAt = new Date().toISOString();
+  for (const document of LOCAL_OFFICIAL_DOCUMENTS) cacheOfficialDocument.run(document.catalogKey, document.title, document.subject, document.unit, document.applicableYear, document.documentType, document.officialUrl, document.issueNumber, document.rightsStatus, document.summary, cachedAt);
   return {
     saveMaterial(material) { db.prepare("INSERT INTO reference_materials VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(material.id, material.title, material.subject, material.unit, material.materialType, material.filePath, material.contentSha256, material.createdAt); },
     saveMaterialChunk(chunk) { db.prepare("INSERT INTO material_chunks VALUES (?, ?, ?, ?, ?, ?)").run(chunk.id, chunk.materialId, chunk.chunkIndex, chunk.content, JSON.stringify(chunk.embedding), chunk.createdAt); },
@@ -29,6 +35,10 @@ export async function openLocalStore() {
     deleteMaterial(id) { db.prepare("DELETE FROM material_chunks WHERE material_id = ?").run(id); return db.prepare("DELETE FROM reference_materials WHERE id = ?").run(id); },
     saveReferenceQuestion(reference) { db.prepare("INSERT INTO reference_questions VALUES (?, ?, ?, ?, ?, ?, ?, ?)").run(reference.id, reference.subject, reference.unit, reference.source, reference.questionNumber || null, reference.questionText, reference.intent || null, reference.createdAt); },
     listReferenceQuestions(subject, unit) { const query = subject ? db.prepare("SELECT * FROM reference_questions WHERE subject = ? AND (unit = ? OR unit = '공통') ORDER BY created_at DESC") : db.prepare("SELECT * FROM reference_questions ORDER BY created_at DESC"); return subject ? query.all(subject, unit) : query.all(); },
+    listOfficialDocuments(subject, unit = "공통") { return db.prepare("SELECT d.*, COALESCE(s.use_for_generation, 0) AS use_for_generation FROM official_documents d LEFT JOIN official_document_selections s ON d.catalog_key = s.catalog_key WHERE (d.subject = ? OR d.subject = '공통') AND (d.unit = ? OR d.unit = '공통') ORDER BY d.subject = '공통', d.title").all(subject, unit); },
+    setOfficialDocumentSelection(catalogKey, useForGeneration) { db.prepare("INSERT INTO official_document_selections (catalog_key, use_for_generation, selected_at) VALUES (?, ?, ?) ON CONFLICT(catalog_key) DO UPDATE SET use_for_generation = excluded.use_for_generation, selected_at = excluded.selected_at").run(catalogKey, useForGeneration ? 1 : 0, new Date().toISOString()); },
+    listSelectedOfficialDocuments(subject, unit = "공통") { return db.prepare("SELECT d.* FROM official_documents d INNER JOIN official_document_selections s ON d.catalog_key = s.catalog_key WHERE s.use_for_generation = 1 AND (d.subject = ? OR d.subject = '공통') AND (d.unit = ? OR d.unit = '공통') ORDER BY d.subject = '공통', d.title").all(subject, unit); },
+    localOfficialCatalogForScope(subject, unit = "공통") { return documentsForScope(subject, unit); },
     saveRequest(request) { db.prepare("INSERT INTO generation_requests VALUES (?, ?, ?, ?, ?, ?)").run(request.id, request.providerType, request.providerModel, request.externalTransferConsentAt || null, JSON.stringify(request), request.createdAt); },
     saveQuestion(question) { db.prepare("INSERT INTO generated_questions VALUES (?, ?, ?, ?, ?, ?)").run(question.id, question.requestId, question.status, JSON.stringify(question), JSON.stringify(question.validationReport || {}), question.createdAt); },
     saveQuestionSource(source) { db.prepare("INSERT INTO generated_question_sources VALUES (?, ?, ?, ?, ?, ?)").run(source.id, source.questionId, source.sourceType, source.sourceId, source.excerpt || null, source.createdAt); },
@@ -45,8 +55,8 @@ export async function openLocalStore() {
 }
 export function exportQuestionsCsv(questions) {
   const escape = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
-  const header = ["ID", "문제", "보기", "정답", "해설", "출제 의도", "난이도", "배점", "유형", "검수 상태"];
-  const rows = questions.map(question => [question.id, question.questionText, (question.choices || []).join(" | "), question.answer, question.explanation, question.intent, question.difficulty, question.points, question.questionType, question.status]);
+  const header = ["ID", "문제", "보기", "정답", "해설", "출제 의도", "난이도", "배점", "유형", "모델", "프롬프트 버전", "검수 상태"];
+  const rows = questions.map(question => [question.id, question.questionText, (question.choices || []).join(" | "), question.answer, question.explanation, question.intent, question.difficulty, question.points, question.questionType, question.model || "로컬 모델", question.promptVersion || "local-only-v1", question.status]);
   return [header, ...rows].map(row => row.map(escape).join(",")).join("\n");
 }
 

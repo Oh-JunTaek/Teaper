@@ -8,7 +8,7 @@
 |---|---|---|---|
 | 사용자·역할 | `users` | `local_users` 또는 단일 교사 프로필 | 로컬 전용은 교사 프로필만 사용 |
 | 참고 자료 | `reference_materials`, `material_chunks` | SQLite 메타데이터 + 암호화 파일 폴더 | 파일 원문은 자동 외부 동기화 금지 |
-| 공식 문서 | `official_sources`, `official_documents` | SQLite 캐시 + 출처 URL | 권리 상태와 버전·스냅샷을 함께 보존 |
+| 공식 문서 | `official_sources`, `official_documents` | SQLite 카탈로그 캐시 + 출처 URL·교사 선택 상태 | 원문은 복제하지 않고, 권리 상태·공식 링크·선택 근거를 보존 |
 | 기출·샘플 | `reference_questions` | SQLite `reference_questions` | 원문 사용 범위·출처·선택 상태를 보존 |
 | 생성 요청 | `generation_requests` | SQLite `generation_requests` | 제공자·모델·전송 동의 시각을 동일하게 기록 |
 | 생성 문항·근거 | `generated_questions`, `generated_question_sources` | SQLite 동일 구조 | 문항·정답·해설·근거 참조를 그대로 유지 |
@@ -62,4 +62,4 @@ type GenerationProvider = {
 2. 외부 제공자는 설정 동의와 요청별 동의가 모두 없으면 호출될 수 없어야 한다.
 3. 로컬 제공자는 웹앱 서버의 `localhost`로 호출되지 않아야 한다.
 4. 요청 이력에는 제공자 유형·모델·선택 근거·전송 동의 시각이 기록되어야 한다.
-5. 내보낸 문항은 실행 환경과 무관하게 동일한 구조를 유지해야 한다.
+5. 내보낸 문항은 실행 환경과 무관하게 `ID·문제·보기·정답·해설·출제 의도·난이도·배점·유형·모델·프롬프트 버전·검수 상태` 열 순서를 유지해야 한다.

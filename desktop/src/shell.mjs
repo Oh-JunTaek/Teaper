@@ -55,7 +55,9 @@ async function showPrintPreview(html) {
 function localGenerationPrompt(input) {
   const materialText = store.listMaterialContents(input.subject, input.unit).slice(0, 8).join("\n\n");
   const references = store.listReferenceQuestions(input.subject, input.unit).slice(0, 5).map(item => `${item.source} ${item.question_number || ""}: ${item.question_text}`).join("\n");
-  return `당신은 교사의 문항 출제를 보조합니다. 최종 판단은 교사가 합니다.\n과목: ${input.subject}\n단원: ${input.unit}\n요청: ${input.request}\n\n[교사 자료]\n${materialText || "등록된 텍스트 자료 없음"}\n\n[기출 참고]\n${references || "등록된 기출 참고 없음"}\n\n문항, 보기, 정답, 해설, 출제 의도를 구분해 한국어로 작성하세요. 계산·조건은 교사가 다시 검수할 수 있게 명확히 적으세요.`;
+  const officialDocuments = store.listSelectedOfficialDocuments(input.subject, input.unit);
+  const officialContext = officialDocuments.map(document => `- ${document.title}: ${document.summary} (원문 대조: ${document.official_url})`).join("\n");
+  return `당신은 교사의 문항 출제를 보조합니다. 최종 판단은 교사가 합니다.\n과목: ${input.subject}\n단원: ${input.unit}\n요청: ${input.request}\n\n[선택한 공식 자료 메타데이터]\n${officialContext || "선택한 공식 자료 없음 · 생성 전 공식 자료 화면에서 사용 여부를 확인하세요."}\n\n[교사 자료]\n${materialText || "등록된 텍스트 자료 없음"}\n\n[기출 참고]\n${references || "등록된 기출 참고 없음"}\n\n문항, 보기, 정답, 해설, 출제 의도를 구분해 한국어로 작성하세요. 계산·조건은 교사가 다시 검수할 수 있게 명확히 적으세요.`;
 }
 
 function registerHandlers() {
@@ -71,11 +73,15 @@ function registerHandlers() {
   ipcMain.handle("local:delete-material", (_event, id) => { store.deleteMaterial(String(id)); return { success: true }; });
   ipcMain.handle("local:list-references", (_event, input = {}) => store.listReferenceQuestions(input.subject, input.unit));
   ipcMain.handle("local:save-reference", (_event, input) => { const id = randomUUID(); store.saveReferenceQuestion({ id, subject: String(input.subject || "화학 I"), unit: String(input.unit || "공통"), source: String(input.source || "교사 등록 기출"), questionNumber: String(input.questionNumber || ""), questionText: String(input.questionText || ""), intent: String(input.intent || ""), createdAt: new Date().toISOString() }); return { id }; });
+  ipcMain.handle("local:list-official-documents", (_event, input = {}) => store.listOfficialDocuments(String(input.subject || "화학 I"), String(input.unit || "공통")));
+  ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
   ipcMain.handle("local:generate-question", async (_event, input) => {
     const prompt = localGenerationPrompt(input); const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt, runtime: input.runtime || "ollama", options: { temperature: 0.2, maxTokens: 1200 } }) });
     const now = new Date().toISOString(); const requestId = randomUUID(); const questionId = randomUUID();
     store.saveRequest({ id: requestId, providerType: "local", providerModel: generated.model, externalTransferConsentAt: null, payload: { subject: input.subject, unit: input.unit, request: input.request }, createdAt: now });
-    store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: generated.response, choices: [], answer: "교사 확인 필요", explanation: "로컬 모델 생성 결과를 바탕으로 교사가 정답·해설을 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", validationReport: { localOnly: true }, createdAt: now });
+    const officialDocuments = store.listSelectedOfficialDocuments(input.subject, input.unit);
+    for (const document of officialDocuments) store.saveOfficialEvidence({ requestId, documentId: document.catalog_key, document: { catalogKey: document.catalog_key, title: document.title, officialUrl: document.official_url, summary: document.summary, rightsStatus: document.rights_status } });
+    store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: generated.response, choices: [], answer: "교사 확인 필요", explanation: "로컬 모델 생성 결과를 바탕으로 교사가 정답·해설을 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", model: generated.model, promptVersion: "local-only-v1", validationReport: { localOnly: true, officialDocumentCount: officialDocuments.length }, createdAt: now });
     return { id: questionId, response: generated.response };
   });
   ipcMain.handle("local:list-questions", (_event, status) => store.listQuestions(status));

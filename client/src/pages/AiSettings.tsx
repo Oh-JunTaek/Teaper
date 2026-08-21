@@ -25,7 +25,7 @@ const localRecommendations = [
   { model: "qwen3:8b", tier: "표준", requirement: "메모리 16GB 또는 VRAM 6GB 이상", use: "일반 화학 I 출제 보조" },
   { model: "qwen3:14b", tier: "권장", requirement: "메모리 32GB 또는 VRAM 10GB 이상", use: "복잡한 자료와 해설 품질 우선" },
 ];
-const LOCAL_TEST_INSTALLER_URL = "/manus-storage/teacher-assessment-local-test-0.1.0-beta.1-setup_dc17b7fd.exe";
+const LOCAL_TEST_INSTALLER_URL = "/manus-storage/teacher-assessment-local-test-0.1.0-beta.2-setup_0de42c01.exe";
 
 function HelpTip({ children }: { children: React.ReactNode }) {
   return <Tooltip><TooltipTrigger asChild><button type="button" aria-label="도움말" className="ml-1 inline-flex align-middle text-slate-400 hover:text-[#15856B]"><HelpCircle className="h-3.5 w-3.5" /></button></TooltipTrigger><TooltipContent className="max-w-64 leading-5">{children}</TooltipContent></Tooltip>;
