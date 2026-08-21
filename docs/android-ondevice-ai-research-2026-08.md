@@ -28,7 +28,15 @@ Google Play에 게시되는 앱은 데이터 수집 여부와 무관하게 Data 
 
 2026-08-31부터 신규 앱과 업데이트는 Android 16(API 36) 이상을 target SDK로 제출해야 한다.[10] Google Play App Signing과 Android App Bundle(AAB) 기반 배포, 내부/비공개 테스트 트랙, 실제 기기 성능 검증이 필요하다.[11]
 
-모델을 앱에서 직접 제공하거나 내려받게 하면 모델별 약관도 배포 설계에 포함해야 한다. Gemma 약관은 모델 또는 파생 모델을 제3자에게 배포할 때 사용 제한의 고지, 약관 사본 제공, 수정 파일 표기 및 Notice 파일 동반을 요구한다.[12] 한편 Google의 Gemma 3 Android 예제는 앱이 Hugging Face 로그인과 약관 동의를 거쳐 LiteRT Community의 양자화 모델을 직접 내려받아 기기에서 실행하는 흐름을 제시한다.[13] 즉 독립 앱의 직접 다운로드는 기술적으로 가능한 경로지만, 모델마다 **수동 약관 동의·다운로드 권한·Notice/라이선스 표시·해시 검증**을 제품 흐름에 반영해야 한다.
+모델을 앱에서 직접 제공하거나 내려받게 하면 모델별 약관도 배포 설계에 포함해야 한다. **현재 대상인 Gemma 4 E2B·E4B는 Apache-2.0으로 제공**되며, 재배포 시 라이선스·저작권·NOTICE 보존 조건을 충족해야 한다.[12] Google의 Gemma 3 Android 예제는 앱이 Hugging Face 로그인과 약관 동의를 거쳐 LiteRT Community의 양자화 모델을 직접 내려받아 기기에서 실행하는 흐름을 제시한다.[13] 즉 독립 앱의 직접 다운로드는 기술적으로 가능한 경로지만, 모델마다 **다운로드 권한·라이선스/NOTICE 표시·해시 검증**을 제품 흐름에 반영해야 한다.
+
+### Gemma 4 E2B·E4B 한정 권고
+
+Google AI Edge 공식 LiteRT-LM 모델 페이지는 Android 모바일·엣지 배포 대상으로 E2B·E4B를 제시하며, LiteRT-LM 파일 크기를 E2B **2.58GB**, E4B **3.65GB**로 공개한다.[14] 같은 페이지의 Android S26 Ultra 측정은 E2B에서 CPU 최고 메모리 1,733MB 또는 GPU 676MB, E4B에서 CPU 3,283MB 또는 GPU 710MB를 예시로 든다. 이는 특정 플래그십 기기의 벤치마크일 뿐 일반 최소 사양은 아니다.[14]
+
+따라서 EunmaStudio 앱은 E2B를 기본 모델로 고정하고, 다운로드 전 **최소 5GB 가용 저장 공간**을 확인하는 보수적 정책을 사용한다. E4B는 3.65GB 파일과 실행 여유를 고려해 **최소 7GB 가용 저장 공간**, **총 메모리 8GB 이상**, **과열 상태 아님**을 만족할 때만 ‘고성능 기기용’으로 권장한다. 이 기준은 Google이 보장하는 일반 최소 사양이 아니라, 앱이 다운로드 실패·저장 공간 부족·발열 위험을 줄이기 위해 적용하는 초기 파일럿 기준이다. 실제 기기 데이터로 조정해야 한다.
+
+LiteRT-LM Android Kotlin API는 Gradle 의존성 `com.google.ai.edge.litertlm:litertlm-android`를 제공하며, 모델 초기화는 UI 스레드 밖에서 수행해야 한다. GPU 사용 시 `libvndksupport.so`와 `libOpenCL.so`를 선택적 native library로 선언해야 한다.[15]
 
 ## 4. 제품 판단
 
@@ -60,6 +68,10 @@ Google Play에 게시되는 앱은 데이터 수집 여부와 무관하게 Data 
 
 [11] [Google Play Integrity·App Signing](https://developer.android.com/google/play/integrity)
 
-[12] [Gemma Terms of Use](https://ai.google.dev/gemma/terms)
+[12] [Gemma 4 Apache 2.0 License](https://ai.google.dev/gemma/apache_2)
 
 [13] [Gemma 3 on mobile and web with Google AI Edge](https://developers.googleblog.com/gemma-3-on-mobile-and-web-with-google-ai-edge/)
+
+[14] [Gemma 4 LiteRT-LM 모델](https://developers.google.com/edge/litert-lm/models/gemma-4)
+
+[15] [LiteRT-LM Android Kotlin API](https://developers.google.com/edge/litert-lm/android)

@@ -1,0 +1,19 @@
+EunmaStudio 문제 출제 워크스페이스 Android 파일럿
+
+이 앱은 LiteRT Community가 제공하는 다음 Gemma 4 모델 파일을 앱 전용 저장소로 직접 내려받을 수 있습니다.
+
+- litert-community/gemma-4-E2B-it-litert-lm
+  - 고정 리비전: 6b78abd019e61a1ca4cbe3b212d2c9ce8ff38a94
+  - 파일: gemma-4-E2B-it.litertlm
+  - SHA-256: 181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c
+
+- litert-community/gemma-4-E4B-it-litert-lm
+  - 고정 리비전: 2eee7ac325f20eb8c9ac1d0e972f7c84663062da
+  - 파일: gemma-4-E4B-it.litertlm
+  - SHA-256: 0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0
+
+Gemma 4는 Apache License 2.0으로 제공됩니다. 아래 Apache License 2.0 사본을 함께 제공합니다.
+
+EunmaStudio는 Google, LiteRT-LM 또는 Hugging Face와 제휴하거나 이들의 보증을 받지 않습니다. Gemma는 Google LLC의 상표일 수 있습니다.
+
+모델은 교사의 출제 보조를 위한 것이며, 문항·정답·해설의 정확성, 평가 적합성, 저작권·출제 보안 준수는 교사가 최종 확인해야 합니다.
