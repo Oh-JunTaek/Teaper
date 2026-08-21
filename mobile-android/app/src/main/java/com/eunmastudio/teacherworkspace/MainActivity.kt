@@ -237,15 +237,16 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(18), dp(16), dp(18), dp(16))
             background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
             setOnClickListener { item.action() }
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(92)).apply { bottomMargin = dp(10) }
+            minimumHeight = dp(100)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
             addView(TextView(this@MainActivity).apply {
                 text = item.marker; textSize = 18f; gravity = Gravity.CENTER; setTextColor(Color.WHITE)
                 background = roundedSurface(item.color, dp(18))
             }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { rightMargin = dp(16) })
             addView(LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(TextView(this@MainActivity).apply { text = item.title; textSize = 20f; setTextColor(Color.WHITE) })
-                addView(TextView(this@MainActivity).apply { text = item.subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); setPadding(0, dp(3), 0, 0) })
+                addView(TextView(this@MainActivity).apply { text = item.title; textSize = 20f; setTextColor(Color.WHITE); maxLines = 2 })
+                addView(TextView(this@MainActivity).apply { text = item.subtitle; textSize = 14f; setTextColor(Color.rgb(185, 195, 209)); maxLines = 3; setPadding(0, dp(3), 0, 0) })
             }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             addView(TextView(this@MainActivity).apply { text = "›"; textSize = 28f; setTextColor(Color.rgb(159, 171, 191)) })
         }

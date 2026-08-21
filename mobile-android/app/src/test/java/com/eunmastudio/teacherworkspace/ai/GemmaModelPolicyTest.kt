@@ -94,23 +94,26 @@ class GemmaModelPolicyTest {
     }
 
     @Test
-    fun `teacher chat prompt preserves on-device source and review boundaries`() {
-        val prompt = TeacherChatPromptContract.conversationPrompt(
+    fun `teacher chat request separates system rules from role based history`() {
+        val request = TeacherChatPromptContract.conversationRequest(
             history = listOf(
                 ChatPromptMessage(isUser = true, content = "화학 결합을 설명해 주세요"),
                 ChatPromptMessage(isUser = false, content = "자료를 확인해 보겠습니다"),
+                ChatPromptMessage(isUser = true, content = "세 줄로 다시 설명해 주세요"),
             ),
             sourceSummaries = "[공식 자료] 성취기준 A · 2쪽\n원자 간 결합",
             teacherInstructions = "표로 정리",
         )
 
-        assertTrue(prompt.contains("기기 안에서만"))
-        assertTrue(prompt.contains("웹 검색"))
-        assertTrue(prompt.contains("복제"))
-        assertTrue(prompt.contains("교사 최종 검수"))
-        assertTrue(prompt.contains("성취기준 A"))
-        assertTrue(prompt.contains("교사: 화학 결합을 설명해 주세요"))
-        assertTrue(prompt.contains("AI 보조자: 자료를 확인해 보겠습니다"))
+        assertTrue(request.systemInstruction.contains("기기 안에서만"))
+        assertTrue(request.systemInstruction.contains("웹 검색"))
+        assertTrue(request.systemInstruction.contains("복제"))
+        assertTrue(request.systemInstruction.contains("교사 최종 검수"))
+        assertTrue(request.systemInstruction.contains("성취기준 A"))
+        assertFalse(request.systemInstruction.contains("화학 결합을 설명해 주세요"))
+        assertTrue(request.history.size == 3)
+        assertTrue(request.history.last().isUser)
+        assertTrue(request.history.last().content.contains("세 줄로"))
     }
 
     @Test

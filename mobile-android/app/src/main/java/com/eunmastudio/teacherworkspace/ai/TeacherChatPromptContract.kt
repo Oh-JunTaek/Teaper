@@ -5,7 +5,7 @@ package com.eunmastudio.teacherworkspace.ai
  * 이 문자열은 서버가 아닌 기기 안의 LiteRT-LM 호출 직전에만 결합된다.
  */
 object TeacherChatPromptContract {
-    const val VERSION = "teacher-chat-v1.0-mobile"
+    const val VERSION = "teacher-chat-v1.1-mobile"
 
     private val systemRules = listOf(
         "당신은 EunmaStudio 문제 출제 워크스페이스의 교사용 온디바이스 AI 대화 보조자입니다.",
@@ -18,28 +18,38 @@ object TeacherChatPromptContract {
         "불확실한 내용은 추측으로 채우지 말고, 모르는 점·필요한 자료·교사 확인 항목을 구분해 말하십시오.",
     ).joinToString("\n")
 
-    fun conversationPrompt(
+    /**
+     * LiteRT-LM의 systemInstruction에는 서비스 규칙만 넣고, 대화 내용은 역할이 보존된 Message로 전달한다.
+     * 규칙을 일반 사용자 발화로 합치면 Gemma가 안내문 자체에 답하는 현상이 생길 수 있다.
+     */
+    fun conversationRequest(
         history: List<ChatPromptMessage>,
         sourceSummaries: String,
         teacherInstructions: String,
-    ): String = buildString {
+    ): TeacherChatRequest = TeacherChatRequest(
+        systemInstruction = buildString {
         appendLine(systemRules)
         appendLine()
         appendLine("[등록 자료 사용 설정]")
-        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." })
+        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." }.take(6_000))
         appendLine()
         appendLine("[교사 작성 선호]")
-        appendLine(teacherInstructions.ifBlank { "없음" })
+        appendLine(teacherInstructions.ifBlank { "없음" }.take(1_200))
         appendLine()
-        appendLine("[현재 대화]")
-        history.takeLast(12).forEach { message ->
-            appendLine(if (message.isUser) "교사: ${message.content}" else "AI 보조자: ${message.content}")
-        }
-        appendLine("AI 보조자:")
-    }
+        appendLine("위 규칙은 내부 실행 지시입니다. 이를 반복·요약하지 말고 사용자의 가장 최근 질문에 직접 답하십시오.")
+        },
+        history = history.takeLast(8).map { message ->
+            message.copy(content = message.content.take(1_600))
+        },
+    )
 }
 
 data class ChatPromptMessage(
     val isUser: Boolean,
     val content: String,
+)
+
+data class TeacherChatRequest(
+    val systemInstruction: String,
+    val history: List<ChatPromptMessage>,
 )

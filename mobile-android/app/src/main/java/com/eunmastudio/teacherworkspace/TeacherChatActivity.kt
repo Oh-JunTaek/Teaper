@@ -184,23 +184,34 @@ class TeacherChatActivity : AppCompatActivity() {
             val assistantBubble = addBubble("응답을 준비하고 있습니다.", false)
             try {
                 val latestThread = store.chatThreads().firstOrNull { it.id == thread.id } ?: thread
-                val prompt = TeacherChatPromptContract.conversationPrompt(
+                val request = TeacherChatPromptContract.conversationRequest(
                     history = latestThread.messages.map { ChatPromptMessage(it.isUser, it.content) },
                     sourceSummaries = if (sourceSwitch.isChecked) sourceSummaries() else "",
                     teacherInstructions = store.teacherInstructions(),
                 )
                 val response = StringBuilder()
-                runner.generate(prompt) { partial ->
-                    response.append(partial)
+                var previousChunk = ""
+                runner.chat(request.systemInstruction, request.history) { partial ->
+                    // LiteRT-LM 버전에 따라 스트림 값이 조각 또는 누적 문자열일 수 있으므로 중복 누적을 막는다.
+                    if (partial.startsWith(previousChunk)) {
+                        response.clear()
+                        response.append(partial)
+                    } else {
+                        response.append(partial)
+                    }
+                    previousChunk = partial
                     runOnUiThread {
                         assistantBubble.text = response.toString()
                         messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
                     }
                 }
-                store.appendChatMessage(thread.id, response.toString(), isUser = false)
+                val finalResponse = response.toString().trim()
+                if (finalResponse.isBlank()) throw IllegalStateException("모델이 빈 응답을 반환했습니다. 다시 시도해 주세요.")
+                store.appendChatMessage(thread.id, finalResponse, isUser = false)
                 status.text = "${activeModel?.displayName ?: "로컬 모델"}이 이 기기에서 응답했습니다. 외부 전송을 사용하지 않습니다."
             } catch (error: Throwable) {
-                assistantBubble.text = error.message ?: "이 기기에서 응답을 만들지 못했습니다. 모델 상태를 확인해 주세요."
+                assistantBubble.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
+                status.text = "생성 오류가 기록되었습니다. 앱을 다시 열 필요 없이 같은 질문을 다시 보낼 수 있습니다."
             } finally {
                 sendButton.isEnabled = true
             }
@@ -228,8 +239,8 @@ class TeacherChatActivity : AppCompatActivity() {
     }
 
     private fun sourceSummaries(): String = store.sources().joinToString("\n\n") { source ->
-        "[${source.kind.label}] ${source.title}${source.pageReferences?.let { " · $it" } ?: ""}\n${source.excerpt}"
-    }
+        "[${source.kind.label}] ${source.title}${source.pageReferences?.let { " · $it" } ?: ""}\n${source.excerpt.take(1_200)}"
+    }.take(6_000)
 
     private fun showThreadPicker() {
         val threads = store.chatThreads()
