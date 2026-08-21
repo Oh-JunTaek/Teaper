@@ -157,7 +157,29 @@ class GemmaModelPolicyTest {
         )
 
         assertTrue(request.history.sumOf { it.content.length } <= ChatTurnPolicy.MAX_HISTORY_CHARACTERS)
+        assertTrue(request.history.size <= ChatTurnPolicy.MAX_HISTORY_MESSAGES)
         assertTrue(request.history.last().content.contains(newestQuestion))
         assertTrue(request.systemInstruction.length < 2_000)
+    }
+
+    @Test
+    fun `recent persisted turns preserve the immediately previous answer and current follow up`() {
+        val followUp = "그 설명을 두 줄로 줄여 줘"
+        val request = TeacherChatPromptContract.conversationRequest(
+            history = listOf(
+                ChatPromptMessage(true, "오래된 첫 질문"),
+                ChatPromptMessage(false, "오래된 첫 답변"),
+                ChatPromptMessage(true, "최근 질문"),
+                ChatPromptMessage(false, "최근 답변의 핵심어는 공유 결합입니다."),
+                ChatPromptMessage(true, followUp),
+            ),
+            sourceSummaries = "",
+            teacherInstructions = "",
+        )
+
+        assertTrue(request.history.size == ChatTurnPolicy.MAX_HISTORY_MESSAGES)
+        assertTrue(request.history.any { it.content.contains("공유 결합") && !it.isUser })
+        assertTrue(request.history.last().isUser)
+        assertTrue(request.history.last().content == followUp)
     }
 }

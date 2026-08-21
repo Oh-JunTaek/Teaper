@@ -5,8 +5,10 @@ package com.eunmastudio.teacherworkspace.ai
  * 네이티브 생성과 UI·SharedPreferences 실패를 분리해, 저장 실패가 프로세스 종료처럼 보이지 않게 한다.
  */
 object ChatTurnPolicy {
+    const val MAX_CONTEXT_TOKENS = 2_048
     const val MAX_RESPONSE_TOKENS = 128
-    const val MAX_HISTORY_CHARACTERS = 700
+    const val MAX_HISTORY_MESSAGES = 4
+    const val MAX_HISTORY_CHARACTERS = 600
 
     /**
      * E2B의 짧은 채팅 컨텍스트에서 이전 이력이 KV 캐시를 과점유하지 않게 한다.
@@ -15,7 +17,7 @@ object ChatTurnPolicy {
     fun compactHistoryForContext(history: List<ChatPromptMessage>): List<ChatPromptMessage> {
         var remaining = MAX_HISTORY_CHARACTERS
         val kept = mutableListOf<ChatPromptMessage>()
-        history.asReversed().forEach { message ->
+        history.takeLast(MAX_HISTORY_MESSAGES).asReversed().forEach { message ->
             if (remaining <= 0) return@forEach
             val content = message.content.take(remaining)
             if (content.isNotBlank()) {

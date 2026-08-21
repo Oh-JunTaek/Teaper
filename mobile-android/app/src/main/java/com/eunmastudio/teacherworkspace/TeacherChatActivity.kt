@@ -183,7 +183,7 @@ class TeacherChatActivity : AppCompatActivity() {
                 addBubble(content, true)
                 val ready = ensureModelReady()
                 if (!ready) return@launch
-                assistantBubble = addBubble("응답을 생성하고 기록할 준비를 하고 있습니다.", false)
+                assistantBubble = addBubble("입력 중…", false)
                 val latestThread = store.chatThreads().firstOrNull { it.id == thread.id } ?: thread
                 val request = TeacherChatPromptContract.conversationRequest(
                     history = latestThread.messages.map { ChatPromptMessage(it.isUser, it.content) },
@@ -225,7 +225,7 @@ class TeacherChatActivity : AppCompatActivity() {
                 modelFilePath = downloads.installedFile(selected).absolutePath,
                 preferGpu = false,
                 // 시스템 지시문·최근 대화·짧은 답변을 수용하면서도 KV 캐시를 작게 유지한다.
-                maxNumTokens = 2_048,
+                maxNumTokens = ChatTurnPolicy.MAX_CONTEXT_TOKENS,
             )
             activeModel = selected
             status.text = "${selected.displayName} 준비 완료 · $mode"

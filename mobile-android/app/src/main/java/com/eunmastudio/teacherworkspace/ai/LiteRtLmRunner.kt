@@ -85,23 +85,23 @@ class LiteRtLmRunner(private val context: Context) {
         val lastUserIndex = history.indexOfLast { it.isUser }
         if (lastUserIndex < 0) throw IllegalArgumentException("보낼 질문이 없습니다.")
         val latestUserMessage = history[lastUserIndex].content
-        val conversation = chatConversation?.takeIf { chatSystemInstruction == systemInstruction }
-            ?: run {
-                resetChatConversation()
-                val initialMessages = history.take(lastUserIndex).map { message ->
-                    if (message.isUser) Message.user(message.content) else Message.model(message.content)
-                }
-                activeEngine.createConversation(
-                    ConversationConfig(
-                        systemInstruction = Contents.of(systemInstruction),
-                        initialMessages = initialMessages,
-                        samplerConfig = SamplerConfig(temperature = 0.35, topK = 20, topP = 0.9),
-                    ),
-                ).also {
-                    chatConversation = it
-                    chatSystemInstruction = systemInstruction
-                }
-            }
+        // 동기 sendMessage의 네이티브 세션 이력 보존 여부에 의존하지 않는다.
+        // 매 질문마다 앱 전용 저장소에 성공 확정된 최근 역할 이력을 다시 주입해,
+        // 화면 재구성·엔진 복구 뒤에도 같은 길이의 연속 대화 문맥을 유지한다.
+        resetChatConversation()
+        val initialMessages = history.take(lastUserIndex).map { message ->
+            if (message.isUser) Message.user(message.content) else Message.model(message.content)
+        }
+        val conversation = activeEngine.createConversation(
+            ConversationConfig(
+                systemInstruction = Contents.of(systemInstruction),
+                initialMessages = initialMessages,
+                samplerConfig = SamplerConfig(temperature = 0.35, topK = 20, topP = 0.9),
+            ),
+        ).also {
+            chatConversation = it
+            chatSystemInstruction = systemInstruction
+        }
         // S25+에서 부분 토큰은 보인 뒤 프로세스가 종료되는 현상을 분리하기 위해,
         // 채팅은 스트리밍 콜백 대신 짧은 완성 응답을 한 번만 받아 UI·저장소에 전달한다.
         // 이는 응답 표시와 SharedPreferences 기록이 경쟁하지 않게 하는 안정성 우선 경로다.
