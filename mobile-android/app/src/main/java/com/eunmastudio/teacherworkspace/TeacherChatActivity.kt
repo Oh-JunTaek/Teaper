@@ -28,6 +28,7 @@ import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.ModelSelection
 import com.eunmastudio.teacherworkspace.ai.PromptDisclosurePolicy
 import com.eunmastudio.teacherworkspace.ai.TeacherChatPromptContract
+import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -188,7 +189,7 @@ class TeacherChatActivity : AppCompatActivity() {
                 PromptDisclosurePolicy.safeResponseFor(content)?.let { safeReply ->
                     assistantBubble = addBubble(safeReply, false)
                     val persistedAssistant = store.appendChatMessage(thread.id, safeReply, isUser = false)
-                    assistantBubble?.text = ChatTurnPolicy.requirePersisted(safeReply, persistedAssistant != null)
+                    assistantBubble?.text = renderChatMessage(ChatTurnPolicy.requirePersisted(safeReply, persistedAssistant != null))
                     status.text = "내부 설정은 공개하지 않습니다. 교사용 기능 안내는 계속 도와드릴 수 있습니다."
                     return@launch
                 }
@@ -214,12 +215,12 @@ class TeacherChatActivity : AppCompatActivity() {
                 )
                 // 저장이 성공하기 전에는 완성 답변을 화면에 확정하지 않는다.
                 val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
-                assistantBubble?.text = ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null)
+                assistantBubble?.text = renderChatMessage(ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null))
                 messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
                 currentThread = persistedAssistant ?: currentThread
                 status.text = "${activeModel?.displayName ?: "로컬 모델"}이 이 기기에서 응답했습니다. 외부 전송을 사용하지 않습니다."
             } catch (error: Throwable) {
-                assistantBubble?.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
+                assistantBubble?.text = renderChatMessage("응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}")
                 status.text = "생성 오류가 기록되었습니다. 앱을 다시 열 필요 없이 같은 질문을 다시 보낼 수 있습니다."
             } finally {
                 sendButton.isEnabled = true
@@ -320,7 +321,8 @@ class TeacherChatActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         return TextView(this).apply {
-            text = content; textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.1f)
+            text = renderChatMessage(content); textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f)
+            setTextIsSelectable(!isUser)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             background = solid(if (isUser) Color.rgb(66, 101, 171) else Color.rgb(38, 43, 54), dp(20))
             messageList.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -331,6 +333,9 @@ class TeacherChatActivity : AppCompatActivity() {
             messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
         }
     }
+
+    private fun renderChatMessage(content: String): CharSequence =
+        ChatMarkdownRenderer.render(content, resources.displayMetrics.density)
 
     private fun solid(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
 }

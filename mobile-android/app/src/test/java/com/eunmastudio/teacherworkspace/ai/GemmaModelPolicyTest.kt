@@ -5,6 +5,7 @@ import com.eunmastudio.teacherworkspace.AppLockPolicy
 import com.eunmastudio.teacherworkspace.HomeCardLayout
 import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
 import com.eunmastudio.teacherworkspace.OfficialSourceCatalog
+import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -210,5 +211,15 @@ class GemmaModelPolicyTest {
     fun `official source catalog contains secure provider links`() {
         assertTrue(OfficialSourceCatalog.entries.size >= 3)
         assertTrue(OfficialSourceCatalog.entries.all { it.url.startsWith("https://") })
+    }
+
+    @Test
+    fun `chat markdown renderer preserves readable content without raw markdown delimiters`() {
+        val rendered = ChatMarkdownRenderer.plainText("# 열역학\n- **엔트로피**를 `S`로 씁니다.")
+        assertTrue(rendered.contains("열역학"))
+        assertTrue(rendered.contains("엔트로피"))
+        assertTrue(rendered.contains("S"))
+        assertFalse(rendered.contains("**"))
+        assertFalse(rendered.contains("`"))
     }
 }
