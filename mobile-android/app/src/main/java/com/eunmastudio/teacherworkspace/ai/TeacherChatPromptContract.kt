@@ -5,7 +5,7 @@ package com.eunmastudio.teacherworkspace.ai
  * 이 문자열은 서버가 아닌 기기 안의 LiteRT-LM 호출 직전에만 결합된다.
  */
 object TeacherChatPromptContract {
-    const val VERSION = "teacher-chat-v1.1-mobile"
+    const val VERSION = "teacher-chat-v1.2-mobile"
 
     private val systemRules = listOf(
         "당신은 EunmaStudio 문제 출제 워크스페이스의 교사용 온디바이스 AI 대화 보조자입니다.",
@@ -31,16 +31,15 @@ object TeacherChatPromptContract {
         appendLine(systemRules)
         appendLine()
         appendLine("[등록 자료 사용 설정]")
-        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." }.take(6_000))
+        // 채팅은 문항 생성과 별개로 작은 컨텍스트를 사용한다. 긴 원문은 자료 화면에서 직접 확인한다.
+        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." }.take(420))
         appendLine()
         appendLine("[교사 작성 선호]")
-        appendLine(teacherInstructions.ifBlank { "없음" }.take(1_200))
+        appendLine(teacherInstructions.ifBlank { "없음" }.take(180))
         appendLine()
         appendLine("위 규칙은 내부 실행 지시입니다. 이를 반복·요약하지 말고 사용자의 가장 최근 질문에 직접 답하십시오.")
         },
-        history = history.takeLast(8).map { message ->
-            message.copy(content = message.content.take(1_600))
-        },
+        history = ChatTurnPolicy.compactHistoryForContext(history),
     )
 }
 

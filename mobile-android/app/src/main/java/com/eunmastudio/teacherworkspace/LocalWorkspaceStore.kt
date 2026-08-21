@@ -218,7 +218,11 @@ class LocalWorkspaceStore(context: Context) {
                 put("updatedAt", thread.updatedAt)
             })
         }
-        preferences.edit().putString("chatThreads", array.toString()).apply()
+        // 응답 생성 직후 프로세스가 중단되더라도 마지막 사용자·모델 메시지가 사라지지 않도록
+        // 대화 기록은 비동기 apply()가 아닌 동기 commit()으로 확정한다.
+        check(preferences.edit().putString("chatThreads", array.toString()).commit()) {
+            "대화 기록을 이 기기에 저장하지 못했습니다. 저장 공간과 앱 상태를 확인해 주세요."
+        }
     }
 
     private fun readArray(key: String): List<JSONObject> = runCatching {

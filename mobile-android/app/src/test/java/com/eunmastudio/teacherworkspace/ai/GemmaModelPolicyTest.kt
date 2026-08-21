@@ -129,4 +129,35 @@ class GemmaModelPolicyTest {
         assertFalse(AppLockPolicy.shouldRequireAuthentication(enabled = false, sessionLocked = true))
         assertFalse(AppLockPolicy.shouldRequireAuthentication(enabled = true, sessionLocked = false))
     }
+
+    @Test
+    fun `chat response is normalized and never rendered before persistence succeeds`() {
+        val normalized = ChatTurnPolicy.normalizeForPersistence("  준비된 답변  ")
+
+        assertTrue(normalized == "준비된 답변")
+        assertTrue(ChatTurnPolicy.requirePersisted(normalized, persisted = true) == "준비된 답변")
+        assertTrue(ChatTurnPolicy.MAX_RESPONSE_TOKENS == 128)
+        val rejected = runCatching { ChatTurnPolicy.requirePersisted(normalized, persisted = false) }
+        assertTrue(rejected.isFailure)
+        assertTrue(runCatching { ChatTurnPolicy.normalizeForPersistence("   ") }.isFailure)
+    }
+
+    @Test
+    fun `chat context keeps the newest question within a bounded history budget`() {
+        val newestQuestion = "가장 최근 질문은 반드시 남아야 합니다."
+        val request = TeacherChatPromptContract.conversationRequest(
+            history = (1..8).map { index ->
+                ChatPromptMessage(
+                    isUser = index % 2 == 1,
+                    content = if (index == 8) newestQuestion else "이전 대화 $index ".repeat(180),
+                )
+            },
+            sourceSummaries = "등록 자료 ".repeat(300),
+            teacherInstructions = "교사 선호 ".repeat(100),
+        )
+
+        assertTrue(request.history.sumOf { it.content.length } <= ChatTurnPolicy.MAX_HISTORY_CHARACTERS)
+        assertTrue(request.history.last().content.contains(newestQuestion))
+        assertTrue(request.systemInstruction.length < 2_000)
+    }
 }

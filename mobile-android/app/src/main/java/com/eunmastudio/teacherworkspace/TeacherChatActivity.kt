@@ -20,6 +20,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
+import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
@@ -172,46 +173,35 @@ class TeacherChatActivity : AppCompatActivity() {
         val content = input.text.toString().trim()
         if (content.isBlank()) return
         val thread = currentThread ?: store.createChatThread().also { currentThread = it }
-        store.appendChatMessage(thread.id, content, isUser = true)
-        input.setText("")
-        addBubble(content, true)
         sendButton.isEnabled = false
         lifecycleScope.launch {
-            val ready = ensureModelReady()
-            if (!ready) {
-                sendButton.isEnabled = true
-                return@launch
-            }
-            val assistantBubble = addBubble("응답을 준비하고 있습니다.", false)
+            var assistantBubble: TextView? = null
             try {
+                val persistedUser = store.appendChatMessage(thread.id, content, isUser = true)
+                ChatTurnPolicy.requirePersisted(content, persistedUser != null)
+                input.setText("")
+                addBubble(content, true)
+                val ready = ensureModelReady()
+                if (!ready) return@launch
+                assistantBubble = addBubble("응답을 생성하고 기록할 준비를 하고 있습니다.", false)
                 val latestThread = store.chatThreads().firstOrNull { it.id == thread.id } ?: thread
                 val request = TeacherChatPromptContract.conversationRequest(
                     history = latestThread.messages.map { ChatPromptMessage(it.isUser, it.content) },
                     sourceSummaries = if (sourceSwitch.isChecked) sourceSummaries() else "",
                     teacherInstructions = store.teacherInstructions(),
                 )
-                val response = StringBuilder()
-                var previousChunk = ""
+                var completedResponse = ""
                 runner.chat(request.systemInstruction, request.history) { partial ->
-                    // LiteRT-LM 버전에 따라 스트림 값이 조각 또는 누적 문자열일 수 있으므로 중복 누적을 막는다.
-                    if (partial.startsWith(previousChunk)) {
-                        response.clear()
-                        response.append(partial)
-                    } else {
-                        response.append(partial)
-                    }
-                    previousChunk = partial
-                    runOnUiThread {
-                        assistantBubble.text = response.toString()
-                        messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
-                    }
+                    completedResponse = partial
                 }
-                val finalResponse = response.toString().trim()
-                if (finalResponse.isBlank()) throw IllegalStateException("모델이 빈 응답을 반환했습니다. 다시 시도해 주세요.")
-                store.appendChatMessage(thread.id, finalResponse, isUser = false)
+                val finalResponse = ChatTurnPolicy.normalizeForPersistence(completedResponse)
+                // 저장이 성공하기 전에는 완성 답변을 화면에 확정하지 않는다.
+                val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
+                assistantBubble?.text = ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null)
+                messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
                 status.text = "${activeModel?.displayName ?: "로컬 모델"}이 이 기기에서 응답했습니다. 외부 전송을 사용하지 않습니다."
             } catch (error: Throwable) {
-                assistantBubble.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
+                assistantBubble?.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
                 status.text = "생성 오류가 기록되었습니다. 앱을 다시 열 필요 없이 같은 질문을 다시 보낼 수 있습니다."
             } finally {
                 sendButton.isEnabled = true
@@ -231,7 +221,12 @@ class TeacherChatActivity : AppCompatActivity() {
             status.text = "${selected.displayName}을 채팅용으로 준비하고 있습니다."
             // S25+ 실기기에서 GPU 생성 완료 뒤 프로세스가 종료되는 현상을 분리하기 위해,
             // 채팅은 우선 CPU 안정성 모드로 실행한다. 문항·이미지 경로의 GPU 정책과는 별개다.
-            val mode = runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false)
+            val mode = runner.initialize(
+                modelFilePath = downloads.installedFile(selected).absolutePath,
+                preferGpu = false,
+                // 시스템 지시문·최근 대화·짧은 답변을 수용하면서도 KV 캐시를 작게 유지한다.
+                maxNumTokens = 2_048,
+            )
             activeModel = selected
             status.text = "${selected.displayName} 준비 완료 · $mode"
             true
