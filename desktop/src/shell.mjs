@@ -39,6 +39,10 @@ async function saveExportFile(defaultPath, content) {
   return { saved: true, path: result.filePath };
 }
 
+function recordExportAudit(kind, count, outcome) {
+  store.audit({ id: randomUUID(), action: "local_export", payload: { kind, count, outcome }, createdAt: new Date().toISOString() });
+}
+
 async function showPrintPreview(html) {
   const preview = new BrowserWindow({ parent: mainWindow, modal: true, show: false, width: 900, height: 1000, title: "문항 인쇄 미리보기", backgroundColor: "#ffffff", webPreferences: LOCAL_WINDOW_WEB_PREFERENCES });
   installWindowBoundary(preview);
@@ -78,11 +82,11 @@ function registerHandlers() {
   ipcMain.handle("local:review-question", (_event, input) => { store.reviewQuestion({ id: randomUUID(), questionId: String(input.questionId), status: input.status, reason: String(input.reason || ""), createdAt: new Date().toISOString() }); return { success: true }; });
   ipcMain.handle("local:export-approved", async (_event, input) => {
     const questions = store.listApproved(); if (!questions.length) throw new Error("내보낼 승인 문항이 없습니다.");
-    if (input.kind === "csv") return saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`);
-    if (input.kind === "docx-question") return saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper"));
-    if (input.kind === "docx-answer") return saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet"));
-    if (input.kind === "print-question") return showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper"));
-    if (input.kind === "print-answer") return showPrintPreview(exportQuestionsPrintHtml(questions, "answer-sheet"));
+    if (input.kind === "csv") { const result = await saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
+    if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
+    if (input.kind === "docx-answer") { const result = await saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
+    if (input.kind === "print-question") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
+    if (input.kind === "print-answer") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     throw new Error("지원하지 않는 내보내기 형식입니다.");
   });
 }
