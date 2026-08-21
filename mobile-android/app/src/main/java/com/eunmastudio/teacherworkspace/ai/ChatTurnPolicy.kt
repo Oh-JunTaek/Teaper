@@ -6,7 +6,8 @@ package com.eunmastudio.teacherworkspace.ai
  */
 object ChatTurnPolicy {
     const val MAX_CONTEXT_TOKENS = 2_048
-    const val MAX_RESPONSE_TOKENS = 128
+    // E2B의 답변 품질을 높이되 S25+에서 검증한 짧은 컨텍스트·CPU 안정성 경로를 유지한다.
+    const val MAX_RESPONSE_TOKENS = 192
     const val MAX_HISTORY_MESSAGES = 4
     const val MAX_HISTORY_CHARACTERS = 600
 

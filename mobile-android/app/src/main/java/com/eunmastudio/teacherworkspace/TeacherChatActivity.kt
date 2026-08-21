@@ -25,6 +25,7 @@ import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.ModelSelection
+import com.eunmastudio.teacherworkspace.ai.PromptDisclosurePolicy
 import com.eunmastudio.teacherworkspace.ai.TeacherChatPromptContract
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -181,6 +182,14 @@ class TeacherChatActivity : AppCompatActivity() {
                 ChatTurnPolicy.requirePersisted(content, persistedUser != null)
                 input.setText("")
                 addBubble(content, true)
+                // 모델 호출 전 차단해 내부 지시문이 생성·저장·화면에 남지 않게 한다.
+                PromptDisclosurePolicy.safeResponseFor(content)?.let { safeReply ->
+                    assistantBubble = addBubble(safeReply, false)
+                    val persistedAssistant = store.appendChatMessage(thread.id, safeReply, isUser = false)
+                    assistantBubble?.text = ChatTurnPolicy.requirePersisted(safeReply, persistedAssistant != null)
+                    status.text = "내부 설정은 공개하지 않습니다. 교사용 기능 안내는 계속 도와드릴 수 있습니다."
+                    return@launch
+                }
                 val ready = ensureModelReady()
                 if (!ready) return@launch
                 assistantBubble = addBubble("입력 중…", false)
@@ -194,7 +203,13 @@ class TeacherChatActivity : AppCompatActivity() {
                 runner.chat(request.systemInstruction, request.history) { partial ->
                     completedResponse = partial
                 }
-                val finalResponse = ChatTurnPolicy.normalizeForPersistence(completedResponse)
+                val finalResponse = ChatTurnPolicy.normalizeForPersistence(
+                    if (PromptDisclosurePolicy.isPotentialDisclosure(completedResponse)) {
+                        PromptDisclosurePolicy.SAFE_REPLY
+                    } else {
+                        completedResponse
+                    },
+                )
                 // 저장이 성공하기 전에는 완성 답변을 화면에 확정하지 않는다.
                 val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
                 assistantBubble?.text = ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null)
