@@ -9,6 +9,7 @@ import {
   generationRequests,
   InsertUser,
   materialChunks,
+  managedAiMonthlySuccess,
   managedAiUsageDaily,
   officialDocumentSelections,
   officialDocuments,
@@ -153,6 +154,29 @@ export async function getManagedAiUsageReport(days = 14) {
     limitedCount: result.limitedCount + (row.outcome === "limited" ? row.callCount : 0),
   }), { callCount: 0, successCount: 0, failureCount: 0, limitedCount: 0 });
   return { retentionDays: 90, days, summary, rows: recentRows };
+}
+
+/** 월간 성공 작업 수만 계정별로 보관합니다. 원문·프롬프트·파일명·IP는 이 테이블에 저장하지 않습니다. */
+export function managedAiUsageMonth(at = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul", year: "numeric", month: "2-digit" }).formatToParts(at);
+  const part = (type: string) => parts.find(item => item.type === type)?.value || "00";
+  return `${part("year")}-${part("month")}`;
+}
+
+export async function getManagedAiMonthlySuccessCount(ownerId: number, at = new Date()) {
+  const db = await requireDb();
+  const usageMonth = managedAiUsageMonth(at);
+  const row = (await db.select().from(managedAiMonthlySuccess).where(and(eq(managedAiMonthlySuccess.ownerId, ownerId), eq(managedAiMonthlySuccess.usageMonth, usageMonth))).limit(1))[0];
+  return { usageMonth, successCount: row?.successCount || 0 };
+}
+
+export async function recordManagedAiMonthlySuccess(ownerId: number, at = new Date()) {
+  const db = await requireDb();
+  const usageMonth = managedAiUsageMonth(at);
+  await db.insert(managedAiMonthlySuccess).values({ ownerId, usageMonth, successCount: 1 }).onDuplicateKeyUpdate({
+    set: { successCount: sql`${managedAiMonthlySuccess.successCount} + 1`, updatedAt: new Date() },
+  });
+  return getManagedAiMonthlySuccessCount(ownerId, at);
 }
 
 export async function listAiProviderSettings(userId: number) {

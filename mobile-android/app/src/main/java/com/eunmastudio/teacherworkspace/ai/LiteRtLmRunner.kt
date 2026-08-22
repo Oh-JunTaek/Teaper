@@ -112,6 +112,29 @@ class LiteRtLmRunner(private val context: Context) {
         }
     }
 
+    /** 이미지 응답은 화면에 중간 토큰을 누적하지 않고, 생성 완료 뒤 한 번에 반환합니다. */
+    suspend fun inspectImageFinal(
+        imagePath: String,
+        prompt: String,
+        systemInstruction: String,
+        settings: LocalModelSettings = LocalModelSettings(),
+    ): String = withContext(Dispatchers.Default) {
+        val activeEngine = requireNotNull(engine) { "먼저 모델을 준비해 주세요." }
+        val response = StringBuilder()
+        activeEngine.createConversation(
+            ConversationConfig(
+                systemInstruction = Contents.of(systemInstruction),
+                samplerConfig = LocalModelSettingsPolicy.samplerConfig(settings),
+                thinkingConfig = LocalModelSettingsPolicy.thinkingConfig(settings),
+            ),
+        ).use { conversation ->
+            conversation.sendMessageAsync(Contents.of(Content.ImageFile(imagePath), Content.Text(prompt)))
+                .catch { throwable -> throw IllegalStateException("이미지 확인 중 오류가 발생했습니다: ${throwable.message}", throwable) }
+                .collect { message -> message.textContent().takeIf { it.isNotBlank() }?.let(response::append) }
+        }
+        response.toString()
+    }
+
     private fun Message.textContent(): String = contents.contents
         .filterIsInstance<Content.Text>()
         .joinToString(separator = "") { it.text }

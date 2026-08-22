@@ -10,6 +10,7 @@ const db = vi.hoisted(() => ({
   deleteMaterialForUser: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
+  getManagedAiMonthlySuccessCount: vi.fn().mockResolvedValue({ usageMonth: "2026-08", successCount: 0 }),
   getUserAiPreferences: vi.fn().mockResolvedValue({ customInstructions: "계산 과정의 단위를 확인" }),
   getMaterialChunksForRag: vi.fn().mockResolvedValue([]),
   getReferenceQuestionsForRag: vi.fn().mockResolvedValue([{ id: 11, subject: "화학 I", unit: "화학 결합", questionType: "개념 확인형", difficulty: "중", points: 3, year: "프로토타입", source: "프로토타입 샘플", questionText: "샘플 문제", choices: ["A", "B"], answer: "1", explanation: "설명", intent: "의도", embedding: [1] }]),
@@ -19,13 +20,14 @@ const db = vi.hoisted(() => ({
   ensurePrototypeSampleQuestions: vi.fn().mockResolvedValue({ created: 2, ids: [11, 12], label: "프로토타입 샘플" }),
   listReferenceQuestions: vi.fn().mockResolvedValue([]),
   listGeneratedQuestions: vi.fn().mockResolvedValue([{ id: 81, questionText: "플러스 출력 문항", choices: ["①"], answer: "①", explanation: "설명", intent: "의도", difficulty: "중", points: 2, questionType: "개념 확인형", visualSpec: null }]),
+  recordManagedAiMonthlySuccess: vi.fn().mockResolvedValue({ usageMonth: "2026-08", successCount: 1 }),
   recordManagedAiUsage: vi.fn().mockResolvedValue(undefined),
   updateReferenceQuestion: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -51,7 +53,13 @@ describe("generation request evidence integration", () => {
   it("keeps the basic plan out of workbook export while returning the plan summary", async () => {
     const caller = assessmentRouter.createCaller(context());
     await expect(caller.questions.workbookExport()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false });
+    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false, managedAi: { successCount: 0, monthlySuccessLimit: 3, remainingSuccessCount: 3 } });
+  });
+
+  it("blocks managed AI before generation when the plan's monthly successful-work limit is exhausted", async () => {
+    db.getManagedAiMonthlySuccessCount.mockResolvedValueOnce({ usageMonth: "2026-08", successCount: 3 });
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.generation.create({ subject: "화학 I", unit: "화학 결합", difficulty: "중", questionType: "개념 확인형", points: 3, questionCount: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("allows a plus-plan teacher to request approved questions for the workbook composer", async () => {

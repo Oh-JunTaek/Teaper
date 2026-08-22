@@ -35,7 +35,9 @@ import {
   listOfficialSources,
   listReferenceQuestions,
   listWorkspaceUsers,
+  getManagedAiMonthlySuccessCount,
   getManagedAiUsageReport,
+  recordManagedAiMonthlySuccess,
   recordManagedAiUsage,
   replaceMaterialChunks,
   reviewGeneratedQuestion,
@@ -91,12 +93,24 @@ function materialContext(rows: Awaited<ReturnType<typeof getMaterialChunksForRag
   return rows.filter(row => row.material.materialType === type).slice(0, 5).map(row => `[자료 ${row.material.id}: ${row.material.title}]\n${row.chunk.content}`).join("\n\n");
 }
 
+async function requireManagedAiQuota(user: { id: number; role: "teacher" | "admin"; membershipPlan: "basic" | "plus" }) {
+  const usage = await getManagedAiMonthlySuccessCount(user.id);
+  const plan = membershipPlanSummary(user, usage.successCount, usage.usageMonth);
+  if (plan.managedAi.remainingSuccessCount <= 0) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "이번 달 관리형 AI 포함 작업을 모두 사용했습니다. 개인 API·로컬 모델을 사용하거나 다음 달에 다시 이용해 주세요." });
+  }
+  return plan;
+}
+
 export const assessmentRouter = router({
   dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id, ctx.user.role === "admin")),
 
   plan: router({
     // 결제 연동 전에도 UI와 서버가 같은 권한 원칙으로 기능을 제어하도록 현재 플랜만 제공합니다.
-    me: protectedProcedure.query(({ ctx }) => membershipPlanSummary(ctx.user)),
+    me: protectedProcedure.query(async ({ ctx }) => {
+      const usage = await getManagedAiMonthlySuccessCount(ctx.user.id);
+      return membershipPlanSummary(ctx.user, usage.successCount, usage.usageMonth);
+    }),
   }),
 
   materials: router({
@@ -250,9 +264,11 @@ export const assessmentRouter = router({
       const preferences = await getUserAiPreferences(ctx.user.id);
       const startedAt = Date.now();
       try {
+        if (provider.kind === "managed") await requireManagedAiQuota(ctx.user);
         const generated = await generateQuickQuiz({ ...input, topic: input.topic.trim(), customInstructions: preferences?.customInstructions }, provider);
         if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: "success", model: generated.model, durationMs: Date.now() - startedAt }));
         const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), difficulty: input.difficulty, questionCount: generated.questions.length, questions: generated.questions, providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
+        if (provider.kind === "managed") void recordManagedAiMonthlySuccess(ctx.user.id);
         return { id, questions: generated.questions, model: generated.model };
       } catch (error) {
         if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: managedAiOutcomeFromError(error), model: provider.model, durationMs: Date.now() - startedAt }));
@@ -313,6 +329,7 @@ export const assessmentRouter = router({
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 설정을 사용할 수 없습니다." });
       }
       const selectedOfficialDocuments = await getSelectedOfficialDocumentsForGeneration(ctx.user.id, input.subject);
+      if (provider.kind === "managed") await requireManagedAiQuota(ctx.user);
       const corpus = await getMaterialChunksForRag(input.subject, input.unit, ctx.user.id);
       const allReferences = await getReferenceQuestionsForRag(input.subject, input.unit);
       const selectedReferenceRows = await getSelectedReferenceQuestionsForGeneration(ctx.user.id, input.subject, input.unit);
@@ -370,6 +387,7 @@ export const assessmentRouter = router({
         }, sources);
         created.push(questionId);
       }
+      if (provider.kind === "managed" && created.length) void recordManagedAiMonthlySuccess(ctx.user.id);
       return { requestId, questionIds: created };
     }),
   }),

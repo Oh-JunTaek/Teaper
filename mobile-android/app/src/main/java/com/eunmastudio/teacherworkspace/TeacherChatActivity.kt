@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
+import android.database.Cursor
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -19,6 +20,7 @@ import android.widget.ScrollView
 import android.widget.Switch
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -36,6 +38,7 @@ import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import java.io.File
+import java.io.FileOutputStream
 
 /**
  * GPT 형태의 질문·응답 흐름을 제공하되, 모델·대화·자료는 Android 앱 전용 저장소와 LiteRT-LM 안에서만 처리한다.
@@ -53,6 +56,10 @@ class TeacherChatActivity : AppCompatActivity() {
     private lateinit var appLockGate: AppLockGate
     private var currentThread: LocalChatThread? = null
     private var activeModel: GemmaModel? = null
+    private var pendingVisionImage: File? = null
+    private val imagePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::prepareVisionImage)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +80,7 @@ class TeacherChatActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        pendingVisionImage?.delete()
         runner.close()
         super.onDestroy()
     }
@@ -124,6 +132,11 @@ class TeacherChatActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(9), dp(9), dp(9), dp(9))
                 background = chalkSurface(Color.rgb(18, 34, 30), dp(24))
+                addView(Button(this@TeacherChatActivity).apply {
+                    text = "이미지"; isAllCaps = false; textSize = 11.5f; setTextColor(Color.rgb(235, 241, 231))
+                    background = chalkSurface(Color.rgb(31, 54, 47), dp(16))
+                    setOnClickListener { imagePicker.launch(arrayOf("image/jpeg", "image/png", "image/webp")) }
+                }, LinearLayout.LayoutParams(dp(58), dp(46)).apply { rightMargin = dp(7) })
                 input = EditText(this@TeacherChatActivity).apply {
                     hint = "질문을 입력하세요"; textSize = 16f; minLines = 1; maxLines = 5
                     setTextColor(Color.WHITE); setHintTextColor(Color.rgb(139, 160, 147))
@@ -183,6 +196,10 @@ class TeacherChatActivity : AppCompatActivity() {
     private fun sendMessage() {
         val content = input.text.toString().trim()
         if (content.isBlank()) return
+        pendingVisionImage?.let { image ->
+            sendVisionMessage(content, image)
+            return
+        }
         val thread = currentThread ?: store.createChatThread().also { currentThread = it }
         sendButton.isEnabled = false
         lifecycleScope.launch {
@@ -226,6 +243,71 @@ class TeacherChatActivity : AppCompatActivity() {
                 sendButton.isEnabled = true
             }
         }
+    }
+
+    /** 이미지 바이트·경로는 대화 저장소에 남기지 않고, 질문 표식과 응답 텍스트만 기기 내 대화에 기록한다. */
+    private fun sendVisionMessage(content: String, image: File) {
+        val thread = currentThread ?: store.createChatThread().also { currentThread = it }
+        sendButton.isEnabled = false
+        lifecycleScope.launch {
+            var assistantBubble: TextView? = null
+            try {
+                PromptDisclosurePolicy.safeResponseFor(content)?.let { safeReply ->
+                    addBubble(safeReply, false)
+                    status.text = "내부 설정은 공개하지 않습니다."
+                    return@launch
+                }
+                val storedUserText = "[이미지 1장 · 기기 내 분석]\n$content"
+                val persistedUser = store.appendChatMessage(thread.id, storedUserText, isUser = true)
+                ChatTurnPolicy.requirePersisted(storedUserText, persistedUser != null)
+                currentThread = persistedUser ?: currentThread
+                input.setText("")
+                addBubble("이미지 1장 · $content", true)
+                pendingVisionImage = null
+                if (!ensureModelReady()) return@launch
+                assistantBubble = addBubble("이미지를 기기 안에서 확인 중…", false)
+                val request = TeacherChatPromptContract.conversationRequest(
+                    history = emptyList(),
+                    sourceSummaries = if (sourceSwitch.isChecked) sourceSummaries() else "",
+                    teacherInstructions = store.teacherInstructions(),
+                )
+                val response = runner.inspectImageFinal(image.absolutePath, content, request.systemInstruction, store.modelSettings())
+                val finalResponse = ChatTurnPolicy.normalizeForPersistence(
+                    if (PromptDisclosurePolicy.isPotentialDisclosure(response)) PromptDisclosurePolicy.SAFE_REPLY else response,
+                )
+                if (finalResponse.isBlank()) throw IllegalStateException("이미지 분석 응답이 비어 있습니다. 다시 시도해 주세요.")
+                val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
+                assistantBubble?.text = renderChatMessage(ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null))
+                currentThread = persistedAssistant ?: currentThread
+                status.text = "교사 플러스 파일럿 · 이미지와 답변은 이 기기 안에서 처리했습니다. 원본은 처리 후 삭제했습니다."
+            } catch (error: Throwable) {
+                assistantBubble?.text = renderChatMessage("이미지 분석을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}")
+                status.text = "이미지 원본은 처리 뒤 삭제했습니다. 같은 이미지를 다시 선택해 재시도할 수 있습니다."
+            } finally {
+                image.delete()
+                pendingVisionImage = null
+                sendButton.isEnabled = true
+            }
+        }
+    }
+
+    /** 사진 전체 권한을 받지 않고 선택한 이미지 한 장만 앱 캐시에 복사하며, 4MB를 넘는 원본은 받지 않는다. */
+    private fun prepareVisionImage(uri: android.net.Uri) {
+        runCatching {
+            val size = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor: Cursor ->
+                if (cursor.moveToFirst()) cursor.getLong(0) else 0L
+            } ?: 0L
+            require(size in 1..4_000_000) { "이미지는 4MB 이하의 JPEG·PNG·WEBP 한 장만 선택해 주세요." }
+            pendingVisionImage?.delete()
+            val directory = cacheDir.resolve("vision-input").apply { mkdirs() }
+            val file = File(directory, "vision-${System.currentTimeMillis()}.img")
+            contentResolver.openInputStream(uri).use { inputStream ->
+                requireNotNull(inputStream) { "이미지를 읽을 수 없습니다." }
+                FileOutputStream(file).use { output -> inputStream.copyTo(output) }
+            }
+            pendingVisionImage = file
+            status.text = "교사 플러스 파일럿 · 이미지 1장이 준비되었습니다. 질문을 보내면 이 기기 안에서 분석하고 원본을 삭제합니다."
+        }.onFailure { error -> status.text = error.message ?: "이미지를 준비하지 못했습니다." }
     }
 
     private suspend fun ensureModelReady(): Boolean {

@@ -45,6 +45,22 @@ export const managedAiUsageDaily = mysqlTable(
   ],
 );
 
+// 플랜별 포함량을 확인하는 월간 성공 작업 카운터입니다. 프롬프트·문항·파일명·IP·이미지 원본은 저장하지 않습니다.
+export const managedAiMonthlySuccess = mysqlTable(
+  "managed_ai_monthly_success",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    usageMonth: varchar("usageMonth", { length: 7 }).notNull(),
+    successCount: int("successCount").default(0).notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+  },
+  table => [
+    uniqueIndex("managed_ai_monthly_success_unique").on(table.ownerId, table.usageMonth),
+    index("managed_ai_monthly_success_month_idx").on(table.usageMonth),
+  ],
+);
+
 export const referenceMaterials = mysqlTable(
   "reference_materials",
   {
