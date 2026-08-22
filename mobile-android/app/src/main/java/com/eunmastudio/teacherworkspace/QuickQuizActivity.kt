@@ -62,7 +62,7 @@ class QuickQuizActivity : AppCompatActivity() {
         val subject = field("과목", "화학 I"); val unit = field("단원", "공통"); val topic = field("확인할 개념·정의", "예: 공유 결합의 정의"); val difficulty = field("난이도", "낮음"); val count = field("문항 수", "3").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         listOf(subject, unit, topic, difficulty, count).forEach { content.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }) }
         status = TextView(this).apply { text = "E2B 또는 E4B를 준비한 뒤 생성할 수 있습니다."; textSize = 13f; setTextColor(Color.rgb(191, 207, 195)); setPadding(dp(4), dp(6), dp(4), dp(8)) }; content.addView(status)
-        generate = button("로컬 모델로 쪽지시험 생성", true).apply { setOnClickListener { val term = topic.text.toString().trim(); val blocked = PromptDisclosurePolicy.safeResponseFor(term); if (blocked != null) { status.text = blocked; return@setOnClickListener }; if (term.isBlank()) { status.text = "확인할 개념 또는 정의를 입력해 주세요."; return@setOnClickListener }; lifecycleScope.launch { if (ensureModelReady()) createQuiz(subject.text.toString().trim(), unit.text.toString().trim(), term, difficulty.text.toString().trim(), count.text.toString().toIntOrNull()?.coerceIn(1, 10) ?: 3) } } }
+        generate = button("로컬 모델로 쪽지시험 생성", true).apply { setOnClickListener { val term = topic.text.toString().trim(); val blocked = PromptDisclosurePolicy.safeResponseFor(term); if (blocked != null) { status.text = blocked; return@setOnClickListener }; if (term.isBlank()) { status.text = "확인할 개념 또는 정의를 입력해 주세요."; return@setOnClickListener }; generate.isEnabled = false; lifecycleScope.launch { try { if (ensureModelReady()) createQuiz(subject.text.toString().trim(), unit.text.toString().trim(), term, difficulty.text.toString().trim(), count.text.toString().toIntOrNull()?.coerceIn(1, 10) ?: 3) } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 생성에 실패했습니다." } finally { generate.isEnabled = true } } } }
         content.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(18) })
         content.addView(TextView(this).apply { text = "쪽지시험 검수"; textSize = 18f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) })
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, 0) }; content.addView(list)
@@ -76,16 +76,16 @@ class QuickQuizActivity : AppCompatActivity() {
         return try { status.text = "${selected.displayName}을 쪽지시험용으로 준비하고 있습니다."; runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false); activeModel = selected; true } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 모델을 준비하지 못했습니다."; false }
     }
 
-    private fun createQuiz(subject: String, unit: String, topic: String, difficulty: String, count: Int) {
-        lifecycleScope.launch {
-            try {
-                generate.isEnabled = false; status.text = "한 개념을 확인하는 짧은 문항을 만들고 있습니다."
-                val output = StringBuilder(); runner.generate(QuickQuizPromptContract.generationPrompt(subject, unit, topic, difficulty, count, store.teacherInstructions())) { partial -> output.append(partial); runOnUiThread { status.text = output.toString().takeLast(240) } }
-                val response = output.toString().trim(); val safe = if (PromptDisclosurePolicy.isPotentialDisclosure(response)) PromptDisclosurePolicy.SAFE_REPLY else response
-                store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, difficulty = difficulty.ifBlank { "낮음" }, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
-                status.text = "쪽지시험을 검수 목록에 저장했습니다. 정답과 해설을 확인해 주세요."; refreshList()
-            } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 생성에 실패했습니다." } finally { generate.isEnabled = true }
-        }
+    /** 스트리밍 토큰은 화면에 노출하지 않고, LiteRT-LM 생성이 끝난 한 번의 결과만 검수 목록에 추가한다. */
+    private suspend fun createQuiz(subject: String, unit: String, topic: String, difficulty: String, count: Int) {
+        status.text = "쪽지시험을 생성하고 있습니다. 완료되면 검수 목록에 표시합니다."
+        val output = StringBuilder()
+        runner.generate(QuickQuizPromptContract.generationPrompt(subject, unit, topic, difficulty, count, store.teacherInstructions())) { partial -> output.append(partial) }
+        val response = output.toString().trim()
+        val safe = if (PromptDisclosurePolicy.isPotentialDisclosure(response)) PromptDisclosurePolicy.SAFE_REPLY else response
+        store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, difficulty = difficulty.ifBlank { "낮음" }, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
+        status.text = "쪽지시험을 검수 목록에 저장했습니다. 정답과 해설을 확인해 주세요."
+        refreshList()
     }
 
     private fun refreshList() {

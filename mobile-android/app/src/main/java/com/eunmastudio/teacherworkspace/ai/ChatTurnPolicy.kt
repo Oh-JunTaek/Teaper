@@ -3,7 +3,8 @@ package com.eunmastudio.teacherworkspace.ai
 /** 채팅용 LiteRT-LM 컨텍스트와 저장 확정 규칙을 한곳에 둔다. */
 object ChatTurnPolicy {
     const val MAX_CONTEXT_TOKENS = 2_048
-    const val MAX_RESPONSE_TOKENS = 192
+    /** null은 LiteRT-LM의 별도 응답 토큰 상한을 두지 않고 남은 컨텍스트 예산까지 생성한다는 뜻이다. */
+    val MAX_RESPONSE_TOKENS: Int? = null
     const val MAX_HISTORY_MESSAGES = 4
     const val MAX_HISTORY_CHARACTERS = 600
 

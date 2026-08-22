@@ -1,6 +1,8 @@
 package com.eunmastudio.teacherworkspace
 
 import android.app.Dialog
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
@@ -20,6 +22,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
 import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
@@ -32,6 +35,7 @@ import com.eunmastudio.teacherworkspace.ai.TeacherChatPromptContract
 import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import kotlinx.coroutines.launch
 import kotlin.math.max
+import java.io.File
 
 /**
  * GPT 형태의 질문·응답 흐름을 제공하되, 모델·대화·자료는 Android 앱 전용 저장소와 LiteRT-LM 안에서만 처리한다.
@@ -280,12 +284,12 @@ class TeacherChatActivity : AppCompatActivity() {
                     })
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
                 addView(chatActionButton("관리").apply {
-                    textSize = 12f
+                    textSize = 11.5f
                     setOnClickListener { dialog.dismiss(); showThreadManageDialog(thread) }
-                }, LinearLayout.LayoutParams(dp(64), dp(54)))
+                }, LinearLayout.LayoutParams(dp(56), dp(42)).apply { topMargin = dp(8) })
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
         }
-        dialog = showChatDialog("대화 기록", "최근 질문을 바탕으로 제목을 정리합니다. 관리를 누르면 제목 변경·즐겨찾기·삭제를 할 수 있습니다.", ScrollView(this).apply { addView(container) })
+        dialog = showChatDialog("대화 기록", "최근 질문을 바탕으로 제목을 정리합니다. 관리를 누르면 제목 변경·즐겨찾기·공유·삭제를 할 수 있습니다.", ScrollView(this).apply { addView(container) })
     }
 
     private fun showThreadManageDialog(thread: LocalChatThread) {
@@ -301,6 +305,9 @@ class TeacherChatActivity : AppCompatActivity() {
                 showThreadPicker()
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton("공유").apply {
+            setOnClickListener { dialog.dismiss(); showThreadShareDialog(thread) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
         actions.addView(chatActionButton("삭제").apply {
             setOnClickListener {
                 store.deleteChatThread(thread.id)
@@ -308,7 +315,79 @@ class TeacherChatActivity : AppCompatActivity() {
                 dialog.dismiss()
             }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
-        dialog = showChatDialog(thread.title, "즐겨찾기는 최근 지정한 대화부터 목록 상단에 고정됩니다.", actions)
+        dialog = showChatDialog(thread.title, "즐겨찾기는 최근 지정한 대화부터 목록 상단에 고정됩니다. 공유는 교사가 선택한 내용만 다른 앱으로 보냅니다.", actions)
+    }
+
+    /** 공유 전 전체/선택 메시지를 교사가 명시적으로 고르게 해 시험 원문의 무단 외부 전송을 막는다. */
+    private fun showThreadShareDialog(thread: LocalChatThread) {
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var dialog: Dialog
+        actions.addView(chatActionButton("전체 대화 텍스트 공유", accent = true).apply {
+            setOnClickListener { dialog.dismiss(); shareTranscript(thread, thread.messages) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton("전체 대화 텍스트 파일 공유").apply {
+            setOnClickListener { dialog.dismiss(); shareTranscriptFile(thread, thread.messages) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton("공유할 메시지 선택").apply {
+            setOnClickListener { dialog.dismiss(); showMessageSelectionDialog(thread) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton("전체 대화 복사").apply {
+            setOnClickListener { copyTranscript(thread, thread.messages); dialog.dismiss() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        dialog = showChatDialog("대화 공유", "선택한 내용은 이 기기 밖의 앱으로 전송될 수 있습니다. 시험 보안·개인정보·출시 전 문항 포함 여부를 확인하세요.", actions)
+    }
+
+    private fun showMessageSelectionDialog(thread: LocalChatThread) {
+        val selectedIds = thread.messages.map { it.id }.toMutableSet()
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        thread.messages.forEachIndexed { index, message ->
+            content.addView(android.widget.CheckBox(this).apply {
+                text = "${if (message.isUser) "교사" else "AI"} · ${message.content.replace("\n", " ").take(90)}"
+                isChecked = true; tag = message.id; textSize = 13f; setTextColor(Color.rgb(224, 234, 220)); setPadding(dp(2), dp(5), dp(2), dp(5))
+                setOnCheckedChangeListener { _, checked -> if (checked) selectedIds.add(message.id) else selectedIds.remove(message.id) }
+            })
+            if (index < thread.messages.lastIndex) content.addView(View(this).apply { setBackgroundColor(Color.rgb(48, 72, 63)) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        }
+        val actions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, 0)
+            fun chosen() = thread.messages.filter { it.id in selectedIds }
+            addView(chatActionButton("복사").apply { setOnClickListener { copyTranscript(thread, chosen()) } }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+            addView(chatActionButton("공유", accent = true).apply { setOnClickListener { if (chosen().isNotEmpty()) shareTranscript(thread, chosen()) else status.text = "공유할 메시지를 하나 이상 선택해 주세요." } }, LinearLayout.LayoutParams(0, dp(44), 1f))
+        }
+        content.addView(actions)
+        showChatDialog("공유할 메시지 선택", "체크한 메시지만 복사하거나 외부 앱으로 공유합니다.", ScrollView(this).apply { addView(content) })
+    }
+
+    private fun transcript(thread: LocalChatThread, messages: List<LocalChatMessage>) = ChatSharePolicy.transcript(thread.title, messages)
+
+    private fun copyTranscript(thread: LocalChatThread, messages: List<LocalChatMessage>) {
+        if (messages.isEmpty()) { status.text = "복사할 대화가 없습니다."; return }
+        val clipboard = getSystemService(ClipboardManager::class.java)
+        clipboard.setPrimaryClip(ClipData.newPlainText(thread.title, transcript(thread, messages)))
+        status.text = "선택한 대화 ${messages.size}개를 클립보드에 복사했습니다."
+    }
+
+    private fun shareTranscript(thread: LocalChatThread, messages: List<LocalChatMessage>) {
+        if (messages.isEmpty()) { status.text = "공유할 대화가 없습니다."; return }
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, thread.title); putExtra(Intent.EXTRA_TEXT, transcript(thread, messages))
+        }
+        startActivity(Intent.createChooser(shareIntent, "대화 텍스트 공유"))
+        status.text = "선택한 대화를 공유할 앱을 선택해 주세요."
+    }
+
+    private fun shareTranscriptFile(thread: LocalChatThread, messages: List<LocalChatMessage>) {
+        if (messages.isEmpty()) { status.text = "공유할 대화가 없습니다."; return }
+        runCatching {
+            val directory = cacheDir.resolve("exports").apply { mkdirs() }
+            val file = File(directory, "${ChatSharePolicy.safeFileStem(thread.title)}.txt").apply { writeText(transcript(thread, messages)) }
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"; putExtra(Intent.EXTRA_STREAM, uri); putExtra(Intent.EXTRA_SUBJECT, thread.title); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(shareIntent, "대화 텍스트 파일 공유"))
+            status.text = "대화 텍스트 파일을 공유할 앱을 선택해 주세요."
+        }.onFailure { error -> status.text = error.message ?: "대화 텍스트 파일을 만들지 못했습니다." }
     }
 
     private fun showRenameThreadDialog(thread: LocalChatThread) {

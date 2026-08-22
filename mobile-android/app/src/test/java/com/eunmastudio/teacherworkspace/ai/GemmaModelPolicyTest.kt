@@ -3,8 +3,10 @@ package com.eunmastudio.teacherworkspace.ai
 import android.os.PowerManager
 import com.eunmastudio.teacherworkspace.AppLockPolicy
 import com.eunmastudio.teacherworkspace.ChatThreadPresentationPolicy
+import com.eunmastudio.teacherworkspace.ChatSharePolicy
 import com.eunmastudio.teacherworkspace.HomeCardLayout
 import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
+import com.eunmastudio.teacherworkspace.LocalChatMessage
 import com.eunmastudio.teacherworkspace.LocalChatThread
 import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import org.junit.Assert.assertFalse
@@ -155,6 +157,15 @@ class GemmaModelPolicyTest {
         assertTrue(bounded.size <= ChatTurnPolicy.MAX_HISTORY_MESSAGES)
         assertTrue(bounded.sumOf { it.content.length } <= ChatTurnPolicy.MAX_HISTORY_CHARACTERS)
         assertTrue(bounded.last().content.contains("발화 6"))
+    }
+
+    @Test
+    fun `chat response leaves the remaining LiteRT context budget available and selected sharing is clearly labeled`() {
+        assertTrue(ChatTurnPolicy.MAX_RESPONSE_TOKENS == null)
+        val transcript = ChatSharePolicy.transcript("열역학 검토", listOf(LocalChatMessage(content = "제1법칙을 설명해 줘", isUser = true)))
+        assertTrue(transcript.contains("[교사]"))
+        assertTrue(transcript.contains("교사 선택 공유"))
+        assertTrue(ChatSharePolicy.safeFileStem("열역학: 제1법칙/검토").contains("-"))
     }
 
     @Test

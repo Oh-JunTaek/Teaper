@@ -5,6 +5,7 @@
 ## Unreleased
 
 ### Added
+- Android 채팅 관리에 전체/선택 메시지의 텍스트 공유, 캐시 기반 텍스트 파일 공유, 클립보드 복사를 추가
 - 웹·Windows·Android 공통 교사 메모장: 사용자 또는 기기별 저장, 상단 고정, 수정·삭제, AI 요청 자동 미포함 원칙
 - 웹·Windows·Android 공통 간결한 쪽지시험: 한 개념·한두 문장·짧은 해설만 허용하는 생성·교사 검수 흐름
 - Windows local-only SQLite 메모·쪽지시험 백업 복원 및 승인 쪽지시험 TXT 내보내기
@@ -39,12 +40,15 @@
 - 로컬 주소 입력을 제거하고 데스크톱 앱의 loopback 자동 연결로 단순화
 - 개인 교사 파일럿·정식 공개·기관 도입/유료화의 정책 경계를 분리하고 출시 전 확정 항목을 명시
 - 대시보드·Windows 로컬 홈·Android 홈에 메모장과 쪽지시험 진입 카드를 추가
+- Android 쪽지시험은 토큰 단위 중간 출력을 숨기고 생성 완료 결과만 검수 목록에 저장·표시하도록 변경
+- Android 채팅은 LiteRT-LM의 별도 192토큰 응답 상한을 제거하고 남은 2,048토큰 컨텍스트 예산까지 생성하도록 변경
+- Android 대화 기록의 관리 버튼을 카드보다 작은 보조 동작 크기로 조정
 
 ### Security
 - 세 플랫폼 쪽지시험에 시스템 지시문·내부 규칙의 직접·간접·번역·Base64 추출 요청을 생성 전 차단하고, 의심 출력은 저장 전에 폐기하는 2단계 정책을 적용
 
 ### Verified
-- 웹 Vitest 72개, Windows local-only 저장소·보안 테스트, Android `testDebugUnitTest` 및 alpha.20 Debug APK 조립을 통과
+- 웹 Vitest 72개, Windows local-only 저장소·보안 테스트, Android `testDebugUnitTest` 및 alpha.20/alpha.21 Debug APK 조립을 통과
 
 ### Planned
 - 개인정보 비수집 익명 일별 이용 통계는 정책 확정·전문가 검토 뒤 기본 비활성 상태로 도입
