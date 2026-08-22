@@ -16,6 +16,8 @@ import androidx.core.view.WindowInsetsCompat
 
 /** Android local-only 앱의 내 정보·플랜 안내 화면이다. 웹 계정과의 자동 플랜 연결을 주장하지 않는다. */
 class ProfileActivity : AppCompatActivity() {
+    private lateinit var appLockGate: AppLockGate
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -45,12 +47,18 @@ class ProfileActivity : AppCompatActivity() {
                 addView(infoCard("내 정보 보호", "이 화면의 작업 수는 이 기기 안에서 계산합니다. 자료 내용·문항 원문·대화 내용은 운영 통계로 전송하지 않습니다."), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             })
         }
-        setContentView(screen)
+        appLockGate = AppLockGate(this)
+        setContentView(appLockGate.attach(screen))
         ViewCompat.setOnApplyWindowInsetsListener(screen) { view, insets ->
             val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             view.setPadding(0, bars.top, 0, bars.bottom)
             insets
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired()
     }
 
     private fun statCard(label: String, value: Int) = LinearLayout(this).apply {
