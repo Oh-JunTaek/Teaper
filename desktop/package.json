@@ -1,6 +1,6 @@
 {
   "name": "teacher-assessment-local",
-  "version": "0.1.0-beta.5",
+  "version": "0.1.0-beta.6",
   "description": "EunmaStudio 문제 출제 워크스페이스 로컬 모델 전용 테스트 앱",
   "author": "EunmaStudio",
   "license": "UNLICENSED",
@@ -8,8 +8,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "LOCAL_APP_MODE=true node src/main.mjs",
-    "desktop": "LOCAL_APP_MODE=true electron src/shell.mjs",
+    "start": "node src/launch-bridge.mjs",
+    "desktop": "node src/launch-desktop.mjs",
     "package:win:test": "electron-builder --win nsis --x64 --publish never",
     "test": "node --test test/*.test.mjs"
   },

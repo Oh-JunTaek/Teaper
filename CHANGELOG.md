@@ -5,6 +5,7 @@
 ## Unreleased
 
 ### Added
+- Windows local-only beta.6에 PowerShell·CMD·macOS·Linux 공통의 Node 기반 실행기를 추가해 local-only 브리지와 Electron 앱을 같은 방식으로 시작하도록 보완
 - Windows local-only beta.5에 Ollama·llama.cpp 기반 AI 채팅, 최근 대화 제한, 제목 변경·즐겨찾기·삭제, SQLite 대화 저장·암호화 백업 포함을 추가
 - 웹 쪽지시험 세트에 검수 대기·승인·수정 필요·반려 상태와 검수 시각을 추가하고, 일반 문항 검수함과 분리된 쪽지시험 검수 화면에서 세트 선택·상태 전환을 지원
 - 웹 내 정보·플랜 화면과 Android·Windows local-only의 개인 작업 현황을 추가해 자료·문항·승인·메모·쪽지시험 수를 각 계정 또는 기기에서 확인하도록 보완
