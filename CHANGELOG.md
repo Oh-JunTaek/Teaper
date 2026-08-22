@@ -57,6 +57,7 @@
 - 교사 맞춤 지시문은 내부 기본 지시문을 표시·교체하지 못하며, 프롬프트 공개 요구는 로컬 저장 전에 거절하도록 적용
 
 ### Verified
+- Android alpha.24 이미지 대화의 S25+ 현장 검증표와 실패 기록 기준을 추가
 - 웹 Vitest 72개, Windows local-only 저장소·보안 테스트, Android `testDebugUnitTest` 및 alpha.20/alpha.21/alpha.22 Debug APK 조립을 통과
 - Android alpha.23 `testDebugUnitTest`·Debug APK 조립, Windows local-only·고급 설정 Node 테스트를 통과
 
