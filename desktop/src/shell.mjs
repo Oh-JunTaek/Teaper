@@ -194,7 +194,7 @@ app.whenReady().then(async () => {
   bridge = await createLocalBridge();
   store = await openLocalStore();
   registerHandlers();
-  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 980, minHeight: 720, show: false, title: "문제 출제 워크스페이스 · 로컬", backgroundColor: "#f7faf8", webPreferences: { ...LOCAL_WINDOW_WEB_PREFERENCES, preload: join(import.meta.dirname, "preload.mjs") } });
+  mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 980, minHeight: 720, show: false, title: "문제 출제 워크스페이스 · 로컬", backgroundColor: "#f7faf8", webPreferences: { ...LOCAL_WINDOW_WEB_PREFERENCES, preload: join(import.meta.dirname, "preload.cjs") } });
   installWindowBoundary(mainWindow);
   await mainWindow.loadFile(join(import.meta.dirname, "../renderer/index.html"));
   mainWindow.once("ready-to-show", () => mainWindow.show());

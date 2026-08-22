@@ -481,4 +481,5 @@
 - [x] Windows local-only AI 채팅의 Ollama·llama.cpp 실행 경로, 오류 처리, 대화 저장·관리 흐름을 점검하고 Android와 유사한 교사용 채팅 경험으로 보완한다.
 - [x] Windows desktop의 pnpm 작업공간 설정에 단일 앱 패키지를 명시해 실제 PC 의존성 설치가 막히던 오류를 수정한다.
 - [ ] Windows PowerShell에서 POSIX 환경변수 문법 때문에 local-only 앱이 시작되지 않는 문제를 플랫폼 독립 실행기로 수정하고 실제 PC에서 실행한다.
+- [ ] Windows Electron 앱에서 `window.teacherLocal` preload IPC가 비어 로컬 상태·AI 채팅이 동작하지 않는 오류를 수정하고 실제 PC에서 검증한다.
 - [ ] Windows beta.5에서 Ollama 또는 llama.cpp 모델 연결, 긴 답변, 대화 제목·즐겨찾기·삭제, 앱 재시작 후 대화 저장, 프롬프트 비공개를 실제 PC에서 확인한다.

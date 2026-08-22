@@ -16,10 +16,14 @@ process.env.LOCAL_APP_DATA_DIR = folder;
 process.env.LOCAL_VAULT_MASTER_KEY = "12345678910111213141516171819202122";
 try {
   const packageConfig = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  const shellSource = await readFile(new URL("../src/shell.mjs", import.meta.url), "utf8");
+  const preloadSource = await readFile(new URL("../src/preload.cjs", import.meta.url), "utf8");
   assert.equal(packageConfig.build.appId, "com.eunmastudio.teacherassessment.local");
   assert.equal(packageConfig.build.win.target[0].target, "nsis");
   assert.equal(packageConfig.build.nsis.oneClick, false);
   assert.equal(packageConfig.build.publish[0].provider, "generic");
+  assert.match(shellSource, /preload\.cjs/);
+  assert.match(preloadSource, /contextBridge\.exposeInMainWorld\("teacherLocal"/);
   await setSecret("gemini", "not-in-sqlite");
   assert.equal(await getSecret("gemini"), "not-in-sqlite");
   assert.equal((await readFile(join(folder, "secrets.vault"), "utf8")).includes("not-in-sqlite"), false);
