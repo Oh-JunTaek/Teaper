@@ -1,0 +1,11 @@
+flowchart LR
+  A[자료 관리\n수업 자료·기출·공식 자료] --> B[문항 관리\n일반 문항·간단한 문제]
+  B --> C[교사 검수\n정답·해설·근거 확인]
+  C --> D[승인·수업 활용\n문서 출력·인쇄·공유]
+  E[AI 채팅\n수업 아이디어·자료 정리] -. 보조 .-> B
+  F[내 정보·설정\n작업 현황·입력 방식] -. 개인화 .-> E
+
+  classDef core fill:#ecf8f2,stroke:#15856b,color:#173a2f,stroke-width:2px;
+  classDef assist fill:#eef4ff,stroke:#3569a8,color:#173a2f,stroke-width:1.5px;
+  class A,B,C,D core;
+  class E,F assist;
