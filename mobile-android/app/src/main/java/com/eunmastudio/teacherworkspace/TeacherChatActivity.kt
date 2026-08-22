@@ -263,39 +263,52 @@ class TeacherChatActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
         threads.forEach { thread ->
             container.addView(LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(15), dp(13), dp(13), dp(12))
-                background = chalkSurface(Color.rgb(21, 40, 34), dp(18))
-                setOnClickListener { dialog.dismiss(); loadThread(thread) }
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 addView(LinearLayout(this@TeacherChatActivity).apply {
-                    gravity = Gravity.CENTER_VERTICAL
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(15), dp(14), dp(15), dp(13))
+                    background = chalkSurface(Color.rgb(21, 40, 34), dp(18))
+                    setOnClickListener { dialog.dismiss(); loadThread(thread) }
                     addView(TextView(this@TeacherChatActivity).apply {
-                        text = thread.title; textSize = 16f; setTextColor(Color.rgb(242, 239, 225)); maxLines = 1
+                        text = if (thread.isFavorite) "★  ${thread.title}" else thread.title
+                        textSize = 16f; setTextColor(Color.rgb(242, 239, 225)); maxLines = 1
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
-                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    addView(chatActionButton("편집").apply {
-                        textSize = 12f
-                        setOnClickListener { dialog.dismiss(); showRenameThreadDialog(thread) }
-                    }, LinearLayout.LayoutParams(dp(64), dp(38)))
-                })
-                addView(TextView(this@TeacherChatActivity).apply {
-                    text = thread.messages.lastOrNull()?.content?.take(58).orEmpty().ifBlank { "아직 메시지가 없습니다." }
-                    textSize = 13f; setTextColor(Color.rgb(177, 198, 181)); maxLines = 2; setPadding(0, dp(5), 0, 0)
-                })
+                    })
+                    addView(TextView(this@TeacherChatActivity).apply {
+                        text = ChatThreadPresentationPolicy.relativeTime(thread.updatedAt)
+                        textSize = 12.5f; setTextColor(Color.rgb(174, 199, 179)); setPadding(0, dp(5), 0, 0)
+                    })
+                }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
+                addView(chatActionButton("관리").apply {
+                    textSize = 12f
+                    setOnClickListener { dialog.dismiss(); showThreadManageDialog(thread) }
+                }, LinearLayout.LayoutParams(dp(64), dp(54)))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
         }
-        val footer = LinearLayout(this).apply {
-            gravity = Gravity.END
-            addView(chatActionButton("현재 대화 삭제").apply {
-                setOnClickListener {
-                    currentThread?.let { store.deleteChatThread(it.id) }
-                    dialog.dismiss()
-                    loadThread(store.createChatThread())
-                }
-            }, LinearLayout.LayoutParams(dp(132), dp(44)))
-        }
-        container.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
-        dialog = showChatDialog("대화 기록", "제목은 이 기기에서 최근 질문을 바탕으로 자동 정리됩니다. ‘편집’으로 직접 고정할 수 있습니다.", ScrollView(this).apply { addView(container) })
+        dialog = showChatDialog("대화 기록", "최근 질문을 바탕으로 제목을 정리합니다. 관리를 누르면 제목 변경·즐겨찾기·삭제를 할 수 있습니다.", ScrollView(this).apply { addView(container) })
+    }
+
+    private fun showThreadManageDialog(thread: LocalChatThread) {
+        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var dialog: Dialog
+        actions.addView(chatActionButton("제목 변경").apply {
+            setOnClickListener { dialog.dismiss(); showRenameThreadDialog(thread) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton(if (thread.isFavorite) "즐겨찾기 해제" else "즐겨찾기").apply {
+            setOnClickListener {
+                store.toggleChatFavorite(thread.id)
+                dialog.dismiss()
+                showThreadPicker()
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)).apply { bottomMargin = dp(8) })
+        actions.addView(chatActionButton("삭제").apply {
+            setOnClickListener {
+                store.deleteChatThread(thread.id)
+                if (currentThread?.id == thread.id) loadThread(store.createChatThread())
+                dialog.dismiss()
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+        dialog = showChatDialog(thread.title, "즐겨찾기는 최근 지정한 대화부터 목록 상단에 고정됩니다.", actions)
     }
 
     private fun showRenameThreadDialog(thread: LocalChatThread) {

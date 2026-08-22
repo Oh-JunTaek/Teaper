@@ -2,8 +2,10 @@ package com.eunmastudio.teacherworkspace.ai
 
 import android.os.PowerManager
 import com.eunmastudio.teacherworkspace.AppLockPolicy
+import com.eunmastudio.teacherworkspace.ChatThreadPresentationPolicy
 import com.eunmastudio.teacherworkspace.HomeCardLayout
 import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
+import com.eunmastudio.teacherworkspace.LocalChatThread
 import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -177,5 +179,26 @@ class GemmaModelPolicyTest {
     fun `manual chat title is compact and non blank`() {
         assertTrue(ChatTitlePolicy.normalizeManualTitle("  열역학 수업 설계\n") == "열역학 수업 설계")
         assertTrue(ChatTitlePolicy.normalizeManualTitle("   ") == ChatTitlePolicy.DEFAULT_TITLE)
+    }
+
+    @Test
+    fun `chat relative time uses minutes hours and days`() {
+        val now = 10_000_000L
+        assertTrue(ChatThreadPresentationPolicy.relativeTime(now - 30_000L, now) == "방금 전")
+        assertTrue(ChatThreadPresentationPolicy.relativeTime(now - 5 * 60_000L, now) == "5분 전")
+        assertTrue(ChatThreadPresentationPolicy.relativeTime(now - 3 * 60 * 60_000L, now) == "3시간 전")
+        assertTrue(ChatThreadPresentationPolicy.relativeTime(now - 2 * 24 * 60 * 60_000L, now) == "2일 전")
+    }
+
+    @Test
+    fun `recently starred chats stay above newer ordinary chats`() {
+        val ordered = ChatThreadPresentationPolicy.sort(
+            listOf(
+                LocalChatThread(id = "ordinary", title = "일반", updatedAt = 9_000L),
+                LocalChatThread(id = "olderStar", title = "이전 즐겨찾기", isFavorite = true, favoriteAt = 5_000L, updatedAt = 6_000L),
+                LocalChatThread(id = "newStar", title = "최근 즐겨찾기", isFavorite = true, favoriteAt = 8_000L, updatedAt = 7_000L),
+            ),
+        )
+        assertTrue(ordered.map { it.id } == listOf("newStar", "olderStar", "ordinary"))
     }
 }

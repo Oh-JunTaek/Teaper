@@ -58,6 +58,8 @@ data class LocalChatThread(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
     val isTitleEdited: Boolean = false,
+    val isFavorite: Boolean = false,
+    val favoriteAt: Long? = null,
     val messages: List<LocalChatMessage> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
@@ -104,12 +106,14 @@ class LocalWorkspaceStore(context: Context) {
                 id = item.getString("id"),
                 title = item.getString("title"),
                 isTitleEdited = item.optBoolean("isTitleEdited", false),
+                isFavorite = item.optBoolean("isFavorite", false),
+                favoriteAt = item.optLong("favoriteAt", 0L).takeIf { it > 0L },
                 messages = item.getJSONArray("messages").toChatMessages(),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
             )
         }.getOrNull()
-    }.sortedByDescending { it.updatedAt }
+    }.let(ChatThreadPresentationPolicy::sort)
 
     fun saveSource(source: LocalSource) {
         val next = sources().filterNot { it.id == source.id } + source
@@ -168,7 +172,7 @@ class LocalWorkspaceStore(context: Context) {
             )
         }
         if (next != current) writeChatThreads(next)
-        return next.sortedByDescending { it.updatedAt }
+        return ChatThreadPresentationPolicy.sort(next)
     }
 
     fun renameChatThread(threadId: String, title: String): LocalChatThread? {
@@ -178,6 +182,19 @@ class LocalWorkspaceStore(context: Context) {
                 title = ChatTitlePolicy.normalizeManualTitle(title),
                 isTitleEdited = true,
                 updatedAt = System.currentTimeMillis(),
+            ).also { updated = it }
+        }
+        return updated?.takeIf { writeChatThreads(next) }
+    }
+
+    /** 즐겨찾기는 지정 시각을 보존해 최근에 지정한 대화부터 목록 상단에 고정한다. */
+    fun toggleChatFavorite(threadId: String): LocalChatThread? {
+        var updated: LocalChatThread? = null
+        val now = System.currentTimeMillis()
+        val next = chatThreads().map { thread ->
+            if (thread.id != threadId) thread else thread.copy(
+                isFavorite = !thread.isFavorite,
+                favoriteAt = if (thread.isFavorite) null else now,
             ).also { updated = it }
         }
         return updated?.takeIf { writeChatThreads(next) }
@@ -238,6 +255,8 @@ class LocalWorkspaceStore(context: Context) {
                 put("id", thread.id)
                 put("title", thread.title)
                 put("isTitleEdited", thread.isTitleEdited)
+                put("isFavorite", thread.isFavorite)
+                put("favoriteAt", thread.favoriteAt)
                 put("messages", JSONArray().apply {
                     thread.messages.forEach { message ->
                         put(JSONObject().apply {
