@@ -41,6 +41,7 @@ import {
   recordManagedAiUsage,
   replaceMaterialChunks,
   reviewGeneratedQuestion,
+  reviewQuickQuizSet,
   reviewOfficialSourceChange,
   saveUserAiPreferences,
   setWorkspaceUserRole,
@@ -278,6 +279,11 @@ export const assessmentRouter = router({
     remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const deleted = await deleteQuickQuizSet(input.id, ctx.user.id);
       if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 쪽지시험을 찾을 수 없습니다." });
+      return { success: true };
+    }),
+    review: protectedProcedure.input(z.object({ id: z.number().int().positive(), status: z.enum(["approved", "revised", "rejected"]) })).mutation(async ({ ctx, input }) => {
+      const updated = await reviewQuickQuizSet(input.id, ctx.user.id, input.status);
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험을 찾을 수 없습니다." });
       return { success: true };
     }),
   }),

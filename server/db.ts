@@ -118,6 +118,13 @@ export async function deleteQuickQuizSet(id: number, ownerId: number) {
   return Number(result[0].affectedRows) > 0;
 }
 
+// 쪽지시험은 일반 문항 검수함과 분리해 세트 단위로 검수 상태만 기록한다.
+export async function reviewQuickQuizSet(id: number, ownerId: number, status: "approved" | "revised" | "rejected") {
+  const db = await requireDb();
+  const result = await db.update(quickQuizSets).set({ status, reviewedAt: new Date() }).where(and(eq(quickQuizSets.id, id), eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
+
 export async function recordManagedAiUsage(entry: ManagedAiUsageEntry) {
   const db = await getDb();
   if (!db) return;

@@ -211,6 +211,8 @@ export const quickQuizSets = mysqlTable(
     providerType: varchar("providerType", { length: 40 }).notNull(),
     providerModel: varchar("providerModel", { length: 160 }).notNull(),
     promptVersion: varchar("promptVersion", { length: 80 }).notNull(),
+    status: mysqlEnum("status", ["pending_review", "approved", "revised", "rejected"]).default("pending_review").notNull(),
+    reviewedAt: timestamp("reviewedAt"),
     createdAt: timestamp("createdAt").defaultNow().notNull(),
     updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
     deletedAt: timestamp("deletedAt"),

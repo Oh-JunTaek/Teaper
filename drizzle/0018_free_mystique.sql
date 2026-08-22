@@ -1,0 +1,2 @@
+ALTER TABLE `quick_quiz_sets` ADD `status` enum('pending_review','approved','revised','rejected') DEFAULT 'pending_review' NOT NULL;--> statement-breakpoint
+ALTER TABLE `quick_quiz_sets` ADD `reviewedAt` timestamp;

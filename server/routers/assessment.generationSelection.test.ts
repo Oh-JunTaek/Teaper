@@ -8,6 +8,7 @@ const db = vi.hoisted(() => ({
   createAiProviderSetting: vi.fn().mockResolvedValue(55),
   createMaterial: vi.fn().mockResolvedValue(701),
   deleteMaterialForUser: vi.fn().mockResolvedValue(true),
+  reviewQuickQuizSet: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
   getManagedAiMonthlySuccessCount: vi.fn().mockResolvedValue({ usageMonth: "2026-08", successCount: 0 }),
@@ -27,7 +28,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewQuickQuizSet: db.reviewQuickQuizSet, reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -62,6 +63,12 @@ describe("generation request evidence integration", () => {
 
     await expect(caller.dashboard()).resolves.toMatchObject({ questionCount: 7, noteCount: 5, quickQuizCount: 6, approvedCount: 4 });
     expect(db.dashboardStats).toHaveBeenCalledWith(42, false);
+  });
+
+  it("records quick-quiz review only for the current teacher's set", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.quickQuiz.review({ id: 501, status: "approved" })).resolves.toEqual({ success: true });
+    expect(db.reviewQuickQuizSet).toHaveBeenCalledWith(501, 42, "approved");
   });
 
   it("blocks managed AI before generation when the plan's monthly successful-work limit is exhausted", async () => {
