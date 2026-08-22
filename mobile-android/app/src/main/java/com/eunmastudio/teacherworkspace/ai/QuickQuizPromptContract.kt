@@ -16,6 +16,7 @@ object QuickQuizPromptContract {
         appendLine("단원: $unit")
         appendLine("확인할 개념: $topic")
         appendLine("난이도: $difficulty")
+        appendLine("위 목표 정답률은 충분히 학습한 해당 수준 학생을 기준으로 한 출제 난이도 참고값일 뿐, 실제 정답률을 보장하지 않습니다.")
         appendLine("문항 수: $questionCount")
         appendLine()
         appendLine("[교사의 추가 작성 선호]")

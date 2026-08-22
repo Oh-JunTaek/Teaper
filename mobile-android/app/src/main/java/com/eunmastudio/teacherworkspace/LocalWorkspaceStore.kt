@@ -294,6 +294,13 @@ class LocalWorkspaceStore(context: Context) {
         preferences.edit().putString("homeCardLayout", layout.name).apply()
     }
 
+    /** 쪽지시험의 최근 과목은 다음 진입 시 교사가 다시 고를 수 있는 기본값으로만 사용한다. */
+    fun quickQuizLastSubject(): String = preferences.getString("quickQuizLastSubject", "화학 I") ?: "화학 I"
+
+    fun saveQuickQuizLastSubject(subject: String) {
+        preferences.edit().putString("quickQuizLastSubject", subject.trim()).apply()
+    }
+
     private fun writeSources(items: List<LocalSource>) {
         val array = JSONArray()
         items.forEach { item ->

@@ -64,6 +64,14 @@ class LiteRtLmRunner(private val context: Context) {
         }
     }
 
+    /** 쪽지시험처럼 결과를 한 번에 확정해야 하는 작업은 스트리밍 Flow와 화면 갱신을 섞지 않는다. */
+    suspend fun generateFinal(prompt: String, maxOutputTokens: Int = 900): String = withContext(Dispatchers.Default) {
+        val activeEngine = requireNotNull(engine) { "먼저 모델을 준비해 주세요." }
+        activeEngine.createConversation().use { conversation ->
+            conversation.sendMessage(prompt, emptyMap(), null, null, null, maxOutputTokens).textContent()
+        }
+    }
+
     /**
      * 채팅은 스트리밍 네이티브 콜백을 화면·저장과 동시에 섞지 않는다.
      * 최근 저장 이력으로 매 요청마다 짧은 Conversation을 구성하고 동기 완료 뒤 즉시 닫는다.

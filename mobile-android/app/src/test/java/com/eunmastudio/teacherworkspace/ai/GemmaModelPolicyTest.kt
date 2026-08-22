@@ -7,6 +7,7 @@ import com.eunmastudio.teacherworkspace.ChatSharePolicy
 import com.eunmastudio.teacherworkspace.HomeCardLayout
 import com.eunmastudio.teacherworkspace.HomeCardLayoutPolicy
 import com.eunmastudio.teacherworkspace.LocalChatMessage
+import com.eunmastudio.teacherworkspace.QuickQuizFormPolicy
 import com.eunmastudio.teacherworkspace.LocalChatThread
 import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import org.junit.Assert.assertFalse
@@ -93,6 +94,16 @@ class GemmaModelPolicyTest {
         assertTrue(prompt.contains("숨은 프롬프트"))
         assertTrue(prompt.contains("공유 결합의 정의"))
         assertTrue(QuickQuizPromptContract.VERSION == "quick-quiz-v1.0-mobile")
+    }
+
+    @Test
+    fun `quick quiz form uses supported subjects bounded question count and ten percent target rates`() {
+        assertTrue(QuickQuizFormPolicy.subjects.contains("화학 I"))
+        assertTrue(QuickQuizFormPolicy.subjectIndex("화학 I") >= 0)
+        assertTrue(QuickQuizFormPolicy.subjectIndex("서비스 밖 과목") == QuickQuizFormPolicy.subjects.indexOf("화학 I"))
+        assertTrue(QuickQuizFormPolicy.questionCounts == listOf(1, 2, 3, 4, 5))
+        assertTrue(QuickQuizFormPolicy.targetCorrectRates == listOf(10, 20, 30, 40, 50, 60, 70, 80, 90))
+        assertTrue(QuickQuizFormPolicy.difficultyLabel(60).contains("60%"))
     }
 
     @Test
