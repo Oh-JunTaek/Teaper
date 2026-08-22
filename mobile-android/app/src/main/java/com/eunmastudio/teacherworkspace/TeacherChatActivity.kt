@@ -5,6 +5,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.database.Cursor
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
@@ -291,7 +293,7 @@ class TeacherChatActivity : AppCompatActivity() {
         }
     }
 
-    /** 사진 전체 권한을 받지 않고 선택한 이미지 한 장만 앱 캐시에 복사하며, 4MB를 넘는 원본은 받지 않는다. */
+    /** 사진 전체 권한을 받지 않고 선택한 이미지 한 장을 EXIF 없는 축소 JPEG로 재인코딩한다. */
     private fun prepareVisionImage(uri: android.net.Uri) {
         runCatching {
             val size = contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.SIZE), null, null, null)?.use { cursor: Cursor ->
@@ -300,11 +302,21 @@ class TeacherChatActivity : AppCompatActivity() {
             require(size in 1..4_000_000) { "이미지는 4MB 이하의 JPEG·PNG·WEBP 한 장만 선택해 주세요." }
             pendingVisionImage?.delete()
             val directory = cacheDir.resolve("vision-input").apply { mkdirs() }
-            val file = File(directory, "vision-${System.currentTimeMillis()}.img")
+            val file = File(directory, "vision-${System.currentTimeMillis()}.jpg")
             contentResolver.openInputStream(uri).use { inputStream ->
                 requireNotNull(inputStream) { "이미지를 읽을 수 없습니다." }
-                FileOutputStream(file).use { output -> inputStream.copyTo(output) }
+                val source = requireNotNull(BitmapFactory.decodeStream(inputStream)) { "지원하지 않는 이미지 형식입니다." }
+                val scale = minOf(1f, 1600f / maxOf(source.width, source.height).toFloat())
+                val prepared = if (scale < 1f) {
+                    Bitmap.createScaledBitmap(source, (source.width * scale).toInt(), (source.height * scale).toInt(), true)
+                } else source
+                FileOutputStream(file).use { output ->
+                    check(prepared.compress(Bitmap.CompressFormat.JPEG, 86, output)) { "이미지를 안전한 임시 형식으로 만들지 못했습니다." }
+                }
+                if (prepared !== source) prepared.recycle()
+                source.recycle()
             }
+            require(file.length() in 1..4_000_000) { "이미지를 준비한 뒤에도 4MB를 초과했습니다. 더 작은 이미지를 선택해 주세요." }
             pendingVisionImage = file
             status.text = "교사 플러스 파일럿 · 이미지 1장이 준비되었습니다. 질문을 보내면 이 기기 안에서 분석하고 원본을 삭제합니다."
         }.onFailure { error -> status.text = error.message ?: "이미지를 준비하지 못했습니다." }
