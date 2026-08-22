@@ -39,6 +39,7 @@
 - 공통 공식 자료 카탈로그, 중등 수학 결정론적 계산 확인, 과목별 파일럿·준비 상태 안내와 서버 생성 경계를 추가
 
 ### Changed
+- Windows desktop `pnpm-workspace.yaml`에 단일 앱 패키지 경로를 명시해 pnpm이 `packages field missing or empty`로 의존성 설치를 중단하던 오류를 수정
 - Windows 로컬 모델 미연결·응답 시간 초과 상황에서 Ollama 또는 llama.cpp 실행·모델 준비 상태를 안내하도록 오류 메시지를 보완
 - 생성된 웹 쪽지시험이 ‘교사 검수 후 사용’ 안내만 보이고 실제 검수 동작을 제공하지 않던 문제를 수정
 - 3플랫폼 기능 동등성 점검 보고서를 alpha.26 기준으로 갱신해 구현 완료 항목과 S25+·Windows 실기기 검증, Android 암호화 백업 등 남은 격차를 분리

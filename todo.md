@@ -479,4 +479,5 @@
 - [x] 최신 웹·Windows·Android 프로젝트 소스를 사용자의 Windows 로컬 작업 폴더와 GitHub 저장소에 동기화하고, 변경 검토 뒤 커밋·푸시한다.
 - [x] 최신 웹·Windows·Android 기능, 교사 플러스 파일럿, 관리형 AI 사용량, 쪽지시험 검수, 실행·검증 절차를 README에 반영하고 GitHub main에 푸시한다.
 - [x] Windows local-only AI 채팅의 Ollama·llama.cpp 실행 경로, 오류 처리, 대화 저장·관리 흐름을 점검하고 Android와 유사한 교사용 채팅 경험으로 보완한다.
+- [x] Windows desktop의 pnpm 작업공간 설정에 단일 앱 패키지를 명시해 실제 PC 의존성 설치가 막히던 오류를 수정한다.
 - [ ] Windows beta.5에서 Ollama 또는 llama.cpp 모델 연결, 긴 답변, 대화 제목·즐겨찾기·삭제, 앱 재시작 후 대화 저장, 프롬프트 비공개를 실제 PC에서 확인한다.
