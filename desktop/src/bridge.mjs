@@ -9,9 +9,9 @@ const LLAMA_CPP_URL = process.env.LLAMA_CPP_BASE_URL || "http://127.0.0.1:8080";
 function localAddress(address) { return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1"; }
 async function body(request) { const buffers = []; for await (const item of request) buffers.push(item); return buffers.length ? JSON.parse(Buffer.concat(buffers).toString("utf8")) : {}; }
 function send(response, status, value) { response.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }); response.end(JSON.stringify(value)); }
-async function ollama(path, options) { const response = await fetch(`${OLLAMA_URL}${path}`, options); if (!response.ok) throw new Error(`Ollama 응답 오류 (${response.status})`); return response.json(); }
+async function ollama(path, options) { try { const response = await fetch(`${OLLAMA_URL}${path}`, options); if (!response.ok) throw new Error(`Ollama 응답 오류 (${response.status})`); return response.json(); } catch (error) { if (error instanceof Error && error.message.startsWith("Ollama 응답 오류")) throw error; throw new Error("Ollama에 연결하지 못했습니다. Ollama를 실행하고 선택한 모델이 준비됐는지 확인해 주세요."); } }
 function assertLoopbackUrl(value) { const url = new URL(value); if (!["127.0.0.1", "localhost", "::1"].includes(url.hostname)) throw new Error("로컬 모델 URL은 loopback 주소여야 합니다."); return url.toString().replace(/\/$/, ""); }
-async function llama(path, options) { const response = await fetch(`${assertLoopbackUrl(LLAMA_CPP_URL)}${path}`, options); if (!response.ok) throw new Error(`llama.cpp 응답 오류 (${response.status})`); return response.json(); }
+async function llama(path, options) { try { const response = await fetch(`${assertLoopbackUrl(LLAMA_CPP_URL)}${path}`, options); if (!response.ok) throw new Error(`llama.cpp 응답 오류 (${response.status})`); return response.json(); } catch (error) { if (error instanceof Error && error.message.startsWith("llama.cpp 응답 오류")) throw error; throw new Error("llama.cpp 서버에 연결하지 못했습니다. loopback 서버와 모델 실행 상태를 확인해 주세요."); } }
 async function runtimeStatus() {
   const result = { ollama: { installed: false, running: false, models: [] }, llamaCpp: { installed: false, running: false, models: [] } };
   try { const value = await ollama("/api/tags"); result.ollama = { installed: true, running: true, models: (value.models || []).map(model => model.name) }; } catch { /* local runtime absent */ }
@@ -48,10 +48,10 @@ export async function createLocalBridge() {
         if (typeof input.model !== "string" || typeof input.prompt !== "string") return send(response, 400, { error: "model과 prompt가 필요합니다." });
         if (input.runtime === "llama_cpp") {
           const options = input.options || {};
-          const result = await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: input.prompt, n_predict: options.num_predict || options.maxTokens || 1024, temperature: options.temperature ?? 0.2, top_k: options.top_k, top_p: options.top_p }) });
+          const result = await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: input.prompt, n_predict: options.num_predict || options.maxTokens || 1024, temperature: options.temperature ?? 0.2, top_k: options.top_k, top_p: options.top_p }), signal: AbortSignal.timeout(8 * 60_000) });
           return send(response, 200, { response: result.content, model: input.model, runtime: "llama_cpp", localOnly: true });
         }
-        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, options: input.options || {}, ...(input.think === true ? { think: true } : {}) }) });
+        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, options: input.options || {}, ...(input.think === true ? { think: true } : {}) }), signal: AbortSignal.timeout(8 * 60_000) });
         return send(response, 200, { response: result.response, model: result.model, runtime: "ollama", localOnly: true });
       }
       if (request.method === "POST" && request.url === "/fallback-options") { const failure = await body(request); const runtimes = await runtimeStatus(); return send(response, 200, fallbackOptions({ ...failure, localRuntimeAvailable: runtimes.ollama.running || runtimes.llamaCpp.running })); }

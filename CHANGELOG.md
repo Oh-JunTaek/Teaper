@@ -5,6 +5,7 @@
 ## Unreleased
 
 ### Added
+- Windows local-only beta.5에 Ollama·llama.cpp 기반 AI 채팅, 최근 대화 제한, 제목 변경·즐겨찾기·삭제, SQLite 대화 저장·암호화 백업 포함을 추가
 - 웹 쪽지시험 세트에 검수 대기·승인·수정 필요·반려 상태와 검수 시각을 추가하고, 일반 문항 검수함과 분리된 쪽지시험 검수 화면에서 세트 선택·상태 전환을 지원
 - 웹 내 정보·플랜 화면과 Android·Windows local-only의 개인 작업 현황을 추가해 자료·문항·승인·메모·쪽지시험 수를 각 계정 또는 기기에서 확인하도록 보완
 - 세 플랫폼 개인정보 최소 사용 통계 계약을 추가하고, Windows·Android의 local-only 통계 자동 외부 전송 금지와 웹 관리형 AI 집계 범위를 명시
@@ -38,6 +39,7 @@
 - 공통 공식 자료 카탈로그, 중등 수학 결정론적 계산 확인, 과목별 파일럿·준비 상태 안내와 서버 생성 경계를 추가
 
 ### Changed
+- Windows 로컬 모델 미연결·응답 시간 초과 상황에서 Ollama 또는 llama.cpp 실행·모델 준비 상태를 안내하도록 오류 메시지를 보완
 - 생성된 웹 쪽지시험이 ‘교사 검수 후 사용’ 안내만 보이고 실제 검수 동작을 제공하지 않던 문제를 수정
 - 3플랫폼 기능 동등성 점검 보고서를 alpha.26 기준으로 갱신해 구현 완료 항목과 S25+·Windows 실기기 검증, Android 암호화 백업 등 남은 격차를 분리
 - Android alpha.25 홈에서 쪽지시험·메모장·검수함 아이콘을 기능별로 구분하고, 채팅 상단의 Gemma 모델명은 교사용 안내 문구로 대체
@@ -65,6 +67,7 @@
 - 교사 맞춤 지시문은 내부 기본 지시문을 표시·교체하지 못하며, 프롬프트 공개 요구는 로컬 저장 전에 거절하도록 적용
 
 ### Verified
+- Windows beta.5 local-only AI 채팅의 SQLite 저장·백업 호환·프롬프트 비공개·로컬 실행기 미연결 안내 회귀 테스트와 JavaScript 구문 검사를 통과
 - Android alpha.24 이미지 대화의 S25+ 현장 검증표와 실패 기록 기준을 추가
 - 웹 Vitest 72개, Windows local-only 저장소·보안 테스트, Android `testDebugUnitTest` 및 alpha.20/alpha.21/alpha.22 Debug APK 조립을 통과
 - Android alpha.23 `testDebugUnitTest`·Debug APK 조립, Windows local-only·고급 설정 Node 테스트를 통과
