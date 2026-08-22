@@ -24,6 +24,7 @@ import {
   Sparkles,
   StickyNote,
   Timer,
+  UserRound,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -121,7 +122,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="hidden sm:block"><span className="block text-xs font-semibold leading-4">{user.name || "교사"}</span><span className="mt-0.5 flex gap-1"><Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{user.role === "admin" ? "관리자" : "교사"}</Badge><Badge className={plan.data?.plan === "plus" ? "h-4 bg-[#FFF2D8] px-1.5 text-[10px] text-[#A66C08] hover:bg-[#FFF2D8]" : "h-4 bg-[#E6F4EE] px-1.5 text-[10px] text-[#15856B] hover:bg-[#E6F4EE]"}>{plan.data?.label || "플랜"}</Badge></span></span>
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-44"><DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 focus:text-red-600"><LogOut className="mr-2 h-4 w-4" />로그아웃</DropdownMenuItem></DropdownMenuContent>
+          <DropdownMenuContent align="end" className="w-44"><DropdownMenuItem onClick={() => setLocation("/profile")} className="cursor-pointer"><UserRound className="mr-2 h-4 w-4" />내 정보·플랜</DropdownMenuItem><DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 focus:text-red-600"><LogOut className="mr-2 h-4 w-4" />로그아웃</DropdownMenuItem></DropdownMenuContent>
         </DropdownMenu>
       </header>
       <main className="min-h-[calc(100vh-4rem)] px-4 py-6 md:ml-64 md:px-8 md:py-8">{children}</main>

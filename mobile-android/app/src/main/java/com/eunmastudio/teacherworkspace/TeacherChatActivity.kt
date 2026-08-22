@@ -97,17 +97,18 @@ class TeacherChatActivity : AppCompatActivity() {
             addView(LinearLayout(this@TeacherChatActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(Button(this@TeacherChatActivity).apply {
-                    text = "‹"; textSize = 28f; setTextColor(Color.WHITE); isAllCaps = false
-                    background = solid(Color.TRANSPARENT, 0)
+                    text = "←"; textSize = 21f; setTextColor(Color.WHITE); isAllCaps = false
+                    contentDescription = "채팅 닫기"
+                    background = chalkSurface(Color.rgb(29, 50, 43), dp(16))
                     setOnClickListener { finish() }
-                }, LinearLayout.LayoutParams(dp(48), dp(52)))
+                }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { rightMargin = dp(10) })
                 addView(LinearLayout(this@TeacherChatActivity).apply {
                     orientation = LinearLayout.VERTICAL
                     addView(TextView(this@TeacherChatActivity).apply {
                         text = "온디바이스 AI 채팅"; textSize = 21f; setTextColor(Color.WHITE)
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                     })
-                    addView(TextView(this@TeacherChatActivity).apply { text = "Gemma 4 · 이 기기 안에서만 처리"; textSize = 12.5f; setTextColor(Color.rgb(190, 202, 161)) })
+                    addView(TextView(this@TeacherChatActivity).apply { text = "이 기기 안에서 안전하게 처리"; textSize = 12.5f; setTextColor(Color.rgb(190, 202, 161)) })
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(Button(this@TeacherChatActivity).apply {
                     text = "대화"; isAllCaps = false; textSize = 13f; setTextColor(Color.WHITE)

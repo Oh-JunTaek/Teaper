@@ -467,13 +467,20 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
   const referenceScope = !includeAll && ownerId ? eq(referenceQuestions.ownerId, ownerId) : undefined;
   const pendingScope = !includeAll && ownerId ? and(eq(generatedQuestions.status, "pending_review"), eq(generatedQuestions.creatorId, ownerId)) : eq(generatedQuestions.status, "pending_review");
   const approvedScope = !includeAll && ownerId ? and(eq(generatedQuestions.status, "approved"), eq(generatedQuestions.creatorId, ownerId)) : eq(generatedQuestions.status, "approved");
+  const questionScope = !includeAll && ownerId ? eq(generatedQuestions.creatorId, ownerId) : undefined;
+  const noteScope = !includeAll && ownerId ? and(eq(teacherNotes.ownerId, ownerId), isNull(teacherNotes.deletedAt)) : isNull(teacherNotes.deletedAt);
+  const quickQuizScope = !includeAll && ownerId ? and(eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt)) : isNull(quickQuizSets.deletedAt);
   const [materialCount] = await db.select({ value: count() }).from(referenceMaterials).where(materialScope);
   const referenceQuery = db.select({ value: count() }).from(referenceQuestions);
   const [referenceCount] = referenceScope ? await referenceQuery.where(referenceScope) : await referenceQuery;
   const [reviewCount] = await db.select({ value: count() }).from(generatedQuestions).where(pendingScope);
   const [approvedCount] = await db.select({ value: count() }).from(generatedQuestions).where(approvedScope);
+  const questionQuery = db.select({ value: count() }).from(generatedQuestions);
+  const [questionCount] = questionScope ? await questionQuery.where(questionScope) : await questionQuery;
+  const [noteCount] = await db.select({ value: count() }).from(teacherNotes).where(noteScope);
+  const [quickQuizCount] = await db.select({ value: count() }).from(quickQuizSets).where(quickQuizScope);
   const [officialDocumentCount] = await db.select({ value: count() }).from(officialDocuments).where(eq(officialDocuments.catalogStatus, "published"));
-  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
+  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), questionCount: Number(questionCount.value), noteCount: Number(noteCount.value), quickQuizCount: Number(quickQuizCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
 }
 
 export async function listWorkspaceUsers() {

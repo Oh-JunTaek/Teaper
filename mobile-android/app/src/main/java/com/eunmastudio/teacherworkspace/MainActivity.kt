@@ -213,10 +213,10 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this@MainActivity, SourcesActivity::class.java))
             },
             WorkCardItem("generate", "문항 생성", "선택한 자료로 문항 만들기", R.drawable.ic_workspace_generate, Color.rgb(118, 156, 244)) { showGenerationDialog() },
-            WorkCardItem("quick_quiz", "간결한 쪽지시험", "한 개념을 빠르게 확인하기", R.drawable.ic_workspace_generate, Color.rgb(91, 145, 232)) {
+            WorkCardItem("quick_quiz", "간결한 쪽지시험", "한 개념을 빠르게 확인하기", R.drawable.ic_workspace_quiz, Color.rgb(91, 145, 232)) {
                 startActivity(Intent(this@MainActivity, QuickQuizActivity::class.java))
             },
-            WorkCardItem("notes", "메모장", "AI에 자동 반영되지 않는 작업 메모", R.drawable.ic_workspace_sources, Color.rgb(132, 111, 204)) {
+            WorkCardItem("notes", "메모장", "AI에 자동 반영되지 않는 작업 메모", R.drawable.ic_workspace_note, Color.rgb(132, 111, 204)) {
                 startActivity(Intent(this@MainActivity, NotesActivity::class.java))
             },
             WorkCardItem("review", "검수함", "근거 대조·승인 문항 내보내기", R.drawable.ic_workspace_review, Color.rgb(238, 177, 77)) { showReviewDialog() },
@@ -390,10 +390,12 @@ class MainActivity : AppCompatActivity() {
     /** 모델·자료 작업과 분리된 앱 수준 설정을 우측 상단 메뉴로 모은다. */
     private fun showOverflowMenu() {
         PopupMenu(this, overflowButton).apply {
+            menu.add("내 정보·플랜")
             menu.add("설정")
             menu.add("Gemma 라이선스·NOTICE")
             setOnMenuItemClickListener { item ->
                 when (item.title.toString()) {
+                    "내 정보·플랜" -> startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
                     "설정" -> showTeacherInstructionsDialog()
                     "Gemma 라이선스·NOTICE" -> showModelLicenseDialog()
                 }
