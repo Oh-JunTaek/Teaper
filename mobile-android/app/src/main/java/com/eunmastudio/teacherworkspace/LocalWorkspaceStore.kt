@@ -1,6 +1,8 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Context
+import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
+import com.eunmastudio.teacherworkspace.ai.ChatTitlePolicy
 import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
 import org.json.JSONArray
 import org.json.JSONObject
@@ -55,6 +57,7 @@ data class LocalChatMessage(
 data class LocalChatThread(
     val id: String = UUID.randomUUID().toString(),
     val title: String,
+    val isTitleEdited: Boolean = false,
     val messages: List<LocalChatMessage> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
@@ -100,6 +103,7 @@ class LocalWorkspaceStore(context: Context) {
             LocalChatThread(
                 id = item.getString("id"),
                 title = item.getString("title"),
+                isTitleEdited = item.optBoolean("isTitleEdited", false),
                 messages = item.getJSONArray("messages").toChatMessages(),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
@@ -141,10 +145,39 @@ class LocalWorkspaceStore(context: Context) {
         val message = LocalChatMessage(content = cleanContent, isUser = isUser)
         var updated: LocalChatThread? = null
         val next = chatThreads().map { thread ->
+            if (thread.id != threadId) thread else {
+                val messages = thread.messages + message
+                thread.copy(
+                    title = if (!thread.isTitleEdited && isUser) {
+                        ChatTitlePolicy.suggest(messages.map { ChatPromptMessage(it.isUser, it.content) })
+                    } else thread.title,
+                    messages = messages,
+                    updatedAt = message.createdAt,
+                ).also { updated = it }
+            }
+        }
+        return updated?.takeIf { writeChatThreads(next) }
+    }
+
+    /** 기존 대화도 최신 사용자 질문을 반영해 한 번 정리하되, 교사가 편집한 제목은 절대 덮어쓰지 않는다. */
+    fun refreshSuggestedChatTitles(): List<LocalChatThread> {
+        val current = chatThreads()
+        val next = current.map { thread ->
+            if (thread.isTitleEdited || thread.messages.none { it.isUser }) thread else thread.copy(
+                title = ChatTitlePolicy.suggest(thread.messages.map { ChatPromptMessage(it.isUser, it.content) }),
+            )
+        }
+        if (next != current) writeChatThreads(next)
+        return next.sortedByDescending { it.updatedAt }
+    }
+
+    fun renameChatThread(threadId: String, title: String): LocalChatThread? {
+        var updated: LocalChatThread? = null
+        val next = chatThreads().map { thread ->
             if (thread.id != threadId) thread else thread.copy(
-                title = if (thread.messages.isEmpty() && isUser) cleanContent.take(42) else thread.title,
-                messages = thread.messages + message,
-                updatedAt = message.createdAt,
+                title = ChatTitlePolicy.normalizeManualTitle(title),
+                isTitleEdited = true,
+                updatedAt = System.currentTimeMillis(),
             ).also { updated = it }
         }
         return updated?.takeIf { writeChatThreads(next) }
@@ -204,6 +237,7 @@ class LocalWorkspaceStore(context: Context) {
             array.put(JSONObject().apply {
                 put("id", thread.id)
                 put("title", thread.title)
+                put("isTitleEdited", thread.isTitleEdited)
                 put("messages", JSONArray().apply {
                     thread.messages.forEach { message ->
                         put(JSONObject().apply {

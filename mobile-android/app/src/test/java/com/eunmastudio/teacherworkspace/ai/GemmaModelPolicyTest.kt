@@ -159,4 +159,23 @@ class GemmaModelPolicyTest {
         assertFalse(plain.contains("**"))
         assertFalse(plain.contains("`"))
     }
+
+    @Test
+    fun `chat title follows the latest meaningful user question rather than the first greeting`() {
+        val title = ChatTitlePolicy.suggest(
+            listOf(
+                ChatPromptMessage(isUser = true, content = "너의 이름이 있어?"),
+                ChatPromptMessage(isUser = false, content = "저는 교사용 보조 도구입니다."),
+                ChatPromptMessage(isUser = true, content = "열역학 제2법칙을 수업용으로 설명해 줘"),
+            ),
+        )
+        assertTrue(title.contains("열역학 제2법칙"))
+        assertFalse(title.contains("이름"))
+    }
+
+    @Test
+    fun `manual chat title is compact and non blank`() {
+        assertTrue(ChatTitlePolicy.normalizeManualTitle("  열역학 수업 설계\n") == "열역학 수업 설계")
+        assertTrue(ChatTitlePolicy.normalizeManualTitle("   ") == ChatTitlePolicy.DEFAULT_TITLE)
+    }
 }

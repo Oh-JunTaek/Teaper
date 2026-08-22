@@ -209,7 +209,9 @@ class MainActivity : AppCompatActivity() {
             WorkCardItem("chat", "온디바이스 AI 채팅", "질문·자료 정리·수업 아이디어", R.drawable.ic_workspace_chat, Color.rgb(75, 126, 235)) {
                 startActivity(Intent(this@MainActivity, TeacherChatActivity::class.java))
             },
-            WorkCardItem("source", "자료 준비", "참고 자료·기출 유형·공식 자료", R.drawable.ic_workspace_sources, Color.rgb(65, 174, 152)) { showSourcesDialog() },
+            WorkCardItem("source", "자료 준비", "참고 자료·기출 유형·공식 자료", R.drawable.ic_workspace_sources, Color.rgb(65, 174, 152)) {
+                startActivity(Intent(this@MainActivity, SourcesActivity::class.java))
+            },
             WorkCardItem("generate", "문항 생성", "선택한 자료로 문항 만들기", R.drawable.ic_workspace_generate, Color.rgb(118, 156, 244)) { showGenerationDialog() },
             WorkCardItem("review", "검수함", "근거 대조·승인 문항 내보내기", R.drawable.ic_workspace_review, Color.rgb(238, 177, 77)) { showReviewDialog() },
             WorkCardItem("model", "모델 관리", "Gemma 4 E2B 상태·설치·라이선스", R.drawable.ic_workspace_model, Color.rgb(151, 112, 230)) {

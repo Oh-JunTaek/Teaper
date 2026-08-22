@@ -1,7 +1,9 @@
 package com.eunmastudio.teacherworkspace
 
+import android.app.Dialog
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
@@ -58,7 +60,7 @@ class TeacherChatActivity : AppCompatActivity() {
         appLockGate = AppLockGate(this)
         setContentView(appLockGate.attach(screen))
         applyWindowInsets(screen)
-        loadThread(store.chatThreads().firstOrNull() ?: store.createChatThread())
+        loadThread(store.refreshSuggestedChatTitles().firstOrNull() ?: store.createChatThread())
     }
 
     override fun onResume() {
@@ -253,28 +255,87 @@ class TeacherChatActivity : AppCompatActivity() {
     }.take(6_000)
 
     private fun showThreadPicker() {
-        val threads = store.chatThreads()
-        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(34, 16, 34, 16) }
-        container.addView(Button(this).apply {
-            text = "+ 새 대화"; isAllCaps = false
-            setOnClickListener { loadThread(store.createChatThread()); (parent as? android.app.AlertDialog)?.dismiss() }
-        })
+        val threads = store.refreshSuggestedChatTitles()
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var dialog: Dialog
+        container.addView(chatActionButton("＋ 새 대화", accent = true).apply {
+            setOnClickListener { dialog.dismiss(); loadThread(store.createChatThread()) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply { bottomMargin = dp(12) })
         threads.forEach { thread ->
-            container.addView(Button(this).apply {
-                text = "${thread.title}\n${thread.messages.lastOrNull()?.content?.take(50).orEmpty()}"; isAllCaps = false; gravity = Gravity.START
-                setOnClickListener { loadThread(thread); (parent as? android.app.AlertDialog)?.dismiss() }
+            container.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(15), dp(13), dp(13), dp(12))
+                background = chalkSurface(Color.rgb(21, 40, 34), dp(18))
+                setOnClickListener { dialog.dismiss(); loadThread(thread) }
+                addView(LinearLayout(this@TeacherChatActivity).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(TextView(this@TeacherChatActivity).apply {
+                        text = thread.title; textSize = 16f; setTextColor(Color.rgb(242, 239, 225)); maxLines = 1
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    addView(chatActionButton("편집").apply {
+                        textSize = 12f
+                        setOnClickListener { dialog.dismiss(); showRenameThreadDialog(thread) }
+                    }, LinearLayout.LayoutParams(dp(64), dp(38)))
+                })
+                addView(TextView(this@TeacherChatActivity).apply {
+                    text = thread.messages.lastOrNull()?.content?.take(58).orEmpty().ifBlank { "아직 메시지가 없습니다." }
+                    textSize = 13f; setTextColor(Color.rgb(177, 198, 181)); maxLines = 2; setPadding(0, dp(5), 0, 0)
+                })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
+        }
+        val footer = LinearLayout(this).apply {
+            gravity = Gravity.END
+            addView(chatActionButton("현재 대화 삭제").apply {
+                setOnClickListener {
+                    currentThread?.let { store.deleteChatThread(it.id) }
+                    dialog.dismiss()
+                    loadThread(store.createChatThread())
+                }
+            }, LinearLayout.LayoutParams(dp(132), dp(44)))
+        }
+        container.addView(footer, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) })
+        dialog = showChatDialog("대화 기록", "제목은 이 기기에서 최근 질문을 바탕으로 자동 정리됩니다. ‘편집’으로 직접 고정할 수 있습니다.", ScrollView(this).apply { addView(container) })
+    }
+
+    private fun showRenameThreadDialog(thread: LocalChatThread) {
+        val input = EditText(this).apply {
+            setText(thread.title); selectAll(); setTextColor(Color.WHITE); setHintTextColor(Color.rgb(148, 169, 151))
+            background = chalkSurface(Color.rgb(16, 31, 26), dp(16)); setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        showChatDialog("대화 제목 수정", "직접 입력한 제목은 이후 자동 제목으로 바뀌지 않습니다.", input, "저장") {
+            val updated = store.renameChatThread(thread.id, input.text.toString())
+            if (updated != null && currentThread?.id == thread.id) loadThread(updated)
+            updated != null
+        }
+    }
+
+    private fun showChatDialog(title: String, message: String, content: View, positiveLabel: String? = null, onPositive: (() -> Boolean)? = null): Dialog {
+        lateinit var dialog: Dialog
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(21), dp(22), dp(18))
+            background = chalkSurface(Color.rgb(22, 38, 33), dp(24))
+            addView(TextView(this@TeacherChatActivity).apply { text = title; textSize = 24f; setTextColor(Color.rgb(246, 240, 222)); setTypeface(typeface, android.graphics.Typeface.BOLD) })
+            addView(TextView(this@TeacherChatActivity).apply { text = message; textSize = 13.5f; setTextColor(Color.rgb(190, 208, 191)); setPadding(0, dp(8), 0, dp(12)) })
+            addView(content)
+            addView(LinearLayout(this@TeacherChatActivity).apply {
+                gravity = Gravity.END; setPadding(0, dp(15), 0, 0)
+                addView(chatActionButton("닫기").apply { setOnClickListener { dialog.dismiss() } }, LinearLayout.LayoutParams(dp(88), dp(44)).apply { rightMargin = dp(8) })
+                positiveLabel?.let { label -> addView(chatActionButton(label, accent = true).apply { setOnClickListener { if (onPositive?.invoke() != false) dialog.dismiss() } }, LinearLayout.LayoutParams(dp(92), dp(44))) }
             })
         }
-        val dialog = android.app.AlertDialog.Builder(this)
-            .setTitle("대화 기록 · 이 기기에만 보관")
-            .setView(ScrollView(this).apply { addView(container) })
-            .setNegativeButton("닫기", null)
-            .setNeutralButton("현재 대화 삭제") { _, _ ->
-                currentThread?.let { store.deleteChatThread(it.id) }
-                loadThread(store.createChatThread())
-            }
-            .create()
+        dialog = Dialog(this)
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
         dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        return dialog
+    }
+
+    private fun chatActionButton(label: String, accent: Boolean = false): Button = Button(this).apply {
+        text = label; isAllCaps = false; setTextColor(if (accent) Color.rgb(24, 29, 22) else Color.rgb(236, 241, 231)); textSize = 14f
+        background = chalkSurface(if (accent) Color.rgb(216, 191, 140) else Color.rgb(31, 54, 47), dp(15))
     }
 
     private fun addSystemHint(content: String) {
@@ -311,4 +372,6 @@ class TeacherChatActivity : AppCompatActivity() {
         cornerRadius = radius.toFloat()
         setStroke((resources.displayMetrics.density * 1).toInt(), Color.rgb(53, 77, 68))
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 }
