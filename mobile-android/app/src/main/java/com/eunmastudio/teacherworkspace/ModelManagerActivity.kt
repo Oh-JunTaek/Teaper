@@ -115,6 +115,13 @@ class ModelManagerActivity : AppCompatActivity() {
             e4Delete = card.findViewWithTag("delete")
         })
         root.addView(Button(this).apply {
+            text = "고급 모델 설정 · 교사 맞춤 지시문"
+            isAllCaps = false
+            setTextColor(Color.rgb(224, 229, 237))
+            background = solid(Color.rgb(36, 68, 58), dp(18))
+            setOnClickListener { startActivity(android.content.Intent(this@ModelManagerActivity, ModelSettingsActivity::class.java)) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { topMargin = dp(2); bottomMargin = dp(8) })
+        root.addView(Button(this).apply {
             text = "Gemma 모델 라이선스·NOTICE 확인"
             isAllCaps = false
             setTextColor(Color.rgb(202, 210, 222))

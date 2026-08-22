@@ -46,8 +46,12 @@ export async function createLocalBridge() {
       if (request.method === "POST" && request.url === "/generate") {
         const input = await body(request);
         if (typeof input.model !== "string" || typeof input.prompt !== "string") return send(response, 400, { error: "model과 prompt가 필요합니다." });
-        if (input.runtime === "llama_cpp") { const result = await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: input.prompt, n_predict: input.options?.maxTokens || 1024, temperature: input.options?.temperature ?? 0.2 }) }); return send(response, 200, { response: result.content, model: input.model, runtime: "llama_cpp", localOnly: true }); }
-        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, options: input.options || {} }) });
+        if (input.runtime === "llama_cpp") {
+          const options = input.options || {};
+          const result = await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: input.prompt, n_predict: options.num_predict || options.maxTokens || 1024, temperature: options.temperature ?? 0.2, top_k: options.top_k, top_p: options.top_p }) });
+          return send(response, 200, { response: result.content, model: input.model, runtime: "llama_cpp", localOnly: true });
+        }
+        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, options: input.options || {}, ...(input.think === true ? { think: true } : {}) }) });
         return send(response, 200, { response: result.response, model: result.model, runtime: "ollama", localOnly: true });
       }
       if (request.method === "POST" && request.url === "/fallback-options") { const failure = await body(request); const runtimes = await runtimeStatus(); return send(response, 200, fallbackOptions({ ...failure, localRuntimeAvailable: runtimes.ollama.running || runtimes.llamaCpp.running })); }

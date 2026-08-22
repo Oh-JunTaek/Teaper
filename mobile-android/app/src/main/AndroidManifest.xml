@@ -36,6 +36,10 @@
             android:exported="false" />
 
         <activity
+            android:name=".ModelSettingsActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".TeacherChatActivity"
             android:exported="false" />
 

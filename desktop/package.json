@@ -11,7 +11,7 @@
     "start": "LOCAL_APP_MODE=true node src/main.mjs",
     "desktop": "LOCAL_APP_MODE=true electron src/shell.mjs",
     "package:win:test": "electron-builder --win nsis --x64 --publish never",
-    "test": "node test/local-app.test.mjs"
+    "test": "node --test test/*.test.mjs"
   },
   "dependencies": {
     "docx": "^9.7.1"

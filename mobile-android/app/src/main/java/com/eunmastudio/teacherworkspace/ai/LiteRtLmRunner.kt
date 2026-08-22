@@ -76,7 +76,7 @@ class LiteRtLmRunner(private val context: Context) {
      * 채팅은 스트리밍 네이티브 콜백을 화면·저장과 동시에 섞지 않는다.
      * 최근 저장 이력으로 매 요청마다 짧은 Conversation을 구성하고 동기 완료 뒤 즉시 닫는다.
      */
-    suspend fun chat(systemInstruction: String, history: List<ChatPromptMessage>): String = withContext(Dispatchers.Default) {
+    suspend fun chat(systemInstruction: String, history: List<ChatPromptMessage>, settings: LocalModelSettings = LocalModelSettings()): String = withContext(Dispatchers.Default) {
         val activeEngine = requireNotNull(engine) { "먼저 모델을 준비해 주세요." }
         val lastUserIndex = history.indexOfLast { it.isUser }
         if (lastUserIndex < 0) throw IllegalArgumentException("보낼 질문이 없습니다.")
@@ -88,7 +88,8 @@ class LiteRtLmRunner(private val context: Context) {
             ConversationConfig(
                 systemInstruction = Contents.of(systemInstruction),
                 initialMessages = initialMessages,
-                samplerConfig = SamplerConfig(temperature = 0.35, topK = 20, topP = 0.9),
+                samplerConfig = LocalModelSettingsPolicy.samplerConfig(settings),
+                thinkingConfig = LocalModelSettingsPolicy.thinkingConfig(settings),
             ),
         ).use { conversation ->
             conversation.sendMessage(
@@ -97,7 +98,7 @@ class LiteRtLmRunner(private val context: Context) {
                 null,
                 null,
                 null,
-                ChatTurnPolicy.MAX_RESPONSE_TOKENS,
+                settings.maxOutputTokens.takeIf { it > 0 } ?: ChatTurnPolicy.MAX_RESPONSE_TOKENS,
             ).textContent()
         }
     }

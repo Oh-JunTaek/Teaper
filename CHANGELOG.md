@@ -6,6 +6,9 @@
 
 ### Added
 - Android 쪽지시험의 현재 서비스 범위 과목 선택, 최근 과목 기본값 저장, 1~5문항 선택, 10~90% 목표 정답률 선택을 추가
+- Android alpha.23과 Windows 로컬 앱에 토큰 예산·표현 다양성·Top-K·Top-P·가속 선호·지원 모델용 추론 기능의 고급 설정 및 물음표 도움말을 추가
+- Android 모델 관리에 고급 설정·교사 맞춤 지시문 진입을 추가하고, 기기 내 저장값을 Gemma 4 채팅 실행에 적용
+- Windows 로컬 설정에 Ollama·llama.cpp 요청별 생성 옵션과 교사 맞춤 지시문을 추가하고, 실행기에서 지원하지 않는 가속·추론·추측 디코딩은 안전하게 무시하도록 추가
 - Android 채팅 관리에 전체/선택 메시지의 텍스트 공유, 캐시 기반 텍스트 파일 공유, 클립보드 복사를 추가
 - 웹·Windows·Android 공통 교사 메모장: 사용자 또는 기기별 저장, 상단 고정, 수정·삭제, AI 요청 자동 미포함 원칙
 - 웹·Windows·Android 공통 간결한 쪽지시험: 한 개념·한두 문장·짧은 해설만 허용하는 생성·교사 검수 흐름
@@ -48,9 +51,11 @@
 
 ### Security
 - 세 플랫폼 쪽지시험에 시스템 지시문·내부 규칙의 직접·간접·번역·Base64 추출 요청을 생성 전 차단하고, 의심 출력은 저장 전에 폐기하는 2단계 정책을 적용
+- 교사 맞춤 지시문은 내부 기본 지시문을 표시·교체하지 못하며, 프롬프트 공개 요구는 로컬 저장 전에 거절하도록 적용
 
 ### Verified
 - 웹 Vitest 72개, Windows local-only 저장소·보안 테스트, Android `testDebugUnitTest` 및 alpha.20/alpha.21/alpha.22 Debug APK 조립을 통과
+- Android alpha.23 `testDebugUnitTest`·Debug APK 조립, Windows local-only·고급 설정 Node 테스트를 통과
 
 ### Planned
 - 개인정보 비수집 익명 일별 이용 통계는 정책 확정·전문가 검토 뒤 기본 비활성 상태로 도입

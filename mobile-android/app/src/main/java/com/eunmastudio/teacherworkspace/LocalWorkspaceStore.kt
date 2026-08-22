@@ -1,9 +1,12 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Context
+import com.eunmastudio.teacherworkspace.ai.AndroidAccelerationPreference
 import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
 import com.eunmastudio.teacherworkspace.ai.ChatTitlePolicy
 import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
+import com.eunmastudio.teacherworkspace.ai.LocalModelSettings
+import com.eunmastudio.teacherworkspace.ai.LocalModelSettingsPolicy
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -285,7 +288,42 @@ class LocalWorkspaceStore(context: Context) {
     fun teacherInstructions(): String = preferences.getString("teacherInstructions", "") ?: ""
 
     fun saveTeacherInstructions(value: String) {
-        preferences.edit().putString("teacherInstructions", value.trim()).apply()
+        preferences.edit().putString("teacherInstructions", value.trim().take(600)).apply()
+    }
+
+    fun modelSettings(): LocalModelSettings = LocalModelSettingsPolicy.normalize(
+        LocalModelSettings(
+            contextTokens = preferences.getInt("modelContextTokens", 2_048),
+            maxOutputTokens = preferences.getInt("modelMaxOutputTokens", 0),
+            temperature = preferences.getFloat("modelTemperature", 0.35f).toDouble(),
+            topK = preferences.getInt("modelTopK", 20),
+            topP = preferences.getFloat("modelTopP", 0.90f).toDouble(),
+            acceleration = runCatching { AndroidAccelerationPreference.valueOf(preferences.getString("modelAcceleration", AndroidAccelerationPreference.CPU.name) ?: AndroidAccelerationPreference.CPU.name) }.getOrDefault(AndroidAccelerationPreference.CPU),
+            thinkingEnabled = preferences.getBoolean("modelThinkingEnabled", false),
+            speculativeDecodingEnabled = preferences.getBoolean("modelSpeculativeDecodingEnabled", false),
+        ),
+    )
+
+    fun saveModelSettings(value: LocalModelSettings) {
+        val safe = LocalModelSettingsPolicy.normalize(value)
+        preferences.edit()
+            .putInt("modelContextTokens", safe.contextTokens)
+            .putInt("modelMaxOutputTokens", safe.maxOutputTokens)
+            .putFloat("modelTemperature", safe.temperature.toFloat())
+            .putInt("modelTopK", safe.topK)
+            .putFloat("modelTopP", safe.topP.toFloat())
+            .putString("modelAcceleration", safe.acceleration.name)
+            .putBoolean("modelThinkingEnabled", safe.thinkingEnabled)
+            .putBoolean("modelSpeculativeDecodingEnabled", safe.speculativeDecodingEnabled)
+            .apply()
+    }
+
+    fun resetModelSettings() {
+        preferences.edit()
+            .remove("modelContextTokens").remove("modelMaxOutputTokens").remove("modelTemperature")
+            .remove("modelTopK").remove("modelTopP").remove("modelAcceleration")
+            .remove("modelThinkingEnabled").remove("modelSpeculativeDecodingEnabled")
+            .apply()
     }
 
     fun homeCardLayout(): HomeCardLayout = HomeCardLayoutPolicy.fromStored(preferences.getString("homeCardLayout", null))

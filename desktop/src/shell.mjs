@@ -6,6 +6,7 @@ import { createLocalBridge } from "./bridge.mjs";
 import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
 import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION } from "./quickQuizPolicy.mjs";
+import { DEFAULT_LOCAL_MODEL_SETTINGS, generationOptions, normalizeLocalModelSettings, supportsThinking } from "./localModelSettings.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
 
 if (process.env.LOCAL_APP_MODE !== "true") throw new Error("로컬 앱은 LOCAL_APP_MODE=true에서만 실행됩니다.");
@@ -79,8 +80,18 @@ function registerHandlers() {
   ipcMain.handle("local:save-reference", (_event, input) => { const id = randomUUID(); store.saveReferenceQuestion({ id, subject: String(input.subject || "화학 I"), unit: String(input.unit || "공통"), source: String(input.source || "교사 등록 기출"), questionNumber: String(input.questionNumber || ""), questionText: String(input.questionText || ""), intent: String(input.intent || ""), createdAt: new Date().toISOString() }); return { id }; });
   ipcMain.handle("local:list-official-documents", (_event, input = {}) => store.listOfficialDocuments(String(input.subject || "화학 I"), String(input.unit || "공통")));
   ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
-  ipcMain.handle("local:get-preferences", () => ({ teacherInstructions: store.getSetting("teacher_instructions") }));
-  ipcMain.handle("local:save-preferences", (_event, input) => { store.setSetting("teacher_instructions", String(input.teacherInstructions || "").trim().slice(0, 1200)); return { success: true }; });
+  ipcMain.handle("local:get-preferences", () => {
+    const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
+    return { teacherInstructions: store.getSetting("teacher_instructions"), modelSettings };
+  });
+  ipcMain.handle("local:save-preferences", (_event, input = {}) => {
+    const teacherInstructions = String(input.teacherInstructions || "").trim().slice(0, 1200);
+    if (teacherInstructions && isPromptDisclosureRequest(teacherInstructions)) throw new Error("내부 지시문을 보거나 바꾸려는 내용은 저장할 수 없습니다. 수업·평가 표현 선호만 작성해 주세요.");
+    const modelSettings = normalizeLocalModelSettings(input.modelSettings);
+    store.setSetting("teacher_instructions", teacherInstructions);
+    store.setSetting("local_model_settings", JSON.stringify(modelSettings));
+    return { success: true, modelSettings };
+  });
   ipcMain.handle("local:list-notes", () => store.listNotes());
   ipcMain.handle("local:save-note", (_event, input) => {
     const now = new Date().toISOString(); const id = input.id ? String(input.id) : randomUUID(); const title = String(input.title || "").trim().slice(0, 160); const content = String(input.content || "").trim().slice(0, 12000);
@@ -104,9 +115,11 @@ function registerHandlers() {
     return { restored: true };
   });
   ipcMain.handle("local:generate-question", async (_event, input) => {
-    const prompt = localGenerationPrompt(input); const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt, runtime: input.runtime || "ollama", options: { temperature: 0.2, maxTokens: 1200 } }) });
+    const prompt = localGenerationPrompt(input);
+    const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
+    const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt, runtime: input.runtime || "ollama", options: generationOptions(modelSettings), think: modelSettings.thinkingEnabled && supportsThinking(input.model) }) });
     const now = new Date().toISOString(); const requestId = randomUUID(); const questionId = randomUUID();
-    store.saveRequest({ id: requestId, providerType: "local", providerModel: generated.model, externalTransferConsentAt: null, payload: { subject: input.subject, unit: input.unit, request: input.request, teacherInstructionsApplied: Boolean(store.getSetting("teacher_instructions").trim()) }, createdAt: now });
+    store.saveRequest({ id: requestId, providerType: "local", providerModel: generated.model, externalTransferConsentAt: null, payload: { subject: input.subject, unit: input.unit, request: input.request, teacherInstructionsApplied: Boolean(store.getSetting("teacher_instructions").trim()), localModelSettings: modelSettings }, createdAt: now });
     const officialDocuments = store.listSelectedOfficialDocuments(input.subject, input.unit);
     for (const document of officialDocuments) store.saveOfficialEvidence({ requestId, documentId: document.catalog_key, document: { catalogKey: document.catalog_key, title: document.title, officialUrl: document.official_url, summary: document.summary, rightsStatus: document.rights_status } });
     store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: generated.response, choices: [], answer: "교사 확인 필요", explanation: "로컬 모델 생성 결과를 바탕으로 교사가 정답·해설을 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", model: generated.model, promptVersion: "local-only-v1", validationReport: { localOnly: true, officialDocumentCount: officialDocuments.length }, createdAt: now });
