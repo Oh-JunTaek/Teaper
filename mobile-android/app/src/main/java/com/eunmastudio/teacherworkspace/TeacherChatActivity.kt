@@ -77,7 +77,7 @@ class TeacherChatActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), dp(16))
-            setBackgroundColor(Color.rgb(14, 16, 21))
+            setBackgroundColor(Color.rgb(10, 20, 18))
             addView(LinearLayout(this@TeacherChatActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(Button(this@TeacherChatActivity).apply {
@@ -91,22 +91,22 @@ class TeacherChatActivity : AppCompatActivity() {
                         text = "온디바이스 AI 채팅"; textSize = 21f; setTextColor(Color.WHITE)
                         setTypeface(typeface, android.graphics.Typeface.BOLD)
                     })
-                    addView(TextView(this@TeacherChatActivity).apply { text = "Gemma 4 · 로컬 전용"; textSize = 12.5f; setTextColor(Color.rgb(146, 185, 255)) })
+                    addView(TextView(this@TeacherChatActivity).apply { text = "Gemma 4 · 이 기기 안에서만 처리"; textSize = 12.5f; setTextColor(Color.rgb(190, 202, 161)) })
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(Button(this@TeacherChatActivity).apply {
                     text = "대화"; isAllCaps = false; textSize = 13f; setTextColor(Color.WHITE)
-                    background = solid(Color.rgb(42, 48, 61), dp(16))
+                    background = chalkSurface(Color.rgb(29, 50, 43), dp(16))
                     setOnClickListener { showThreadPicker() }
                 }, LinearLayout.LayoutParams(dp(72), dp(42)))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             status = TextView(this@TeacherChatActivity).apply {
                 text = "이 기기에서만 처리 · 최종 판단은 교사가 확인합니다"
-                textSize = 13f; setTextColor(Color.rgb(181, 196, 221)); setPadding(dp(14), dp(9), dp(14), dp(9))
-                background = solid(Color.rgb(24, 30, 40), dp(14))
+                textSize = 13f; setTextColor(Color.rgb(191, 209, 188)); setPadding(dp(14), dp(9), dp(14), dp(9))
+                background = chalkSurface(Color.rgb(20, 38, 33), dp(14))
             }
             addView(status, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             sourceSwitch = Switch(this@TeacherChatActivity).apply {
-                text = "등록 자료 참고"; textSize = 13f; setTextColor(Color.rgb(208, 218, 235)); isChecked = true
+                text = "등록 자료 참고"; textSize = 13f; setTextColor(Color.rgb(213, 226, 207)); isChecked = true
                 setPadding(dp(4), dp(7), dp(4), dp(5))
             }
             addView(sourceSwitch)
@@ -117,16 +117,16 @@ class TeacherChatActivity : AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(9), dp(9), dp(9), dp(9))
-                background = solid(Color.rgb(22, 28, 38), dp(24))
+                background = chalkSurface(Color.rgb(18, 34, 30), dp(24))
                 input = EditText(this@TeacherChatActivity).apply {
                     hint = "질문을 입력하세요"; textSize = 16f; minLines = 1; maxLines = 5
-                    setTextColor(Color.WHITE); setHintTextColor(Color.rgb(139, 151, 171))
-                    background = solid(Color.rgb(38, 47, 62), dp(20)); setPadding(dp(16), dp(10), dp(16), dp(10))
+                    setTextColor(Color.WHITE); setHintTextColor(Color.rgb(139, 160, 147))
+                    background = chalkSurface(Color.rgb(24, 44, 38), dp(20)); setPadding(dp(16), dp(10), dp(16), dp(10))
                 }
                 addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
                 sendButton = Button(this@TeacherChatActivity).apply {
                     text = "보내기"; isAllCaps = false; setTextColor(Color.rgb(15, 18, 24))
-                    background = solid(Color.rgb(139, 184, 255), dp(20)); setOnClickListener { sendMessage() }
+                    background = solid(Color.rgb(216, 191, 140), dp(20)); setOnClickListener { sendMessage() }
                 }
                 addView(sendButton, LinearLayout.LayoutParams(dp(82), dp(52)))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -134,7 +134,7 @@ class TeacherChatActivity : AppCompatActivity() {
     }
 
     private fun configureSystemBars() {
-        val surface = Color.rgb(14, 16, 21)
+        val surface = Color.rgb(10, 20, 18)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = surface
         window.navigationBarColor = surface
@@ -279,8 +279,8 @@ class TeacherChatActivity : AppCompatActivity() {
 
     private fun addSystemHint(content: String) {
         messageList.addView(TextView(this).apply {
-            text = content; textSize = 14f; setTextColor(Color.rgb(188, 198, 214)); setPadding(24, 20, 24, 20)
-            background = solid(Color.rgb(29, 34, 44), 24)
+            text = content; textSize = 14f; setTextColor(Color.rgb(193, 207, 192)); setPadding(24, 20, 24, 20)
+            background = chalkSurface(Color.rgb(20, 38, 33), 24)
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = 12 })
     }
 
@@ -291,7 +291,7 @@ class TeacherChatActivity : AppCompatActivity() {
             text = renderChatMessage(content); textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f)
             setTextIsSelectable(!isUser)
             setPadding(dp(16), dp(12), dp(16), dp(12))
-            background = solid(if (isUser) Color.rgb(66, 101, 171) else Color.rgb(38, 43, 54), dp(20))
+            background = chalkSurface(if (isUser) Color.rgb(58, 85, 128) else Color.rgb(25, 42, 36), dp(20))
             messageList.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 gravity = if (isUser) Gravity.END else Gravity.START
                 topMargin = dp(8)
@@ -305,4 +305,10 @@ class TeacherChatActivity : AppCompatActivity() {
         ChatMarkdownRenderer.render(content, resources.displayMetrics.density)
 
     private fun solid(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
+
+    private fun chalkSurface(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = radius.toFloat()
+        setStroke((resources.displayMetrics.density * 1).toInt(), Color.rgb(53, 77, 68))
+    }
 }

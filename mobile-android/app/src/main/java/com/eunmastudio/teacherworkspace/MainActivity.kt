@@ -1,11 +1,14 @@
 package com.eunmastudio.teacherworkspace
 
 import android.app.AlertDialog
+import android.app.Dialog
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -134,7 +137,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun configureSystemBars() {
-        val surface = Color.rgb(14, 16, 21)
+        val surface = Color.rgb(10, 20, 18)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = surface
         window.navigationBarColor = surface
@@ -173,7 +176,7 @@ class MainActivity : AppCompatActivity() {
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(20), dp(22), dp(30))
-            setBackgroundColor(Color.rgb(14, 16, 21))
+            setBackgroundColor(Color.rgb(10, 20, 18))
         }
         fun text(value: String, size: Float = 16f, color: Int = Color.WHITE) = TextView(this).apply {
             this.text = value
@@ -195,7 +198,7 @@ class MainActivity : AppCompatActivity() {
             }
             addView(overflowButton, LinearLayout.LayoutParams(dp(52), dp(44)))
         })
-        content.addView(text("자료를 준비하고, 문항을 만들고, 교사가 검수합니다.", 15f, Color.rgb(174, 187, 208)).apply {
+        content.addView(text("교사의 수업 설계와 문항 검수를 위한 로컬 작업실", 15f, Color.rgb(180, 195, 184)).apply {
             setPadding(0, dp(4), 0, dp(22))
         })
 
@@ -245,7 +248,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = roundedSurface(Color.rgb(28, 34, 45), dp(22))
+            background = chalkSurface(Color.rgb(22, 38, 33), dp(22))
             setOnClickListener { item.action() }
             minimumHeight = dp(100)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
@@ -293,7 +296,7 @@ class MainActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(12))
-            background = roundedSurface(Color.rgb(28, 34, 45), dp(22))
+            background = chalkSurface(Color.rgb(22, 38, 33), dp(22))
             setOnClickListener { item.action() }
             addView(ImageView(this@MainActivity).apply {
                 scaleType = ImageView.ScaleType.CENTER
@@ -312,6 +315,69 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun roundedSurface(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
+
+    /** 교사용 작업실의 칠판 질감을 어두운 녹색 표면과 미세한 분필 테두리로 표현한다. */
+    private fun chalkSurface(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = radius.toFloat()
+        setStroke((resources.displayMetrics.density * 1).toInt(), Color.rgb(51, 75, 67))
+    }
+
+    private fun studioButton(label: String, accent: Boolean = false): Button = Button(this).apply {
+        text = label
+        isAllCaps = false
+        textSize = 15f
+        setTextColor(if (accent) Color.rgb(19, 27, 23) else Color.rgb(232, 239, 231))
+        background = chalkSurface(
+            if (accent) Color.rgb(216, 191, 140) else Color.rgb(32, 54, 47),
+            (resources.displayMetrics.density * 16).toInt(),
+        )
+    }
+
+    /** 기본 시스템 경고창 대신 서비스 색·여백·행동 계층을 통일한 작업실 팝업을 사용한다. */
+    private fun showStudioDialog(
+        title: String,
+        message: String? = null,
+        content: View? = null,
+        negativeLabel: String = "닫기",
+        positiveLabel: String? = null,
+        onPositive: (() -> Boolean)? = null,
+    ): Dialog {
+        val density = resources.displayMetrics.density
+        fun dp(value: Int) = (value * density).toInt()
+        val dialog = Dialog(this)
+        val panel = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(22), dp(24), dp(18))
+            background = chalkSurface(Color.rgb(22, 37, 32), dp(26))
+        }
+        panel.addView(TextView(this).apply {
+            text = title; textSize = 24f; setTextColor(Color.rgb(244, 241, 229))
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        })
+        message?.takeIf { it.isNotBlank() }?.let { value ->
+            panel.addView(TextView(this).apply {
+                text = value; textSize = 14f; setTextColor(Color.rgb(191, 207, 195)); setLineSpacing(0f, 1.12f)
+                setPadding(0, dp(10), 0, dp(10))
+            })
+        }
+        content?.let { panel.addView(it, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) }) }
+        panel.addView(LinearLayout(this).apply {
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setPadding(0, dp(18), 0, 0)
+            addView(studioButton(negativeLabel).apply { setOnClickListener { dialog.dismiss() } }, LinearLayout.LayoutParams(dp(92), dp(46)).apply { rightMargin = dp(8) })
+            positiveLabel?.let { label ->
+                addView(studioButton(label, accent = true).apply {
+                    setOnClickListener { if (onPositive?.invoke() != false) dialog.dismiss() }
+                }, LinearLayout.LayoutParams(dp(132), dp(46)))
+            }
+        })
+        dialog.setContentView(panel)
+        dialog.window?.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        dialog.show()
+        dialog.window?.setLayout((resources.displayMetrics.widthPixels * 0.9).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT)
+        return dialog
+    }
 
     /** 모델·자료 작업과 분리된 앱 수준 설정을 우측 상단 메뉴로 모은다. */
     private fun showOverflowMenu() {
@@ -472,39 +538,91 @@ class MainActivity : AppCompatActivity() {
     private fun showSourcesDialog() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(42, 20, 42, 20)
+            setPadding(0, 4, 0, 0)
         }
-        LocalSourceKind.entries.forEach { kind ->
-            container.addView(Button(this).apply {
-                text = "${kind.label} 추가"
-                setOnClickListener { showAddSourceDialog(kind, null) }
-            })
-            container.addView(Button(this).apply {
-                text = "파일에서 ${kind.label} 추가"
-                setOnClickListener {
-                    selectedSourceKind = kind
-                    chooseSourceFile.launch(arrayOf("application/pdf", "text/plain", "image/*"))
-                }
-            })
-        }
+        lateinit var sourceDialog: Dialog
+        container.addView(studioButton("＋ 자료 추가", accent = true).apply {
+            setOnClickListener { sourceDialog.dismiss(); showSourceEntryDialog() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 52).apply { bottomMargin = 10 })
+        container.addView(studioButton("⌁ 공식 자료 찾아보기").apply {
+            setOnClickListener { sourceDialog.dismiss(); showOfficialSourcesDialog() }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 50).apply { bottomMargin = 14 })
         val existing = store.sources()
         if (existing.isEmpty()) {
-            container.addView(TextView(this).apply { text = "아직 등록한 자료가 없습니다. 교육과정·참고 자료·기출 유형을 먼저 정리해 주세요." })
+            container.addView(TextView(this).apply {
+                text = "아직 등록한 자료가 없습니다. ‘자료 추가’에서 직접 작성하거나 파일을 업로드해 주세요."
+                textSize = 14f; setTextColor(Color.rgb(181, 200, 185)); setPadding(4, 8, 4, 6)
+            })
         } else {
-            container.addView(TextView(this).apply { text = "등록한 자료" })
+            container.addView(TextView(this).apply { text = "등록한 자료"; textSize = 16f; setTextColor(Color.rgb(230, 237, 228)); setPadding(4, 6, 4, 6) })
             existing.forEach { source ->
-                container.addView(Button(this).apply {
+                container.addView(studioButton("${source.kind.label} · ${source.title}\n${source.excerpt.take(56)}").apply {
                     text = "${source.kind.label} · ${source.title}\n${source.excerpt.take(70)}"
                     isAllCaps = false
-                    setOnClickListener { showSourceDetailDialog(source) }
-                })
+                    setOnClickListener { sourceDialog.dismiss(); showSourceDetailDialog(source) }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 7 })
             }
         }
-        AlertDialog.Builder(this)
-            .setTitle("자료 준비")
-            .setView(ScrollView(this).apply { addView(container) })
-            .setNegativeButton("닫기", null)
-            .show()
+        sourceDialog = showStudioDialog(
+            title = "자료 준비",
+            message = "수업 자료·기출 유형·공식 자료를 한곳에서 관리합니다.",
+            content = ScrollView(this).apply { addView(container) },
+        )
+    }
+
+    /** 파일 업로드를 별도 항목으로 나열하지 않고 ‘자료 추가’ 안에서 직접 작성과 함께 선택한다. */
+    private fun showSourceEntryDialog() {
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 4, 0, 0) }
+        val kindGroup = RadioGroup(this).apply { orientation = RadioGroup.VERTICAL }
+        LocalSourceKind.entries.forEachIndexed { index, kind ->
+            kindGroup.addView(RadioButton(this).apply {
+                text = kind.label; setTextColor(Color.rgb(225, 235, 224)); id = View.generateViewId(); isChecked = index == 0
+                tag = kind
+            })
+        }
+        content.addView(TextView(this).apply { text = "자료 구분"; textSize = 15f; setTextColor(Color.rgb(214, 227, 214)); setPadding(4, 0, 4, 4) })
+        content.addView(kindGroup)
+        lateinit var entryDialog: Dialog
+        fun selectedKind(): LocalSourceKind = kindGroup.findViewById<RadioButton>(kindGroup.checkedRadioButtonId).tag as LocalSourceKind
+        content.addView(studioButton("직접 작성").apply {
+            setOnClickListener { entryDialog.dismiss(); showAddSourceDialog(selectedKind(), null) }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 50).apply { topMargin = 12 })
+        content.addView(studioButton("파일 업로드", accent = true).apply {
+            setOnClickListener {
+                selectedSourceKind = selectedKind()
+                entryDialog.dismiss()
+                chooseSourceFile.launch(arrayOf("application/pdf", "text/plain", "image/*"))
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 50).apply { topMargin = 8 })
+        entryDialog = showStudioDialog(
+            title = "자료 추가",
+            message = "자료 구분을 고른 뒤 작성 방식 또는 파일 업로드를 선택하세요.",
+            content = content,
+        )
+    }
+
+    private fun showOfficialSourcesDialog() {
+        data class OfficialLink(val title: String, val description: String, val url: String)
+        val links = listOf(
+            OfficialLink("국가교육과정정보센터", "교육과정·성취기준·교수학습 자료", "https://www.ncic.go.kr/"),
+            OfficialLink("교육부", "교육 정책·고시·공식 안내", "https://www.moe.go.kr/"),
+            OfficialLink("한국교육과정평가원", "평가 자료·연구·기출 안내", "https://www.kice.re.kr/"),
+        )
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        lateinit var officialDialog: Dialog
+        links.forEach { link ->
+            content.addView(studioButton("${link.title}\n${link.description}").apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.url)))
+                    officialDialog.dismiss()
+                }
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
+        }
+        officialDialog = showStudioDialog(
+            title = "공식 자료 찾아보기",
+            message = "원문은 외부 브라우저에서 열립니다. 이용 범위와 최신성을 교사가 확인한 뒤 자료로 등록해 주세요.",
+            content = content,
+        )
     }
 
     private fun showAddSourceDialog(kind: LocalSourceKind, sourceUri: String?, extraction: SourceExtraction? = null) {
@@ -553,31 +671,34 @@ class MainActivity : AppCompatActivity() {
                 form.addView(TextView(this).apply { text = "이미지 내용 읽기는 먼저 E2B 또는 E4B 모델을 준비한 뒤 사용할 수 있습니다." })
             }
         }
-        AlertDialog.Builder(this)
-            .setTitle("${kind.label} 등록")
-            .setView(form)
-            .setNegativeButton("취소", null)
-            .setPositiveButton("로컬에 저장") { _, _ ->
+        showStudioDialog(
+            title = "${kind.label} 등록",
+            message = "핵심 내용·쪽수·평가 요소를 기록하면 문항 생성 근거로 사용할 수 있습니다.",
+            content = form,
+            negativeLabel = "취소",
+            positiveLabel = "로컬에 저장",
+        ) {
                 val normalizedTitle = title.text.toString().trim().ifBlank { "이름 없는 ${kind.label}" }
                 val normalizedExcerpt = excerpt.text.toString().trim()
                 if (normalizedExcerpt.isBlank()) {
                     status.text = "자료의 핵심 내용·쪽수·평가 요소를 입력한 뒤 저장해 주세요."
-                    return@setPositiveButton
+                    false
+                } else {
+                    store.saveSource(
+                        LocalSource(
+                            title = normalizedTitle,
+                            kind = kind,
+                            excerpt = normalizedExcerpt,
+                            sourceUri = sourceUri,
+                            pageReferences = extraction?.pageReferences,
+                            extractionNotice = extraction?.extractionNotice,
+                        ),
+                    )
+                    refreshWorkspaceSummary()
+                    status.text = "${kind.label}을 이 기기에 저장했습니다."
+                    true
                 }
-                store.saveSource(
-                    LocalSource(
-                        title = normalizedTitle,
-                        kind = kind,
-                        excerpt = normalizedExcerpt,
-                        sourceUri = sourceUri,
-                        pageReferences = extraction?.pageReferences,
-                        extractionNotice = extraction?.extractionNotice,
-                    ),
-                )
-                refreshWorkspaceSummary()
-                status.text = "${kind.label}을 이 기기에 저장했습니다."
             }
-            .show()
     }
 
     private fun showSourceDetailDialog(source: LocalSource) {
@@ -594,35 +715,53 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showGenerationDialog() {
-        if (activeModel == null) {
-            val selected = ModelSelection.selected(this)
-            if (selected != null && downloads.isInstalled(selected)) {
-                status.text = "${selected.displayName}을 준비한 뒤 문항 생성 화면을 엽니다."
-                prepareInstalledModel(selected) { showGenerationDialog() }
-            } else {
-                status.text = "모델 관리에서 기본 모델 E2B를 내려받아 준비해 주세요."
-            }
-            return
-        }
         val request = EditText(this).apply {
             hint = "예: 고등 화학 I, 화학 결합 단원, 5지선다 1문항, 중 난이도"
             minLines = 4
             gravity = Gravity.TOP
+            setTextColor(Color.rgb(239, 244, 238))
+            setHintTextColor(Color.rgb(145, 165, 151))
+            background = chalkSurface(Color.rgb(15, 29, 25), (resources.displayMetrics.density * 16).toInt())
+            setPadding(22, 16, 22, 16)
         }
-        AlertDialog.Builder(this)
-            .setTitle("문항 생성")
-            .setMessage("등록한 자료를 근거로 문항을 생성합니다. 결과는 반드시 교사가 검수해야 합니다.")
-            .setView(request)
-            .setNegativeButton("취소", null)
-            .setPositiveButton("로컬 모델로 생성") { _, _ ->
+        showStudioDialog(
+            title = "문항 생성",
+            message = "등록한 자료를 바탕으로 생성합니다. 결과는 반드시 교사가 검수해야 합니다.",
+            content = request,
+            negativeLabel = "취소",
+            positiveLabel = "생성 시작",
+        ) {
                 val requestText = request.text.toString().trim()
                 if (requestText.isBlank()) {
                     status.text = "문항 생성 요청을 입력해 주세요."
+                    false
                 } else {
-                    generateQuestion(requestText)
+                    lifecycleScope.launch {
+                        if (ensureGenerationModelReady()) generateQuestion(requestText)
+                    }
+                    true
                 }
             }
-            .show()
+    }
+
+    /** 카드 탭은 즉시 반응시키고, 무거운 모델 준비는 사용자가 생성 실행을 확정한 뒤에만 한다. */
+    private suspend fun ensureGenerationModelReady(): Boolean {
+        if (activeModel != null) return true
+        val selected = ModelSelection.selected(this)
+        if (selected == null || !downloads.isInstalled(selected)) {
+            status.text = "문항 생성 전 모델 관리에서 기본 모델 E2B를 내려받아 선택해 주세요."
+            return false
+        }
+        return try {
+            status.text = "${selected.displayName}을 문항 생성용으로 준비하고 있습니다."
+            val mode = runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false)
+            activeModel = selected
+            status.text = "${selected.displayName} 준비 완료 · $mode"
+            true
+        } catch (error: Throwable) {
+            status.text = error.message ?: "문항 생성 모델을 준비하지 못했습니다."
+            false
+        }
     }
 
     private fun generateQuestion(request: String) {
@@ -660,25 +799,35 @@ class MainActivity : AppCompatActivity() {
     private fun showReviewDialog() {
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(42, 20, 42, 20)
+            setPadding(0, 4, 0, 0)
         }
         val questions = store.questions()
         if (questions.isEmpty()) {
-            container.addView(TextView(this).apply { text = "검수할 문항이 없습니다. 자료를 준비한 뒤 문항을 생성해 주세요." })
+            container.addView(TextView(this).apply {
+                text = "검수할 문항이 없습니다. 자료 준비에서 근거를 정리한 뒤 문항 생성을 시작해 주세요."
+                textSize = 15f; setTextColor(Color.rgb(192, 207, 193)); setPadding(4, 8, 4, 8)
+            })
         } else {
+            lateinit var reviewDialog: Dialog
             questions.sortedByDescending { it.createdAt }.forEach { question ->
-                container.addView(Button(this).apply {
+                container.addView(studioButton("[${question.reviewStatus}] ${question.title}\n${question.content.take(90)}").apply {
                     text = "[${question.reviewStatus}] ${question.title}\n${question.content.take(90)}"
                     isAllCaps = false
-                    setOnClickListener { showQuestionDetailDialog(question) }
-                })
+                    setOnClickListener { reviewDialog.dismiss(); showQuestionDetailDialog(question) }
+                }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
             }
+            reviewDialog = showStudioDialog(
+                title = "검수함",
+                message = "자료와 문항을 대조하고, 최종 판단은 교사가 확인합니다.",
+                content = ScrollView(this).apply { addView(container) },
+            )
+            return
         }
-        AlertDialog.Builder(this)
-            .setTitle("검수함")
-            .setView(ScrollView(this).apply { addView(container) })
-            .setNegativeButton("닫기", null)
-            .show()
+        showStudioDialog(
+            title = "검수함",
+            message = "자료와 문항을 대조하고, 최종 판단은 교사가 확인합니다.",
+            content = ScrollView(this).apply { addView(container) },
+        )
     }
 
     private fun showQuestionDetailDialog(question: LocalQuestion) {
