@@ -56,6 +56,14 @@ describe("generation request evidence integration", () => {
     await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false, managedAi: { successCount: 0, monthlySuccessLimit: 3, remainingSuccessCount: 3 } });
   });
 
+  it("returns the current teacher's expanded personal workspace counts", async () => {
+    db.dashboardStats.mockResolvedValueOnce({ materialCount: 2, referenceCount: 3, reviewCount: 1, approvedCount: 4, questionCount: 7, noteCount: 5, quickQuizCount: 6, officialDocumentCount: 8 });
+    const caller = assessmentRouter.createCaller(context());
+
+    await expect(caller.dashboard()).resolves.toMatchObject({ questionCount: 7, noteCount: 5, quickQuizCount: 6, approvedCount: 4 });
+    expect(db.dashboardStats).toHaveBeenCalledWith(42, false);
+  });
+
   it("blocks managed AI before generation when the plan's monthly successful-work limit is exhausted", async () => {
     db.getManagedAiMonthlySuccessCount.mockResolvedValueOnce({ usageMonth: "2026-08", successCount: 3 });
     const caller = assessmentRouter.createCaller(context());
