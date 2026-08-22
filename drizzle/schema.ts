@@ -17,6 +17,8 @@ export const users = mysqlTable("users", {
   email: varchar("email", { length: 320 }),
   loginMethod: varchar("loginMethod", { length: 64 }),
   role: mysqlEnum("role", ["teacher", "admin"]).default("teacher").notNull(),
+  // 플랜은 관리자 역할과 독립적으로 기능 접근만 제어합니다. 실제 결제 정보는 아직 저장하지 않습니다.
+  membershipPlan: mysqlEnum("membershipPlan", ["basic", "plus"]).default("basic").notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
   lastSignedIn: timestamp("lastSignedIn").defaultNow().notNull(),

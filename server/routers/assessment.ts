@@ -42,6 +42,7 @@ import {
   reviewOfficialSourceChange,
   saveUserAiPreferences,
   setWorkspaceUserRole,
+  setWorkspaceUserPlan,
   setOfficialDocumentSelection,
   setReferenceQuestionSelection,
   updateMaterialExtraction,
@@ -63,6 +64,7 @@ import { createManagedAiUsageEntry, managedAiOutcomeFromError } from "../service
 import { isPromptDisclosureRequest } from "../services/assessmentPrompt";
 import { verifyMiddleSchoolCalculation } from "../services/mathVerification";
 import { courseReadiness } from "../../shared/curriculumScope";
+import { hasPlusPlan, membershipPlanSummary } from "../services/membershipPlan";
 
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
@@ -91,6 +93,11 @@ function materialContext(rows: Awaited<ReturnType<typeof getMaterialChunksForRag
 
 export const assessmentRouter = router({
   dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id, ctx.user.role === "admin")),
+
+  plan: router({
+    // 결제 연동 전에도 UI와 서버가 같은 권한 원칙으로 기능을 제어하도록 현재 플랜만 제공합니다.
+    me: protectedProcedure.query(({ ctx }) => membershipPlanSummary(ctx.user)),
+  }),
 
   materials: router({
     // 교사 개인 자료는 본인 소유 범위에서만 등록·조회·삭제합니다.
@@ -390,6 +397,11 @@ export const assessmentRouter = router({
       const rows = approved.map(item => [item.id, item.questionText, (item.choices || []).join(" | "), item.answer, item.explanation, item.intent, item.difficulty, item.points, item.questionType, item.model, item.promptVersion, item.status]);
       return { csv: [header, ...rows].map(row => row.map(escape).join(",")).join("\n"), count: approved.length };
     }),
+    // 문제집형 출력은 클라이언트 버튼만 숨기는 것이 아니라 서버에서도 플러스 권한을 확인합니다.
+    workbookExport: protectedProcedure.query(async ({ ctx }) => {
+      if (!hasPlusPlan(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "문제집 출력 패키지는 교사 플러스 기능입니다." });
+      return listGeneratedQuestions("approved", ctx.user.id, ctx.user.role === "admin");
+    }),
   }),
 
   admin: router({
@@ -399,6 +411,10 @@ export const assessmentRouter = router({
     setRole: adminProcedure.input(z.object({ userId: z.number().int().positive(), role: z.enum(["teacher", "admin"]) })).mutation(async ({ ctx, input }) => {
       if (ctx.user.id === input.userId && input.role !== "admin") throw new TRPCError({ code: "BAD_REQUEST", message: "본인의 관리자 권한은 해제할 수 없습니다." });
       await setWorkspaceUserRole(input.userId, input.role);
+      return { success: true };
+    }),
+    setPlan: adminProcedure.input(z.object({ userId: z.number().int().positive(), membershipPlan: z.enum(["basic", "plus"]) })).mutation(async ({ input }) => {
+      await setWorkspaceUserPlan(input.userId, input.membershipPlan);
       return { success: true };
     }),
     officialSources: adminProcedure.query(() => listOfficialSources()),

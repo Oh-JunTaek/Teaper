@@ -19,6 +19,13 @@ export type ExportQuestion = {
 
 export type QuestionDocumentKind = "question-paper" | "answer-sheet";
 
+// 문제집 출력 패키지는 기본 인쇄와 달리 표지·학생 정보란을 포함한 교사용 조판을 제공합니다.
+export type WorkbookPrintOptions = {
+  title: string;
+  subtitle?: string;
+  includeStudentFields?: boolean;
+};
+
 const graphWidth = 560;
 const graphHeight = 280;
 const transparentPng = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLqpgAAAABJRU5ErkJggg=="), character => character.charCodeAt(0));
@@ -114,14 +121,15 @@ function visualHtml(spec: ExportVisualSpec | null | undefined) {
 }
 
 // 브라우저의 인쇄 대화상자를 사용해 교사가 프린터 또는 'PDF로 저장'을 직접 선택합니다.
-export function openQuestionPrintView(questions: ExportQuestion[], kind: QuestionDocumentKind) {
+export function openQuestionPrintView(questions: ExportQuestion[], kind: QuestionDocumentKind, workbook?: WorkbookPrintOptions) {
   const printWindow = window.open("", "_blank");
   if (!printWindow) return false;
   printWindow.opener = null;
-  const title = kind === "question-paper" ? "문항 시험지" : "정답 및 해설지";
+  const title = workbook?.title || (kind === "question-paper" ? "문항 시험지" : "정답 및 해설지");
   const includeAnswer = kind === "answer-sheet";
+  const workbookHeader = workbook ? `<section class="workbook-cover"><p class="eyebrow">EunmaStudio · 교사 플러스 문제집 출력</p><h1>${escapeHtml(title)}</h1>${workbook.subtitle ? `<p class="subtitle">${escapeHtml(workbook.subtitle)}</p>` : ""}${workbook.includeStudentFields && kind === "question-paper" ? `<div class="student-fields"><span>학년·반 __________</span><span>번호 __________</span><span>이름 __________</span></div>` : ""}</section>` : `<h1>${escapeHtml(title)}</h1><p class="document-note">${questions.length}문항 · 내보낸 뒤 실제 시험 범위와 교사 검수 내용을 다시 확인하세요.</p>`;
   const items = questions.map((question, index) => `<article><h2>${index + 1}. ${escapeHtml(question.questionText)}</h2><p class="meta">${escapeHtml(question.questionType)} · 난이도 ${escapeHtml(question.difficulty)} · ${question.points}점</p>${(question.choices || []).map((choice, choiceIndex) => `<p class="choice">${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${escapeHtml(choice)}</p>`).join("")}${visualHtml(question.visualSpec)}${includeAnswer ? `<section class="answer"><p><strong>정답</strong> ${escapeHtml(question.answer)}</p><p><strong>해설</strong> ${escapeHtml(question.explanation)}</p><p><strong>출제 의도</strong> ${escapeHtml(question.intent)}</p></section>` : ""}</article>`).join("");
-  printWindow.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:18mm}body{font-family:"Noto Sans KR",Arial,sans-serif;color:#172033;line-height:1.6}h1{text-align:center;font-size:22px}h2{font-size:14px;white-space:pre-wrap}.meta{font-size:11px;color:#475569}.choice{margin:4px 0 4px 18px}.visual{margin:14px 0;break-inside:avoid}.graph svg{width:100%;height:auto}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #94a3b8;padding:6px;text-align:left}th{background:#e6f4ee}.answer{margin-top:12px;padding:10px 12px;background:#f8fafc;border-left:3px solid #15856b;font-size:12px}article{break-inside:avoid;margin:0 0 25px}@media print{article{page-break-inside:avoid}}</style></head><body><h1>${title}</h1><p style="text-align:center;font-size:11px;color:#64748b">${questions.length}문항 · 내보낸 뒤 실제 시험 범위와 교사 검수 내용을 다시 확인하세요.</p>${items}</body></html>`);
+  printWindow.document.write(`<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${escapeHtml(title)}</title><style>@page{size:A4;margin:18mm}body{font-family:"Noto Sans KR",Arial,sans-serif;color:#172033;line-height:1.6}h1{text-align:center;font-size:22px}h2{font-size:14px;white-space:pre-wrap}.document-note{text-align:center;font-size:11px;color:#64748b}.workbook-cover{border:2px solid #173b53;padding:18mm 10mm 12mm;margin:0 0 12mm;text-align:center;break-after:page}.workbook-cover .eyebrow{font-size:10px;font-weight:700;letter-spacing:.08em;color:#15856b}.workbook-cover .subtitle{color:#475569;font-size:12px}.student-fields{display:flex;justify-content:space-between;border-top:1px solid #94a3b8;margin-top:18mm;padding-top:5mm;font-size:12px;text-align:left}.meta{font-size:11px;color:#475569}.choice{margin:4px 0 4px 18px}.visual{margin:14px 0;break-inside:avoid}.graph svg{width:100%;height:auto}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #94a3b8;padding:6px;text-align:left}th{background:#e6f4ee}.answer{margin-top:12px;padding:10px 12px;background:#f8fafc;border-left:3px solid #15856b;font-size:12px}article{break-inside:avoid;margin:0 0 25px}@media print{article{page-break-inside:avoid}}</style></head><body>${workbookHeader}${!workbook ? "" : `<p class="document-note">${questions.length}문항 · 교사 플러스 문제집 출력</p>`}${items}</body></html>`);
   printWindow.document.close();
   printWindow.focus();
   window.setTimeout(() => printWindow.print(), 200);

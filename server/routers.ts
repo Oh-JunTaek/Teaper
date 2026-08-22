@@ -24,7 +24,8 @@ export const appRouter = router({
     guestLogin: publicProcedure.input(z.object({ username: z.string().min(1).max(64), password: z.string().min(1).max(256) })).mutation(async ({ ctx, input }) => {
       if (!(await hasPilotAccess(ctx.req))) throw new TRPCError({ code: "FORBIDDEN", message: "공유 링크의 파일럿 접근 코드부터 확인해 주세요." });
       if (!hasValidGuestCredentials(input.username, input.password)) throw new TRPCError({ code: "UNAUTHORIZED", message: "게스트 ID 또는 비밀번호가 올바르지 않습니다." });
-      await db.upsertUser({ openId: GUEST_OPEN_ID, name: "파일럿 게스트", email: null, loginMethod: "guest", lastSignedIn: new Date() });
+      // 파일럿 게스트는 결제 없이 플러스 기능을 검증할 수 있도록 명시적으로 플러스 플랜으로 유지합니다.
+      await db.upsertUser({ openId: GUEST_OPEN_ID, name: "파일럿 게스트", email: null, loginMethod: "guest", membershipPlan: "plus", lastSignedIn: new Date() });
       const cookieOptions = getSessionCookieOptions(ctx.req);
       const sessionToken = await sdk.createSessionToken(GUEST_OPEN_ID, { name: "파일럿 게스트", expiresInMs: GUEST_SESSION_DURATION_MS });
       ctx.res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: GUEST_SESSION_DURATION_MS });

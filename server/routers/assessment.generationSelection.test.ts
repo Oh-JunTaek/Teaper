@@ -18,13 +18,14 @@ const db = vi.hoisted(() => ({
   saveUserAiPreferences: vi.fn().mockResolvedValue(undefined),
   ensurePrototypeSampleQuestions: vi.fn().mockResolvedValue({ created: 2, ids: [11, 12], label: "프로토타입 샘플" }),
   listReferenceQuestions: vi.fn().mockResolvedValue([]),
+  listGeneratedQuestions: vi.fn().mockResolvedValue([{ id: 81, questionText: "플러스 출력 문항", choices: ["①"], answer: "①", explanation: "설명", intent: "의도", difficulty: "중", points: 2, questionType: "개념 확인형", visualSpec: null }]),
   recordManagedAiUsage: vi.fn().mockResolvedValue(undefined),
   updateReferenceQuestion: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: vi.fn(), listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -43,10 +44,25 @@ import { generateDraft } from "../services/assessmentAi";
 
 function context(): TrpcContext {
   const now = new Date();
-  return { user: { id: 42, openId: "teacher", email: "teacher@example.com", name: "Teacher", loginMethod: "manus", role: "teacher", createdAt: now, updatedAt: now, lastSignedIn: now }, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] as TrpcContext["res"] };
+  return { user: { id: 42, openId: "teacher", email: "teacher@example.com", name: "Teacher", loginMethod: "manus", role: "teacher", membershipPlan: "basic", createdAt: now, updatedAt: now, lastSignedIn: now }, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] as TrpcContext["res"] };
 }
 
 describe("generation request evidence integration", () => {
+  it("keeps the basic plan out of workbook export while returning the plan summary", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.questions.workbookExport()).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false });
+  });
+
+  it("allows a plus-plan teacher to request approved questions for the workbook composer", async () => {
+    const plusContext = context();
+    plusContext.user!.membershipPlan = "plus";
+    const caller = assessmentRouter.createCaller(plusContext);
+
+    await expect(caller.questions.workbookExport()).resolves.toHaveLength(1);
+    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "plus", canUseWorkbookExport: true });
+  });
+
   it("soft-deletes only a material owned by the current teacher", async () => {
     const caller = assessmentRouter.createCaller(context());
     await caller.materials.remove({ id: 701 });

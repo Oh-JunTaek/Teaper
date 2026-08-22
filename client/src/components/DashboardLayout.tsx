@@ -49,6 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [inviteCode, setInviteCode] = useState("");
   const [guestPassword, setGuestPassword] = useState("");
   const utils = trpc.useUtils();
+  const plan = trpc.assessment.plan.me.useQuery(undefined, { enabled: Boolean(user) });
   const pilotStatus = trpc.auth.pilotStatus.useQuery(undefined, { retry: false });
   const verifyPilotAccess = trpc.auth.pilotAccess.useMutation({
     onSuccess: () => { toast.success("파일럿 접근을 확인했습니다."); void utils.auth.pilotStatus.invalidate(); },
@@ -107,6 +108,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
         <div className="mt-auto rounded-2xl border border-white/10 bg-white/7 p-3">
           <p className="text-xs leading-5 text-slate-300">문항 생성 결과는 검수함에서 근거와 함께 확인할 수 있습니다.</p>
+          <p className="mt-2 text-[11px] font-semibold text-[#A7E3C5]">현재 플랜 · {plan.data?.label || "확인 중"}</p>
         </div>
       </aside>
       <header className="sticky top-0 z-10 flex h-16 items-center justify-between border-b border-slate-200/90 bg-[#F6F7F5]/90 px-4 backdrop-blur md:ml-64 md:px-8">
@@ -116,7 +118,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <DropdownMenuTrigger asChild>
             <button className="flex items-center gap-2 rounded-xl p-1.5 text-left hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-[#15856B]">
               <Avatar className="h-8 w-8 border border-slate-200"><AvatarFallback className="bg-white text-xs font-bold text-[#173B53]">{user.name?.slice(0, 1) || "교"}</AvatarFallback></Avatar>
-              <span className="hidden sm:block"><span className="block text-xs font-semibold leading-4">{user.name || "교사"}</span><Badge variant="secondary" className="mt-0.5 h-4 px-1.5 text-[10px]">{user.role === "admin" ? "관리자" : "교사"}</Badge></span>
+              <span className="hidden sm:block"><span className="block text-xs font-semibold leading-4">{user.name || "교사"}</span><span className="mt-0.5 flex gap-1"><Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{user.role === "admin" ? "관리자" : "교사"}</Badge><Badge className={plan.data?.plan === "plus" ? "h-4 bg-[#FFF2D8] px-1.5 text-[10px] text-[#A66C08] hover:bg-[#FFF2D8]" : "h-4 bg-[#E6F4EE] px-1.5 text-[10px] text-[#15856B] hover:bg-[#E6F4EE]"}>{plan.data?.label || "플랜"}</Badge></span></span>
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-44"><DropdownMenuItem onClick={logout} className="cursor-pointer text-red-600 focus:text-red-600"><LogOut className="mr-2 h-4 w-4" />로그아웃</DropdownMenuItem></DropdownMenuContent>

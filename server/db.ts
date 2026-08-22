@@ -59,6 +59,11 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   if (user.openId === ENV.ownerOpenId) {
     values.role = "admin";
     updateSet.role = "admin";
+    values.membershipPlan = "plus";
+    updateSet.membershipPlan = "plus";
+  } else if (user.membershipPlan !== undefined) {
+    values.membershipPlan = user.membershipPlan;
+    updateSet.membershipPlan = user.membershipPlan;
   }
   await db.insert(users).values(values).onDuplicateKeyUpdate({ set: updateSet });
 }
@@ -449,13 +454,19 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
 
 export async function listWorkspaceUsers() {
   const db = await requireDb();
-  // 역할 관리에는 이름·역할만 필요하므로 이메일과 최근 로그인 시각은 클라이언트로 전송하지 않습니다.
-  return db.select({ id: users.id, name: users.name, role: users.role }).from(users).orderBy(desc(users.lastSignedIn));
+  // 권한 관리에는 이름·역할·플랜만 필요하므로 이메일과 최근 로그인 시각은 클라이언트로 전송하지 않습니다.
+  return db.select({ id: users.id, name: users.name, role: users.role, membershipPlan: users.membershipPlan }).from(users).orderBy(desc(users.lastSignedIn));
 }
 
 export async function setWorkspaceUserRole(userId: number, role: "teacher" | "admin") {
   const db = await requireDb();
   await db.update(users).set({ role }).where(eq(users.id, userId));
+}
+
+// 결제 상태와 분리된 내부 플랜 권한입니다. 관리자 권한은 이 값과 별도로 유지됩니다.
+export async function setWorkspaceUserPlan(userId: number, membershipPlan: "basic" | "plus") {
+  const db = await requireDb();
+  await db.update(users).set({ membershipPlan }).where(eq(users.id, userId));
 }
 
 const OFFICIAL_SOURCE_SEEDS = [
