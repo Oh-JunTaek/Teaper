@@ -67,6 +67,11 @@ function localGenerationPrompt(input) {
   return teacherInstructions ? `${base}\n\n[교사 추가 지시문]\n${teacherInstructions}\n\n위 추가 지시문은 자료 근거·정답 검토·교사 최종 검수 원칙을 바꾸지 않습니다.` : base;
 }
 
+function cleanSuggestedChatTitle(value, fallback) {
+  const firstLine = String(value || "").replace(/[`#*_]/g, "").replace(/^(제목|대화 제목)\s*[:：]?\s*/i, "").split(/\r?\n/)[0].trim();
+  return (firstLine || fallback).slice(0, 48);
+}
+
 function registerHandlers() {
   ipcMain.handle("local:status", async () => bridgeRequest("/setup-plan"));
   ipcMain.handle("local:pull-model", async (_event, model) => bridgeRequest("/models/pull", { method: "POST", body: JSON.stringify({ model, confirmDownload: true }) }));
@@ -84,7 +89,7 @@ function registerHandlers() {
   ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
   ipcMain.handle("local:get-preferences", () => {
     const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
-    return { teacherInstructions: store.getSetting("teacher_instructions"), modelSettings, chatLastModel: store.getSetting("chat_last_model") };
+    return { teacherInstructions: store.getSetting("teacher_instructions"), modelSettings, chatLastModel: store.getSetting("chat_last_model"), chatSendOnEnter: store.getSetting("chat_send_on_enter") !== "false" };
   });
   ipcMain.handle("local:save-preferences", (_event, input = {}) => {
     const teacherInstructions = String(input.teacherInstructions || "").trim().slice(0, 1200);
@@ -92,6 +97,7 @@ function registerHandlers() {
     const modelSettings = normalizeLocalModelSettings(input.modelSettings);
     store.setSetting("teacher_instructions", teacherInstructions);
     store.setSetting("local_model_settings", JSON.stringify(modelSettings));
+    if (typeof input.chatSendOnEnter === "boolean") store.setSetting("chat_send_on_enter", input.chatSendOnEnter ? "true" : "false");
     return { success: true, modelSettings };
   });
   ipcMain.handle("local:list-notes", () => store.listNotes());
@@ -134,7 +140,13 @@ function registerHandlers() {
     const runtime = input.runtime === "llama_cpp" ? "llama_cpp" : "ollama";
     const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model, prompt: localChatPrompt({ message, history: boundedChatHistory(history), teacherInstructions: store.getSetting("teacher_instructions").trim().slice(0, 1200) }), runtime, options: generationOptions(settings), think: settings.thinkingEnabled && supportsThinking(model) }) });
     if (isPotentialPromptDisclosure(generated.response)) throw new Error("응답에서 내부 지시문 노출 가능성을 감지해 저장하지 않았습니다.");
-    const nextTitle = history.length === 0 && thread.title === "새 대화" ? chatTitleFromMessage(message) : thread.title;
+    let nextTitle = history.length === 0 && thread.title === "새 대화" ? chatTitleFromMessage(message) : thread.title;
+    if (history.length === 0 && thread.title === "새 대화") {
+      try {
+        const suggested = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model, runtime, prompt: `아래 교사 질문과 답변을 대표하는 한국어 대화 제목을 10~24자로 지으세요. 제목만 한 줄로 답하세요.\n\n질문: ${message}\n\n답변: ${generated.response.slice(0, 900)}`, options: { temperature: 0.15, maxTokens: 48 } }) });
+        nextTitle = cleanSuggestedChatTitle(suggested.response, nextTitle);
+      } catch { /* 제목 생성 실패는 첫 질문 제목을 유지하며 대화를 막지 않는다. */ }
+    }
     store.saveChatMessage({ id: randomUUID(), threadId: thread.id, role: "user", content: message, createdAt: now });
     store.saveChatMessage({ id: randomUUID(), threadId: thread.id, role: "assistant", content: generated.response, model: generated.model, createdAt: new Date().toISOString() });
     store.updateChatThread({ id: thread.id, title: nextTitle, isPinned: Boolean(thread.is_pinned), updatedAt: new Date().toISOString() });
