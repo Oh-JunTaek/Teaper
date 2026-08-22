@@ -47,6 +47,32 @@ data class LocalQuestion(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+/** 교사 개인 메모는 AI 프롬프트와 분리되어 이 기기 안에서만 보관한다. */
+data class LocalNote(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val content: String,
+    val isPinned: Boolean = false,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
+)
+
+/** 쪽지시험은 일반 문항과 분리해 단일 개념·간결한 형식의 생성 결과와 검수 상태를 보관한다. */
+data class LocalQuickQuiz(
+    val id: String = UUID.randomUUID().toString(),
+    val subject: String,
+    val unit: String,
+    val topic: String,
+    val difficulty: String,
+    val questionCount: Int,
+    val content: String,
+    val model: String,
+    val promptVersion: String,
+    val reviewStatus: String = "검수 전",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
+)
+
 data class LocalChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val content: String,
@@ -100,6 +126,38 @@ class LocalWorkspaceStore(context: Context) {
         }.getOrNull()
     }
 
+    fun notes(): List<LocalNote> = readArray("notes").mapNotNull { item ->
+        runCatching {
+            LocalNote(
+                id = item.getString("id"),
+                title = item.getString("title"),
+                content = item.getString("content"),
+                isPinned = item.optBoolean("isPinned", false),
+                createdAt = item.getLong("createdAt"),
+                updatedAt = item.getLong("updatedAt"),
+            )
+        }.getOrNull()
+    }.sortedWith(compareByDescending<LocalNote> { it.isPinned }.thenByDescending { it.updatedAt })
+
+    fun quickQuizzes(): List<LocalQuickQuiz> = readArray("quickQuizzes").mapNotNull { item ->
+        runCatching {
+            LocalQuickQuiz(
+                id = item.getString("id"),
+                subject = item.getString("subject"),
+                unit = item.getString("unit"),
+                topic = item.getString("topic"),
+                difficulty = item.getString("difficulty"),
+                questionCount = item.getInt("questionCount"),
+                content = item.getString("content"),
+                model = item.getString("model"),
+                promptVersion = item.getString("promptVersion"),
+                reviewStatus = item.optString("reviewStatus", "검수 전"),
+                createdAt = item.getLong("createdAt"),
+                updatedAt = item.getLong("updatedAt"),
+            )
+        }.getOrNull()
+    }.sortedByDescending { it.updatedAt }
+
     fun chatThreads(): List<LocalChatThread> = readArray("chatThreads").mapNotNull { item ->
         runCatching {
             LocalChatThread(
@@ -135,6 +193,26 @@ class LocalWorkspaceStore(context: Context) {
 
     fun deleteQuestion(questionId: String) {
         writeQuestions(questions().filterNot { it.id == questionId })
+    }
+
+    fun saveNote(note: LocalNote) {
+        check(writeNotes(notes().filterNot { it.id == note.id } + note)) { "메모를 이 기기에 저장하지 못했습니다." }
+    }
+
+    fun deleteNote(noteId: String) {
+        check(writeNotes(notes().filterNot { it.id == noteId })) { "메모를 이 기기에서 삭제하지 못했습니다." }
+    }
+
+    fun saveQuickQuiz(quiz: LocalQuickQuiz) {
+        check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == quiz.id } + quiz)) { "쪽지시험을 이 기기에 저장하지 못했습니다." }
+    }
+
+    fun updateQuickQuizReviewStatus(quizId: String, status: String) {
+        check(writeQuickQuizzes(quickQuizzes().map { if (it.id == quizId) it.copy(reviewStatus = status, updatedAt = System.currentTimeMillis()) else it })) { "쪽지시험 검수 상태를 저장하지 못했습니다." }
+    }
+
+    fun deleteQuickQuiz(quizId: String) {
+        check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == quizId })) { "쪽지시험을 이 기기에서 삭제하지 못했습니다." }
     }
 
     fun createChatThread(title: String = "새 온디바이스 대화"): LocalChatThread {
@@ -246,6 +324,30 @@ class LocalWorkspaceStore(context: Context) {
             })
         }
         preferences.edit().putString("questions", array.toString()).apply()
+    }
+
+    private fun writeNotes(items: List<LocalNote>): Boolean {
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().apply {
+                put("id", item.id); put("title", item.title); put("content", item.content); put("isPinned", item.isPinned)
+                put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
+            })
+        }
+        return preferences.edit().putString("notes", array.toString()).commit()
+    }
+
+    private fun writeQuickQuizzes(items: List<LocalQuickQuiz>): Boolean {
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().apply {
+                put("id", item.id); put("subject", item.subject); put("unit", item.unit); put("topic", item.topic)
+                put("difficulty", item.difficulty); put("questionCount", item.questionCount); put("content", item.content)
+                put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus)
+                put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
+            })
+        }
+        return preferences.edit().putString("quickQuizzes", array.toString()).commit()
     }
 
     private fun writeChatThreads(items: List<LocalChatThread>): Boolean {

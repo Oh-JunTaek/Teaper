@@ -162,6 +162,44 @@ export const userAiPreferences = mysqlTable(
   table => [index("user_ai_preferences_user_idx").on(table.userId)],
 );
 
+// 교사의 작업 메모는 문항 원문·자료와 분리해 사용자별로만 보관합니다.
+export const teacherNotes = mysqlTable(
+  "teacher_notes",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    content: text("content").notNull(),
+    isPinned: int("isPinned").default(0).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  table => [index("teacher_notes_owner_updated_idx").on(table.ownerId, table.updatedAt)],
+);
+
+// 쪽지시험은 일반 문항 생성 요청과 구분된 짧은 개념 확인 세트로 보관합니다.
+export const quickQuizSets = mysqlTable(
+  "quick_quiz_sets",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    subject: varchar("subject", { length: 80 }).notNull(),
+    unit: varchar("unit", { length: 120 }).notNull(),
+    topic: varchar("topic", { length: 160 }).notNull(),
+    difficulty: varchar("difficulty", { length: 30 }).notNull(),
+    questionCount: int("questionCount").notNull(),
+    questions: json("questions").$type<Array<{ questionText: string; choices: string[]; answer: string; explanation: string; concept: string }>>().notNull(),
+    providerType: varchar("providerType", { length: 40 }).notNull(),
+    providerModel: varchar("providerModel", { length: 160 }).notNull(),
+    promptVersion: varchar("promptVersion", { length: 80 }).notNull(),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  table => [index("quick_quiz_sets_owner_updated_idx").on(table.ownerId, table.updatedAt)],
+);
+
 export const generatedQuestions = mysqlTable(
   "generated_questions",
   {

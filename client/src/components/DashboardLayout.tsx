@@ -22,6 +22,8 @@ import {
   ShieldCheck,
   ScrollText,
   Sparkles,
+  StickyNote,
+  Timer,
   UsersRound,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -33,6 +35,8 @@ const menuItems = [
   { icon: FileArchive, label: "참고 자료", path: "/materials" },
   { icon: ClipboardList, label: "기출문제", path: "/references" },
   { icon: Sparkles, label: "문항 생성", path: "/generate" },
+  { icon: Timer, label: "쪽지시험", path: "/quick-quiz" },
+  { icon: StickyNote, label: "메모장", path: "/notes" },
   { icon: Cpu, label: "AI 설정", path: "/ai-settings" },
   { icon: ShieldCheck, label: "검수함", path: "/review" },
   { icon: BookOpenCheck, label: "승인 문항", path: "/approved" },

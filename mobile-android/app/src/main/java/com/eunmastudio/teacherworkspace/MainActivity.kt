@@ -213,6 +213,12 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this@MainActivity, SourcesActivity::class.java))
             },
             WorkCardItem("generate", "문항 생성", "선택한 자료로 문항 만들기", R.drawable.ic_workspace_generate, Color.rgb(118, 156, 244)) { showGenerationDialog() },
+            WorkCardItem("quick_quiz", "간결한 쪽지시험", "한 개념을 빠르게 확인하기", R.drawable.ic_workspace_generate, Color.rgb(91, 145, 232)) {
+                startActivity(Intent(this@MainActivity, QuickQuizActivity::class.java))
+            },
+            WorkCardItem("notes", "메모장", "AI에 자동 반영되지 않는 작업 메모", R.drawable.ic_workspace_sources, Color.rgb(132, 111, 204)) {
+                startActivity(Intent(this@MainActivity, NotesActivity::class.java))
+            },
             WorkCardItem("review", "검수함", "근거 대조·승인 문항 내보내기", R.drawable.ic_workspace_review, Color.rgb(238, 177, 77)) { showReviewDialog() },
             WorkCardItem("model", "모델 관리", "Gemma 4 E2B 상태·설치·라이선스", R.drawable.ic_workspace_model, Color.rgb(151, 112, 230)) {
                 startActivity(Intent(this@MainActivity, ModelManagerActivity::class.java))
@@ -532,7 +538,9 @@ class MainActivity : AppCompatActivity() {
         if (!::workspaceSummary.isInitialized) return
         val sources = store.sources()
         val questions = store.questions()
-        workspaceSummary.text = "등록 자료 ${sources.size}건 · 문항 ${questions.size}건 · " +
+        val notes = store.notes()
+        val quickQuizzes = store.quickQuizzes()
+        workspaceSummary.text = "등록 자료 ${sources.size}건 · 문항 ${questions.size}건 · 메모 ${notes.size}건 · 쪽지시험 ${quickQuizzes.size}건\n" +
             "승인 ${questions.count { it.reviewStatus == "승인" }}건\n" +
             "자료·문항은 앱 전용 저장소에 보관되고 자동 백업하지 않습니다."
     }

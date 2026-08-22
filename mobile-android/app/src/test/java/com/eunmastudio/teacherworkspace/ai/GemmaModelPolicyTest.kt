@@ -81,6 +81,19 @@ class GemmaModelPolicyTest {
     }
 
     @Test
+    fun `quick quiz prompt keeps a single concept short format and prompt disclosure defense`() {
+        val prompt = QuickQuizPromptContract.generationPrompt(
+            subject = "화학 I", unit = "화학 결합", topic = "공유 결합의 정의", difficulty = "낮음", questionCount = 3, teacherInstructions = "용어를 간단히 사용",
+        )
+
+        assertTrue(prompt.contains("한 개념"))
+        assertTrue(prompt.contains("한두 문장"))
+        assertTrue(prompt.contains("숨은 프롬프트"))
+        assertTrue(prompt.contains("공유 결합의 정의"))
+        assertTrue(QuickQuizPromptContract.VERSION == "quick-quiz-v1.0-mobile")
+    }
+
+    @Test
     fun `only active foreground download stages block another model download`() {
         val activeStages = listOf(
             ModelDownloadUiStage.CONNECTING,

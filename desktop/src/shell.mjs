@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { createLocalBridge } from "./bridge.mjs";
 import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
+import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION } from "./quickQuizPolicy.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
 
 if (process.env.LOCAL_APP_MODE !== "true") throw new Error("로컬 앱은 LOCAL_APP_MODE=true에서만 실행됩니다.");
@@ -80,6 +81,14 @@ function registerHandlers() {
   ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
   ipcMain.handle("local:get-preferences", () => ({ teacherInstructions: store.getSetting("teacher_instructions") }));
   ipcMain.handle("local:save-preferences", (_event, input) => { store.setSetting("teacher_instructions", String(input.teacherInstructions || "").trim().slice(0, 1200)); return { success: true }; });
+  ipcMain.handle("local:list-notes", () => store.listNotes());
+  ipcMain.handle("local:save-note", (_event, input) => {
+    const now = new Date().toISOString(); const id = input.id ? String(input.id) : randomUUID(); const title = String(input.title || "").trim().slice(0, 160); const content = String(input.content || "").trim().slice(0, 12000);
+    if (!title || !content) throw new Error("메모 제목과 내용을 입력해 주세요.");
+    if (input.id) store.updateNote({ id, title, content, isPinned: input.isPinned === true, updatedAt: now }); else store.saveNote({ id, title, content, isPinned: input.isPinned === true, createdAt: now, updatedAt: now });
+    return { id };
+  });
+  ipcMain.handle("local:delete-note", (_event, id) => { store.deleteNote(String(id)); return { success: true }; });
   ipcMain.handle("local:create-backup", async (_event, input) => {
     const encrypted = sealBackup(store.createBackupSnapshot(), String(input.password || ""));
     const result = await saveExportFile("문제-출제-워크스페이스-로컬-백업.eunmabackup", encrypted);
@@ -102,6 +111,25 @@ function registerHandlers() {
     for (const document of officialDocuments) store.saveOfficialEvidence({ requestId, documentId: document.catalog_key, document: { catalogKey: document.catalog_key, title: document.title, officialUrl: document.official_url, summary: document.summary, rightsStatus: document.rights_status } });
     store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: generated.response, choices: [], answer: "교사 확인 필요", explanation: "로컬 모델 생성 결과를 바탕으로 교사가 정답·해설을 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", model: generated.model, promptVersion: "local-only-v1", validationReport: { localOnly: true, officialDocumentCount: officialDocuments.length }, createdAt: now });
     return { id: questionId, response: generated.response };
+  });
+  ipcMain.handle("local:generate-quick-quiz", async (_event, input) => {
+    const topic = String(input.topic || "").trim().slice(0, 160); const questionCount = Math.max(1, Math.min(10, Number(input.questionCount || 3)));
+    if (!topic) throw new Error("확인할 개념 또는 정의를 입력해 주세요.");
+    if (isPromptDisclosureRequest(`${input.subject || ""}\n${input.unit || ""}\n${topic}`)) throw new Error("내부 설정·지시문은 공개하거나 생성 요청에 사용할 수 없습니다. 확인할 학습 개념을 입력해 주세요.");
+    const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt: localQuickQuizPrompt({ ...input, topic, questionCount, teacherInstructions: store.getSetting("teacher_instructions").trim().slice(0, 600) }), runtime: input.runtime || "ollama", options: { temperature: 0.15, maxTokens: Math.min(1800, 280 * questionCount) } }) });
+    if (isPotentialPromptDisclosure(generated.response)) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
+    const now = new Date().toISOString(); const id = randomUUID();
+    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", createdAt: now, updatedAt: now });
+    store.audit({ id: randomUUID(), action: "local_quick_quiz_generate", payload: { questionCount, model: generated.model }, createdAt: now });
+    return { id, response: generated.response, model: generated.model };
+  });
+  ipcMain.handle("local:list-quick-quizzes", () => store.listQuickQuizSets());
+  ipcMain.handle("local:review-quick-quiz", (_event, input) => { const status = ["approved", "revised", "rejected"].includes(input.status) ? input.status : "revised"; store.reviewQuickQuiz({ id: String(input.id), status, updatedAt: new Date().toISOString() }); return { success: true }; });
+  ipcMain.handle("local:delete-quick-quiz", (_event, id) => { store.deleteQuickQuizSet(String(id)); return { success: true }; });
+  ipcMain.handle("local:export-quick-quiz", async () => {
+    const quizzes = store.listApprovedQuickQuizSets(); if (!quizzes.length) throw new Error("내보낼 승인 쪽지시험이 없습니다.");
+    const content = quizzes.map((quiz, index) => `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n개념: ${quiz.topic}\n난이도: ${quiz.difficulty}\n생성 모델: ${quiz.model}\n\n${quiz.raw_output}`).join("\n\n---\n\n");
+    const result = await saveExportFile("승인-쪽지시험.txt", `쪽지시험\n교사 최종 검수 후 사용하세요.\n\n${content}`); recordExportAudit("quick_quiz_text", quizzes.length, result.saved ? "saved" : "cancelled"); return result;
   });
   ipcMain.handle("local:list-questions", (_event, status) => store.listQuestions(status));
   ipcMain.handle("local:review-question", (_event, input) => { store.reviewQuestion({ id: randomUUID(), questionId: String(input.questionId), status: input.status, reason: String(input.reason || ""), createdAt: new Date().toISOString() }); return { success: true }; });

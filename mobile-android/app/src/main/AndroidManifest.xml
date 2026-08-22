@@ -44,6 +44,14 @@
             android:exported="false" />
 
         <activity
+            android:name=".NotesActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".QuickQuizActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true">
             <intent-filter>

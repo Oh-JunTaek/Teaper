@@ -18,6 +18,8 @@ import {
   referenceQuestionSelections,
   referenceQuestions,
   reviewEvents,
+  quickQuizSets,
+  teacherNotes,
   userAiPreferences,
   users,
 } from "../drizzle/schema";
@@ -69,6 +71,46 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export type ProviderType = "managed" | "ollama" | "openai_compatible" | "gemini" | "anthropic";
+
+export async function listTeacherNotes(ownerId: number) {
+  const db = await requireDb();
+  return db.select().from(teacherNotes).where(and(eq(teacherNotes.ownerId, ownerId), isNull(teacherNotes.deletedAt))).orderBy(desc(teacherNotes.isPinned), desc(teacherNotes.updatedAt));
+}
+
+export async function createTeacherNote(input: { ownerId: number; title: string; content: string; isPinned?: boolean }) {
+  const db = await requireDb();
+  const result = await db.insert(teacherNotes).values({ ownerId: input.ownerId, title: input.title, content: input.content, isPinned: input.isPinned ? 1 : 0 });
+  return Number(result[0].insertId);
+}
+
+export async function updateTeacherNote(input: { id: number; ownerId: number; title: string; content: string; isPinned: boolean }) {
+  const db = await requireDb();
+  const result = await db.update(teacherNotes).set({ title: input.title, content: input.content, isPinned: input.isPinned ? 1 : 0, updatedAt: new Date() }).where(and(eq(teacherNotes.id, input.id), eq(teacherNotes.ownerId, input.ownerId), isNull(teacherNotes.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
+
+export async function deleteTeacherNote(id: number, ownerId: number) {
+  const db = await requireDb();
+  const result = await db.update(teacherNotes).set({ deletedAt: new Date() }).where(and(eq(teacherNotes.id, id), eq(teacherNotes.ownerId, ownerId), isNull(teacherNotes.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
+
+export async function createQuickQuizSet(input: typeof quickQuizSets.$inferInsert) {
+  const db = await requireDb();
+  const result = await db.insert(quickQuizSets).values(input);
+  return Number(result[0].insertId);
+}
+
+export async function listQuickQuizSets(ownerId: number) {
+  const db = await requireDb();
+  return db.select().from(quickQuizSets).where(and(eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt))).orderBy(desc(quickQuizSets.updatedAt));
+}
+
+export async function deleteQuickQuizSet(id: number, ownerId: number) {
+  const db = await requireDb();
+  const result = await db.update(quickQuizSets).set({ deletedAt: new Date() }).where(and(eq(quickQuizSets.id, id), eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
 
 export async function recordManagedAiUsage(entry: ManagedAiUsageEntry) {
   const db = await getDb();

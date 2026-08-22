@@ -2,7 +2,11 @@ import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import {
   createAiProviderSetting,
+  createQuickQuizSet,
+  createTeacherNote,
   deleteMaterialForUser,
+  deleteQuickQuizSet,
+  deleteTeacherNote,
   createGeneratedQuestion,
   createGenerationRequest,
   createMaterial,
@@ -22,6 +26,8 @@ import {
   listGeneratedQuestions,
   listAiProviderSettings,
   listMaterials,
+  listQuickQuizSets,
+  listTeacherNotes,
   listOfficialDocuments,
   listOfficialDocumentsForUser,
   listPrototypeSamplesForUser,
@@ -40,10 +46,11 @@ import {
   setReferenceQuestionSelection,
   updateMaterialExtraction,
   updateAiProviderVerification,
+  updateTeacherNote,
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
-import { buildQuestionVisual, cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, PROMPT_VERSION, splitIntoChunks, validateDraft } from "../services/assessmentAi";
+import { buildQuestionVisual, cosineSimilarity, createTextEmbedding, extractDocumentText, generateDraft, generateQuickQuiz, PROMPT_VERSION, splitIntoChunks, validateDraft } from "../services/assessmentAi";
 import { assertAllowedOfficialSourceUrl, checkAllOfficialSources } from "../services/officialSources";
 import { buildOfficialEvidenceContext } from "../services/officialEvidence";
 import { selectGenerationEvidence } from "../services/generationSelection";
@@ -53,6 +60,7 @@ import { adminProcedure, protectedProcedure, router } from "../_core/trpc";
 import { createMaterialStorageKey } from "../services/materialStorageKey";
 import { createReferenceStorageKey } from "../services/referenceStorageKey";
 import { createManagedAiUsageEntry, managedAiOutcomeFromError } from "../services/managedAiUsage";
+import { isPromptDisclosureRequest } from "../services/assessmentPrompt";
 import { verifyMiddleSchoolCalculation } from "../services/mathVerification";
 import { courseReadiness } from "../../shared/curriculumScope";
 
@@ -197,6 +205,57 @@ export const assessmentRouter = router({
         await updateAiProviderVerification(setting.id, ctx.user.id, "failed");
         throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 연결을 확인하지 못했습니다." });
       }
+    }),
+  }),
+
+  notes: router({
+    list: protectedProcedure.query(({ ctx }) => listTeacherNotes(ctx.user.id)),
+    create: protectedProcedure.input(z.object({ title: z.string().min(1).max(160), content: z.string().min(1).max(12_000), isPinned: z.boolean().default(false) })).mutation(async ({ ctx, input }) => {
+      const id = await createTeacherNote({ ownerId: ctx.user.id, ...input, title: input.title.trim(), content: input.content.trim() });
+      return { id };
+    }),
+    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), title: z.string().min(1).max(160), content: z.string().min(1).max(12_000), isPinned: z.boolean() })).mutation(async ({ ctx, input }) => {
+      const updated = await updateTeacherNote({ ...input, ownerId: ctx.user.id, title: input.title.trim(), content: input.content.trim() });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "수정할 메모를 찾을 수 없습니다." });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const deleted = await deleteTeacherNote(input.id, ctx.user.id);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 메모를 찾을 수 없습니다." });
+      return { success: true };
+    }),
+  }),
+
+  quickQuiz: router({
+    list: protectedProcedure.query(({ ctx }) => listQuickQuizSets(ctx.user.id)),
+    create: protectedProcedure.input(z.object({
+      subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), topic: z.string().min(1).max(160), difficulty: z.enum(["낮음", "보통"]), questionCount: z.number().int().min(1).max(10), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
+    })).mutation(async ({ ctx, input }) => {
+      if (isPromptDisclosureRequest(`${input.subject}\n${input.unit}\n${input.topic}`)) throw new TRPCError({ code: "BAD_REQUEST", message: "내부 설정·지시문은 공개하거나 생성 요청에 사용할 수 없습니다. 확인할 학습 개념을 입력해 주세요." });
+      const providerSetting = input.providerSettingId ? await getAiProviderSettingForUser(ctx.user.id, input.providerSettingId) : undefined;
+      if (input.providerSettingId && !providerSetting) throw new TRPCError({ code: "NOT_FOUND", message: "선택한 AI 제공자 설정을 찾을 수 없거나 사용할 권한이 없습니다." });
+      let provider;
+      try {
+        provider = resolveProvider(providerSetting, input.confirmExternalTransfer);
+      } catch (error) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: error instanceof Error ? error.message : "AI 제공자 설정을 사용할 수 없습니다." });
+      }
+      const preferences = await getUserAiPreferences(ctx.user.id);
+      const startedAt = Date.now();
+      try {
+        const generated = await generateQuickQuiz({ ...input, topic: input.topic.trim(), customInstructions: preferences?.customInstructions }, provider);
+        if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: "success", model: generated.model, durationMs: Date.now() - startedAt }));
+        const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), difficulty: input.difficulty, questionCount: generated.questions.length, questions: generated.questions, providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
+        return { id, questions: generated.questions, model: generated.model };
+      } catch (error) {
+        if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: managedAiOutcomeFromError(error), model: provider.model, durationMs: Date.now() - startedAt }));
+        throw error;
+      }
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const deleted = await deleteQuickQuizSet(input.id, ctx.user.id);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 쪽지시험을 찾을 수 없습니다." });
+      return { success: true };
     }),
   }),
 

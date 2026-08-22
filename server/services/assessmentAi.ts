@@ -1,7 +1,7 @@
 import { invokeLLM, listLLMModels } from "../_core/llm";
 import { PDFParse } from "pdf-parse";
 import type { ResolvedProvider } from "./aiProviders";
-import { appendTeacherInstructions, buildGenerationSystemPrompt, buildValidationSystemPrompt, PROMPT_CONTRACT_VERSION, type ProviderKind } from "./assessmentPrompt";
+import { appendTeacherInstructions, buildGenerationSystemPrompt, buildQuickQuizSystemPrompt, buildValidationSystemPrompt, isPotentialPromptDisclosure, PROMPT_CONTRACT_VERSION, QUICK_QUIZ_PROMPT_VERSION, type ProviderKind } from "./assessmentPrompt";
 import type { CalculationSpec } from "./mathVerification";
 
 export const PROMPT_VERSION = PROMPT_CONTRACT_VERSION;
@@ -33,6 +33,8 @@ export type Validation = {
   similarReferenceId: number | null;
   pass: boolean;
 };
+
+export type QuickQuizQuestion = { questionText: string; choices: string[]; answer: string; explanation: string; concept: string };
 
 function stableHash(value: string) {
   let hash = 2166136261;
@@ -191,6 +193,28 @@ export async function extractDocumentText(input: { signedUrl: string; mimeType: 
 }
 
 const draftSchema = { type: "json_schema", json_schema: { name: "question_draft", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } }, calculation: { anyOf: [{ type: "null" }, { type: "object", properties: { kind: { type: "string", enum: ["numeric_expression", "linear_equation", "proportion", "basic_statistics"] }, expression: { type: "string" }, expectedAnswer: { type: "string" } }, required: ["kind", "expression", "expectedAnswer"], additionalProperties: false }] } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts", "calculation"], additionalProperties: false } } };
+
+const quickQuizSchema = { type: "json_schema", json_schema: { name: "quick_quiz", strict: true, schema: { type: "object", properties: { questions: { type: "array", items: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, concept: { type: "string" } }, required: ["questionText", "choices", "answer", "explanation", "concept"], additionalProperties: false } } }, required: ["questions"], additionalProperties: false } } };
+
+export async function generateQuickQuiz(input: { subject: string; unit: string; topic: string; difficulty: string; questionCount: number; customInstructions?: string }, provider?: ResolvedProvider) {
+  const model = await selectModel("generation", provider);
+  if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
+  const response = await invokeForProvider({ provider, model, messages: [
+    { role: "system", content: appendTeacherInstructions(buildQuickQuizSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) },
+    { role: "user", content: `쪽지시험 생성 요청\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 확인할 개념: ${input.topic}\n- 난이도: ${input.difficulty}\n- 문항 수: ${input.questionCount}\n\n학생이 짧은 시간 안에 풀 수 있는 새로운 개념 확인 문항만 ${input.questionCount}개 생성하십시오.` },
+  ], responseFormat: quickQuizSchema });
+  const parsed = JSON.parse(contentOf(response)) as { questions: QuickQuizQuestion[] };
+  if (parsed.questions.some(question => isPotentialPromptDisclosure(`${question.questionText}\n${question.answer}\n${question.explanation}\n${question.concept}`))) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
+  const questions = parsed.questions.slice(0, input.questionCount).map(question => ({
+    questionText: question.questionText.trim().slice(0, 220),
+    choices: question.choices.slice(0, 4).map(choice => choice.trim().slice(0, 90)),
+    answer: question.answer.trim().slice(0, 120),
+    explanation: question.explanation.trim().slice(0, 260),
+    concept: question.concept.trim().slice(0, 100),
+  }));
+  if (questions.length !== input.questionCount || questions.some(question => !question.questionText || !question.answer || !question.explanation)) throw new Error("쪽지시험 형식이 완전하지 않습니다. 다시 시도해 주세요.");
+  return { questions, model, promptVersion: QUICK_QUIZ_PROMPT_VERSION };
+}
 
 export async function generateDraft(input: { subject: string; unit: string; difficulty: string; questionType: string; points: number; additionalRequirements?: string; curriculumContext: string; referenceContext: string; guidelineContext: string; customInstructions?: string }, provider?: ResolvedProvider) {
   const model = await selectModel("generation", provider);
