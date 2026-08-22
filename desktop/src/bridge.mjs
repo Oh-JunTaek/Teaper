@@ -43,6 +43,17 @@ export async function createLocalBridge() {
         const result = await ollama("/api/pull", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: input.model, stream: false }), signal: AbortSignal.timeout(30 * 60_000) });
         return send(response, 200, { success: true, model: input.model, result, localOnly: true });
       }
+      if (request.method === "POST" && request.url === "/chat/warm") {
+        const input = await body(request);
+        if (typeof input.model !== "string" || !input.model.trim()) return send(response, 400, { error: "채팅에 사용할 로컬 모델이 필요합니다." });
+        const options = input.options || {};
+        if (input.runtime === "llama_cpp") {
+          await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: "준비", n_predict: 1, temperature: 0 }), signal: AbortSignal.timeout(4 * 60_000) });
+          return send(response, 200, { success: true, model: input.model, runtime: "llama_cpp", localOnly: true });
+        }
+        await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: "준비", stream: false, keep_alive: "10m", options: { num_predict: 1, num_ctx: options.num_ctx } }), signal: AbortSignal.timeout(4 * 60_000) });
+        return send(response, 200, { success: true, model: input.model, runtime: "ollama", localOnly: true });
+      }
       if (request.method === "POST" && request.url === "/generate") {
         const input = await body(request);
         if (typeof input.model !== "string" || typeof input.prompt !== "string") return send(response, 400, { error: "model과 prompt가 필요합니다." });
@@ -51,7 +62,7 @@ export async function createLocalBridge() {
           const result = await llama("/completion", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ prompt: input.prompt, n_predict: options.num_predict || options.maxTokens || 1024, temperature: options.temperature ?? 0.2, top_k: options.top_k, top_p: options.top_p }), signal: AbortSignal.timeout(8 * 60_000) });
           return send(response, 200, { response: result.content, model: input.model, runtime: "llama_cpp", localOnly: true });
         }
-        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, options: input.options || {}, ...(input.think === true ? { think: true } : {}) }), signal: AbortSignal.timeout(8 * 60_000) });
+        const result = await ollama("/api/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: input.model, prompt: input.prompt, stream: false, keep_alive: "10m", options: input.options || {}, ...(input.think === true ? { think: true } : {}) }), signal: AbortSignal.timeout(8 * 60_000) });
         return send(response, 200, { response: result.response, model: result.model, runtime: "ollama", localOnly: true });
       }
       if (request.method === "POST" && request.url === "/fallback-options") { const failure = await body(request); const runtimes = await runtimeStatus(); return send(response, 200, fallbackOptions({ ...failure, localRuntimeAvailable: runtimes.ollama.running || runtimes.llamaCpp.running })); }

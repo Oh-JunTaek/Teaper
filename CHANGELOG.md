@@ -5,6 +5,7 @@
 ## Unreleased
 
 ### Added
+- Windows local-only beta.7에 최근 8개 메시지·2,400자 예산의 연속 대화 맥락, 마지막 모델 선택 저장, 채팅 탭 진입 시 모델 예열, 모델 로딩·질문 분석·답변 생성 단계 표시를 추가
 - Windows local-only beta.6에 PowerShell·CMD·macOS·Linux 공통의 Node 기반 실행기를 추가해 local-only 브리지와 Electron 앱을 같은 방식으로 시작하도록 보완
 - Windows local-only beta.5에 Ollama·llama.cpp 기반 AI 채팅, 최근 대화 제한, 제목 변경·즐겨찾기·삭제, SQLite 대화 저장·암호화 백업 포함을 추가
 - 웹 쪽지시험 세트에 검수 대기·승인·수정 필요·반려 상태와 검수 시각을 추가하고, 일반 문항 검수함과 분리된 쪽지시험 검수 화면에서 세트 선택·상태 전환을 지원
@@ -40,6 +41,7 @@
 - 공통 공식 자료 카탈로그, 중등 수학 결정론적 계산 확인, 과목별 파일럿·준비 상태 안내와 서버 생성 경계를 추가
 
 ### Changed
+- Windows AI 채팅을 카드 나열형 화면에서 대화 말풍선·스크롤 가능한 대화창·고정 작성 바로 재구성하고, 대화 제목·즐겨찾기·삭제 조작을 상단에 정리
 - Windows desktop `pnpm-workspace.yaml`에 단일 앱 패키지 경로를 명시해 pnpm이 `packages field missing or empty`로 의존성 설치를 중단하던 오류를 수정
 - Windows 로컬 모델 미연결·응답 시간 초과 상황에서 Ollama 또는 llama.cpp 실행·모델 준비 상태를 안내하도록 오류 메시지를 보완
 - 생성된 웹 쪽지시험이 ‘교사 검수 후 사용’ 안내만 보이고 실제 검수 동작을 제공하지 않던 문제를 수정

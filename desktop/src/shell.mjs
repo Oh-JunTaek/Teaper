@@ -6,7 +6,7 @@ import { createLocalBridge } from "./bridge.mjs";
 import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
 import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION } from "./quickQuizPolicy.mjs";
-import { chatTitleFromMessage, localChatPrompt } from "./chatPolicy.mjs";
+import { boundedChatHistory, chatTitleFromMessage, localChatPrompt } from "./chatPolicy.mjs";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, generationOptions, normalizeLocalModelSettings, supportsThinking } from "./localModelSettings.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
 
@@ -83,7 +83,7 @@ function registerHandlers() {
   ipcMain.handle("local:set-official-document-selection", (_event, input) => { store.setOfficialDocumentSelection(String(input.catalogKey), input.useForGeneration === true); return { success: true }; });
   ipcMain.handle("local:get-preferences", () => {
     const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
-    return { teacherInstructions: store.getSetting("teacher_instructions"), modelSettings };
+    return { teacherInstructions: store.getSetting("teacher_instructions"), modelSettings, chatLastModel: store.getSetting("chat_last_model") };
   });
   ipcMain.handle("local:save-preferences", (_event, input = {}) => {
     const teacherInstructions = String(input.teacherInstructions || "").trim().slice(0, 1200);
@@ -114,6 +114,14 @@ function registerHandlers() {
     return { success: true };
   });
   ipcMain.handle("local:delete-chat-thread", (_event, id) => { store.deleteChatThread(String(id)); return { success: true }; });
+  ipcMain.handle("local:warm-chat-model", async (_event, input = {}) => {
+    const model = String(input.model || "").trim(); const runtime = input.runtime === "llama_cpp" ? "llama_cpp" : "ollama";
+    if (!model) throw new Error("채팅에 사용할 로컬 모델을 선택해 주세요.");
+    const settings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
+    const result = await bridgeRequest("/chat/warm", { method: "POST", body: JSON.stringify({ model, runtime, options: generationOptions(settings) }) });
+    store.setSetting("chat_last_model", `${runtime}:${model}`);
+    return result;
+  });
   ipcMain.handle("local:send-chat", async (_event, input = {}) => {
     const message = String(input.message || "").trim().slice(0, 6000); const model = String(input.model || "").trim();
     if (!message) throw new Error("질문을 입력해 주세요."); if (!model) throw new Error("실행할 로컬 모델을 선택해 주세요.");
@@ -122,12 +130,14 @@ function registerHandlers() {
     if (!thread) { const id = randomUUID(); thread = { id, title: chatTitleFromMessage(message), is_pinned: 0, created_at: now, updated_at: now }; store.saveChatThread({ id, title: thread.title, isPinned: false, createdAt: now, updatedAt: now }); }
     const history = store.listChatMessages(thread.id);
     const settings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
-    const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model, prompt: localChatPrompt({ message, history, teacherInstructions: store.getSetting("teacher_instructions").trim().slice(0, 1200) }), runtime: input.runtime === "llama_cpp" ? "llama_cpp" : "ollama", options: generationOptions(settings), think: settings.thinkingEnabled && supportsThinking(model) }) });
+    const runtime = input.runtime === "llama_cpp" ? "llama_cpp" : "ollama";
+    const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model, prompt: localChatPrompt({ message, history: boundedChatHistory(history), teacherInstructions: store.getSetting("teacher_instructions").trim().slice(0, 1200) }), runtime, options: generationOptions(settings), think: settings.thinkingEnabled && supportsThinking(model) }) });
     if (isPotentialPromptDisclosure(generated.response)) throw new Error("응답에서 내부 지시문 노출 가능성을 감지해 저장하지 않았습니다.");
     const nextTitle = history.length === 0 && thread.title === "새 대화" ? chatTitleFromMessage(message) : thread.title;
     store.saveChatMessage({ id: randomUUID(), threadId: thread.id, role: "user", content: message, createdAt: now });
     store.saveChatMessage({ id: randomUUID(), threadId: thread.id, role: "assistant", content: generated.response, model: generated.model, createdAt: new Date().toISOString() });
     store.updateChatThread({ id: thread.id, title: nextTitle, isPinned: Boolean(thread.is_pinned), updatedAt: new Date().toISOString() });
+    store.setSetting("chat_last_model", `${runtime}:${model}`);
     store.audit({ id: randomUUID(), action: "local_chat_success", payload: { model: generated.model, runtime: generated.runtime, priorMessageCount: history.length }, createdAt: new Date().toISOString() });
     return { threadId: thread.id, response: generated.response, model: generated.model };
   });

@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("teacherLocal", {
   createChatThread: input => ipcRenderer.invoke("local:create-chat-thread", input),
   updateChatThread: input => ipcRenderer.invoke("local:update-chat-thread", input),
   deleteChatThread: id => ipcRenderer.invoke("local:delete-chat-thread", id),
+  warmChatModel: input => ipcRenderer.invoke("local:warm-chat-model", input),
   sendChat: input => ipcRenderer.invoke("local:send-chat", input),
   createBackup: input => ipcRenderer.invoke("local:create-backup", input),
   restoreBackup: input => ipcRenderer.invoke("local:restore-backup", input),

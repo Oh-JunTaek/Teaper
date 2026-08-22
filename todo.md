@@ -482,4 +482,7 @@
 - [x] Windows desktop의 pnpm 작업공간 설정에 단일 앱 패키지를 명시해 실제 PC 의존성 설치가 막히던 오류를 수정한다.
 - [ ] Windows PowerShell에서 POSIX 환경변수 문법 때문에 local-only 앱이 시작되지 않는 문제를 플랫폼 독립 실행기로 수정하고 실제 PC에서 실행한다.
 - [ ] Windows Electron 앱에서 `window.teacherLocal` preload IPC가 비어 로컬 상태·AI 채팅이 동작하지 않는 오류를 수정하고 실제 PC에서 검증한다.
+- [x] Windows local-only AI 채팅에 Android 수준의 최근 대화 맥락, 자동 제목·수정·즐겨찾기·삭제, 마지막 모델 선택 유지, 모델 예열을 구현한다.
+- [x] Windows local-only AI 채팅을 대화창 중심 UI로 재구성하고 모델 로딩·질문 분석·답변 생성의 단계별 원형 진행 표시를 제공한다.
+- [ ] Windows beta.7에서 첫 모델 예열 중 입력 가능 여부, 단계별 진행 표시, 2회 이상 연속 대화의 맥락·제목·모델 선택 유지, 앱 재시작 뒤 대화 저장을 실제 PC에서 확인한다.
 - [ ] Windows beta.5에서 Ollama 또는 llama.cpp 모델 연결, 긴 답변, 대화 제목·즐겨찾기·삭제, 앱 재시작 후 대화 저장, 프롬프트 비공개를 실제 PC에서 확인한다.
