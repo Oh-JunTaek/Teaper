@@ -1,7 +1,6 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Intent
-import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -21,14 +20,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.ChatPromptMessage
-import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
 import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.ModelSelection
-import com.eunmastudio.teacherworkspace.ai.PromptDisclosurePolicy
 import com.eunmastudio.teacherworkspace.ai.TeacherChatPromptContract
-import com.eunmastudio.teacherworkspace.ui.ChatMarkdownRenderer
 import kotlinx.coroutines.launch
 import kotlin.math.max
 
@@ -77,7 +73,7 @@ class TeacherChatActivity : AppCompatActivity() {
         fun dp(value: Int) = (value * density).toInt()
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            setPadding(dp(18), dp(14), dp(18), dp(16))
             setBackgroundColor(Color.rgb(14, 16, 21))
             addView(LinearLayout(this@TeacherChatActivity).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -88,8 +84,11 @@ class TeacherChatActivity : AppCompatActivity() {
                 }, LinearLayout.LayoutParams(dp(48), dp(52)))
                 addView(LinearLayout(this@TeacherChatActivity).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(TextView(this@TeacherChatActivity).apply { text = "온디바이스 AI 채팅"; textSize = 22f; setTextColor(Color.WHITE) })
-                    addView(TextView(this@TeacherChatActivity).apply { text = "Gemma 4 · 이 기기에서만 처리"; textSize = 13f; setTextColor(Color.rgb(146, 185, 255)) })
+                    addView(TextView(this@TeacherChatActivity).apply {
+                        text = "온디바이스 AI 채팅"; textSize = 21f; setTextColor(Color.WHITE)
+                        setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    })
+                    addView(TextView(this@TeacherChatActivity).apply { text = "Gemma 4 · 로컬 전용"; textSize = 12.5f; setTextColor(Color.rgb(146, 185, 255)) })
                 }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
                 addView(Button(this@TeacherChatActivity).apply {
                     text = "대화"; isAllCaps = false; textSize = 13f; setTextColor(Color.WHITE)
@@ -98,14 +97,14 @@ class TeacherChatActivity : AppCompatActivity() {
                 }, LinearLayout.LayoutParams(dp(72), dp(42)))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
             status = TextView(this@TeacherChatActivity).apply {
-                text = "일반 질의응답과 자료 기반 출제 보조를 제공합니다. 최종 판단은 교사가 확인합니다."
-                textSize = 14f; setTextColor(Color.rgb(190, 200, 216)); setPadding(dp(8), dp(10), dp(8), dp(10))
-                background = solid(Color.rgb(28, 34, 45), dp(16))
+                text = "이 기기에서만 처리 · 최종 판단은 교사가 확인합니다"
+                textSize = 13f; setTextColor(Color.rgb(181, 196, 221)); setPadding(dp(14), dp(9), dp(14), dp(9))
+                background = solid(Color.rgb(24, 30, 40), dp(14))
             }
             addView(status, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
             sourceSwitch = Switch(this@TeacherChatActivity).apply {
-                text = "등록 자료 참고"; textSize = 14f; setTextColor(Color.rgb(214, 221, 232)); isChecked = true
-                setPadding(dp(6), dp(6), dp(6), dp(6))
+                text = "등록 자료 참고"; textSize = 13f; setTextColor(Color.rgb(208, 218, 235)); isChecked = true
+                setPadding(dp(4), dp(7), dp(4), dp(5))
             }
             addView(sourceSwitch)
             messageList = LinearLayout(this@TeacherChatActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(8), 0, dp(8)) }
@@ -114,17 +113,17 @@ class TeacherChatActivity : AppCompatActivity() {
             addView(LinearLayout(this@TeacherChatActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(10), dp(10), dp(10), dp(10))
-                background = solid(Color.rgb(22, 27, 36), dp(24))
+                setPadding(dp(9), dp(9), dp(9), dp(9))
+                background = solid(Color.rgb(22, 28, 38), dp(24))
                 input = EditText(this@TeacherChatActivity).apply {
                     hint = "질문을 입력하세요"; textSize = 16f; minLines = 1; maxLines = 5
                     setTextColor(Color.WHITE); setHintTextColor(Color.rgb(139, 151, 171))
-                    background = solid(Color.rgb(43, 49, 62), dp(20)); setPadding(dp(16), dp(10), dp(16), dp(10))
+                    background = solid(Color.rgb(38, 47, 62), dp(20)); setPadding(dp(16), dp(10), dp(16), dp(10))
                 }
                 addView(input, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { rightMargin = dp(8) })
                 sendButton = Button(this@TeacherChatActivity).apply {
                     text = "보내기"; isAllCaps = false; setTextColor(Color.rgb(15, 18, 24))
-                    background = solid(Color.rgb(126, 174, 255), dp(20)); setOnClickListener { sendMessage() }
+                    background = solid(Color.rgb(139, 184, 255), dp(20)); setOnClickListener { sendMessage() }
                 }
                 addView(sendButton, LinearLayout.LayoutParams(dp(82), dp(52)))
             }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
@@ -176,51 +175,46 @@ class TeacherChatActivity : AppCompatActivity() {
         val content = input.text.toString().trim()
         if (content.isBlank()) return
         val thread = currentThread ?: store.createChatThread().also { currentThread = it }
+        store.appendChatMessage(thread.id, content, isUser = true)
+        input.setText("")
+        addBubble(content, true)
         sendButton.isEnabled = false
         lifecycleScope.launch {
-            var assistantBubble: TextView? = null
+            val ready = ensureModelReady()
+            if (!ready) {
+                sendButton.isEnabled = true
+                return@launch
+            }
+            val assistantBubble = addBubble("응답을 준비하고 있습니다.", false)
             try {
-                val persistedUser = store.appendChatMessage(thread.id, content, isUser = true)
-                ChatTurnPolicy.requirePersisted(content, persistedUser != null)
-                currentThread = persistedUser ?: currentThread
-                input.setText("")
-                addBubble(content, true)
-                // 모델 호출 전 차단해 내부 지시문이 생성·저장·화면에 남지 않게 한다.
-                PromptDisclosurePolicy.safeResponseFor(content)?.let { safeReply ->
-                    assistantBubble = addBubble(safeReply, false)
-                    val persistedAssistant = store.appendChatMessage(thread.id, safeReply, isUser = false)
-                    assistantBubble?.text = renderChatMessage(ChatTurnPolicy.requirePersisted(safeReply, persistedAssistant != null))
-                    status.text = "내부 설정은 공개하지 않습니다. 교사용 기능 안내는 계속 도와드릴 수 있습니다."
-                    return@launch
-                }
-                val ready = ensureModelReady()
-                if (!ready) return@launch
-                assistantBubble = addBubble("입력 중…", false)
                 val latestThread = store.chatThreads().firstOrNull { it.id == thread.id } ?: thread
                 val request = TeacherChatPromptContract.conversationRequest(
                     history = latestThread.messages.map { ChatPromptMessage(it.isUser, it.content) },
                     sourceSummaries = if (sourceSwitch.isChecked) sourceSummaries() else "",
                     teacherInstructions = store.teacherInstructions(),
                 )
-                var completedResponse = ""
+                val response = StringBuilder()
+                var previousChunk = ""
                 runner.chat(request.systemInstruction, request.history) { partial ->
-                    completedResponse = partial
-                }
-                val finalResponse = ChatTurnPolicy.normalizeForPersistence(
-                    if (PromptDisclosurePolicy.isPotentialDisclosure(completedResponse)) {
-                        PromptDisclosurePolicy.SAFE_REPLY
+                    // LiteRT-LM 버전에 따라 스트림 값이 조각 또는 누적 문자열일 수 있으므로 중복 누적을 막는다.
+                    if (partial.startsWith(previousChunk)) {
+                        response.clear()
+                        response.append(partial)
                     } else {
-                        completedResponse
-                    },
-                )
-                // 저장이 성공하기 전에는 완성 답변을 화면에 확정하지 않는다.
-                val persistedAssistant = store.appendChatMessage(thread.id, finalResponse, isUser = false)
-                assistantBubble?.text = renderChatMessage(ChatTurnPolicy.requirePersisted(finalResponse, persistedAssistant != null))
-                messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
-                currentThread = persistedAssistant ?: currentThread
+                        response.append(partial)
+                    }
+                    previousChunk = partial
+                    runOnUiThread {
+                        assistantBubble.text = response.toString()
+                        messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
+                    }
+                }
+                val finalResponse = response.toString().trim()
+                if (finalResponse.isBlank()) throw IllegalStateException("모델이 빈 응답을 반환했습니다. 다시 시도해 주세요.")
+                store.appendChatMessage(thread.id, finalResponse, isUser = false)
                 status.text = "${activeModel?.displayName ?: "로컬 모델"}이 이 기기에서 응답했습니다. 외부 전송을 사용하지 않습니다."
             } catch (error: Throwable) {
-                assistantBubble?.text = renderChatMessage("응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}")
+                assistantBubble.text = "응답을 완료하지 못했습니다. ${error.message ?: "모델 상태를 확인한 뒤 다시 시도해 주세요."}"
                 status.text = "생성 오류가 기록되었습니다. 앱을 다시 열 필요 없이 같은 질문을 다시 보낼 수 있습니다."
             } finally {
                 sendButton.isEnabled = true
@@ -240,12 +234,7 @@ class TeacherChatActivity : AppCompatActivity() {
             status.text = "${selected.displayName}을 채팅용으로 준비하고 있습니다."
             // S25+ 실기기에서 GPU 생성 완료 뒤 프로세스가 종료되는 현상을 분리하기 위해,
             // 채팅은 우선 CPU 안정성 모드로 실행한다. 문항·이미지 경로의 GPU 정책과는 별개다.
-            val mode = runner.initialize(
-                modelFilePath = downloads.installedFile(selected).absolutePath,
-                preferGpu = false,
-                // 시스템 지시문·최근 대화·짧은 답변을 수용하면서도 KV 캐시를 작게 유지한다.
-                maxNumTokens = ChatTurnPolicy.MAX_CONTEXT_TOKENS,
-            )
+            val mode = runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false)
             activeModel = selected
             status.text = "${selected.displayName} 준비 완료 · $mode"
             true
@@ -266,12 +255,6 @@ class TeacherChatActivity : AppCompatActivity() {
             text = "+ 새 대화"; isAllCaps = false
             setOnClickListener { loadThread(store.createChatThread()); (parent as? android.app.AlertDialog)?.dismiss() }
         })
-        currentThread?.let { current ->
-            container.addView(Button(this).apply {
-                text = "현재 대화 제목 수정"; isAllCaps = false
-                setOnClickListener { showRenameThreadDialog(current) }
-            })
-        }
         threads.forEach { thread ->
             container.addView(Button(this).apply {
                 text = "${thread.title}\n${thread.messages.lastOrNull()?.content?.take(50).orEmpty()}"; isAllCaps = false; gravity = Gravity.START
@@ -290,26 +273,6 @@ class TeacherChatActivity : AppCompatActivity() {
         dialog.show()
     }
 
-    private fun showRenameThreadDialog(thread: LocalChatThread) {
-        val editor = EditText(this).apply {
-            setText(thread.title)
-            hint = "대화 제목"
-            setSelection(text.length)
-        }
-        AlertDialog.Builder(this)
-            .setTitle("대화 제목 수정")
-            .setView(editor)
-            .setNegativeButton("취소", null)
-            .setPositiveButton("저장") { _, _ ->
-                val renamed = store.renameChatThread(thread.id, editor.text.toString())
-                if (renamed != null) {
-                    currentThread = renamed
-                    status.text = "대화 제목을 저장했습니다."
-                }
-            }
-            .show()
-    }
-
     private fun addSystemHint(content: String) {
         messageList.addView(TextView(this).apply {
             text = content; textSize = 14f; setTextColor(Color.rgb(188, 198, 214)); setPadding(24, 20, 24, 20)
@@ -321,8 +284,7 @@ class TeacherChatActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         return TextView(this).apply {
-            text = renderChatMessage(content); textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.15f)
-            setTextIsSelectable(!isUser)
+            text = content; textSize = 16f; setTextColor(Color.WHITE); setLineSpacing(0f, 1.1f)
             setPadding(dp(16), dp(12), dp(16), dp(12))
             background = solid(if (isUser) Color.rgb(66, 101, 171) else Color.rgb(38, 43, 54), dp(20))
             messageList.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
@@ -333,9 +295,6 @@ class TeacherChatActivity : AppCompatActivity() {
             messageScroll.post { messageScroll.fullScroll(View.FOCUS_DOWN) }
         }
     }
-
-    private fun renderChatMessage(content: String): CharSequence =
-        ChatMarkdownRenderer.render(content, resources.displayMetrics.density)
 
     private fun solid(color: Int, radius: Int): GradientDrawable = GradientDrawable().apply { setColor(color); cornerRadius = radius.toFloat() }
 }

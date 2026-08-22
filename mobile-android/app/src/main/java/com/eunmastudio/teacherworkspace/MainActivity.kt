@@ -3,7 +3,6 @@ package com.eunmastudio.teacherworkspace
 import android.app.AlertDialog
 import android.Manifest
 import android.content.Intent
-import android.net.Uri
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
@@ -173,7 +172,7 @@ class MainActivity : AppCompatActivity() {
         fun dp(value: Int) = (value * density).toInt()
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(28), dp(22), dp(36))
+            setPadding(dp(22), dp(20), dp(22), dp(30))
             setBackgroundColor(Color.rgb(14, 16, 21))
         }
         fun text(value: String, size: Float = 16f, color: Int = Color.WHITE) = TextView(this).apply {
@@ -185,7 +184,9 @@ class MainActivity : AppCompatActivity() {
 
         content.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(text("EunmaStudio", 14f, Color.rgb(126, 174, 255)), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            addView(text("문제 출제 워크스페이스", 18f, Color.rgb(236, 240, 248)).apply {
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
             overflowButton = Button(this@MainActivity).apply {
                 text = "☰"; textSize = 22f; isAllCaps = false; setTextColor(Color.WHITE)
                 contentDescription = "설정 메뉴 열기"
@@ -194,10 +195,11 @@ class MainActivity : AppCompatActivity() {
             }
             addView(overflowButton, LinearLayout.LayoutParams(dp(52), dp(44)))
         })
-        content.addView(text("문제 출제\n워크스페이스", 34f).apply { setLineSpacing(0f, 0.94f) })
-        content.addView(text("자료를 준비하고, 문항을 만들고, 교사가 검수합니다.", 16f, Color.rgb(191, 200, 215)).apply { setPadding(0, dp(10), 0, dp(18)) })
+        content.addView(text("자료를 준비하고, 문항을 만들고, 교사가 검수합니다.", 15f, Color.rgb(174, 187, 208)).apply {
+            setPadding(0, dp(4), 0, dp(22))
+        })
 
-        content.addView(text("교사 작업", 22f).apply { setPadding(0, dp(4), 0, dp(8)) })
+        content.addView(text("오늘의 작업", 21f).apply { setPadding(0, dp(2), 0, dp(6)) })
         workspaceSummary = text("로컬 자료와 문항을 확인하고 있습니다.", 15f, Color.rgb(191, 200, 215))
         content.addView(workspaceSummary)
         val workItems = listOf(
@@ -228,6 +230,10 @@ class MainActivity : AppCompatActivity() {
         runButton = Button(this).apply { visibility = View.GONE }
         result = text("", 14f, Color.rgb(191, 200, 215)).apply { visibility = View.GONE }
         content.addView(result)
+        content.addView(text("© 2026 EunmaStudio. All rights reserved.", 11f, Color.rgb(111, 124, 145)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(0, dp(28), 0, dp(6))
+        })
         refreshWorkspaceSummary()
         return ScrollView(this).apply { addView(content) }
     }
@@ -239,7 +245,7 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(18), dp(16), dp(18), dp(16))
-            background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
+            background = roundedSurface(Color.rgb(28, 34, 45), dp(22))
             setOnClickListener { item.action() }
             minimumHeight = dp(100)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
@@ -287,7 +293,7 @@ class MainActivity : AppCompatActivity() {
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(14), dp(14), dp(14), dp(12))
-            background = roundedSurface(Color.rgb(29, 33, 42), dp(22))
+            background = roundedSurface(Color.rgb(28, 34, 45), dp(22))
             setOnClickListener { item.action() }
             addView(ImageView(this@MainActivity).apply {
                 scaleType = ImageView.ScaleType.CENTER
@@ -468,14 +474,19 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(42, 20, 42, 20)
         }
-        container.addView(Button(this).apply {
-            text = "자료 추가"; isAllCaps = false
-            setOnClickListener { showSourceKindChooser() }
-        })
-        container.addView(Button(this).apply {
-            text = "공식 자료 찾아보기"; isAllCaps = false
-            setOnClickListener { showOfficialSourcesDialog() }
-        })
+        LocalSourceKind.entries.forEach { kind ->
+            container.addView(Button(this).apply {
+                text = "${kind.label} 추가"
+                setOnClickListener { showAddSourceDialog(kind, null) }
+            })
+            container.addView(Button(this).apply {
+                text = "파일에서 ${kind.label} 추가"
+                setOnClickListener {
+                    selectedSourceKind = kind
+                    chooseSourceFile.launch(arrayOf("application/pdf", "text/plain", "image/*"))
+                }
+            })
+        }
         val existing = store.sources()
         if (existing.isEmpty()) {
             container.addView(TextView(this).apply { text = "아직 등록한 자료가 없습니다. 교육과정·참고 자료·기출 유형을 먼저 정리해 주세요." })
@@ -496,79 +507,7 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-    /** 자료 종류를 고른 뒤 직접 작성·파일 불러오기를 선택해 중복된 버튼을 하나로 모은다. */
-    private fun showSourceKindChooser() {
-        val labels = LocalSourceKind.entries.map { it.label }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("등록할 자료 종류")
-            .setItems(labels) { _, index -> showSourceInputModeDialog(LocalSourceKind.entries[index]) }
-            .setNegativeButton("취소", null)
-            .show()
-    }
-
-    private fun showSourceInputModeDialog(kind: LocalSourceKind) {
-        AlertDialog.Builder(this)
-            .setTitle("${kind.label} 추가")
-            .setItems(arrayOf("직접 작성", "파일 불러오기")) { _, index ->
-                if (index == 0) {
-                    showAddSourceDialog(kind, null)
-                } else {
-                    selectedSourceKind = kind
-                    chooseSourceFile.launch(arrayOf("application/pdf", "text/plain", "image/*"))
-                }
-            }
-            .setNegativeButton("취소", null)
-            .show()
-    }
-
-    private fun showOfficialSourcesDialog() {
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(42, 20, 42, 20)
-        }
-        OfficialSourceCatalog.entries.forEach { official ->
-            container.addView(Button(this).apply {
-                text = "${official.title}\n${official.provider} · ${official.scope}"
-                isAllCaps = false
-                gravity = Gravity.START
-                setOnClickListener { showOfficialSourceDetailDialog(official) }
-            })
-        }
-        AlertDialog.Builder(this)
-            .setTitle("공식 자료 · 원문 링크")
-            .setMessage("공식 원문은 제공기관 웹페이지에서 확인합니다. 앱은 원문을 무단 복제하지 않습니다.")
-            .setView(ScrollView(this).apply { addView(container) })
-            .setNegativeButton("닫기", null)
-            .show()
-    }
-
-    private fun showOfficialSourceDetailDialog(official: OfficialSourceLink) {
-        AlertDialog.Builder(this)
-            .setTitle(official.title)
-            .setMessage("제공처: ${official.provider}\n사용 범위: ${official.scope}\n\n원문은 외부 브라우저에서 열립니다. 링크만 참고 자료로 등록할 수도 있습니다.")
-            .setNegativeButton("닫기", null)
-            .setNeutralButton("참고 자료로 등록") { _, _ ->
-                showAddSourceDialog(
-                    kind = LocalSourceKind.OFFICIAL,
-                    sourceUri = official.url,
-                    extraction = SourceExtraction(
-                        suggestedTitle = official.title,
-                        suggestedExcerpt = "${official.provider}의 공식 원문 링크입니다. 문항 생성 전 원문에서 해당 과목·단원·성취기준을 교사가 직접 확인합니다.",
-                        extractionNotice = "링크 전용 공식 자료 · 원문은 제공기관에서 확인",
-                    ),
-                    sourceDescriptor = "공식 원문 링크 · ${official.provider}",
-                )
-            }
-            .setPositiveButton("공식 원문 열기") { _, _ -> openExternalUrl(official.url) }
-            .show()
-    }
-
-    private fun showAddSourceDialog(
-        kind: LocalSourceKind,
-        sourceUri: String?,
-        extraction: SourceExtraction? = null,
-        sourceDescriptor: String? = null,
-    ) {
+    private fun showAddSourceDialog(kind: LocalSourceKind, sourceUri: String?, extraction: SourceExtraction? = null) {
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(42, 20, 42, 8)
@@ -586,9 +525,7 @@ class MainActivity : AppCompatActivity() {
         form.addView(title)
         form.addView(excerpt)
         if (sourceUri != null) {
-            form.addView(TextView(this).apply {
-                text = "${sourceDescriptor ?: "선택한 파일: ${sourceUri.substringAfterLast('/')}"}\n${extraction?.extractionNotice ?: "원본을 직접 대조해 핵심 내용을 입력해 주세요."}"
-            })
+            form.addView(TextView(this).apply { text = "선택한 파일: ${sourceUri.substringAfterLast('/')}\n${extraction?.extractionNotice ?: "원본을 직접 대조해 핵심 내용을 입력해 주세요."}" })
         }
         extraction?.imageCachePath?.let { imagePath ->
             form.addView(Button(this).apply {
@@ -644,7 +581,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSourceDetailDialog(source: LocalSource) {
-        val builder = AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle(source.title)
             .setMessage("분류: ${source.kind.label}\n근거 위치: ${source.pageReferences ?: "교사 직접 확인"}\n\n${source.excerpt}\n\n${source.extractionNotice ?: ""}\n\n원본 위치: ${source.sourceUri ?: "직접 입력"}")
             .setNegativeButton("닫기", null)
@@ -653,15 +590,7 @@ class MainActivity : AppCompatActivity() {
                 refreshWorkspaceSummary()
                 status.text = "자료를 이 기기에서 삭제했습니다."
             }
-        if (source.kind == LocalSourceKind.OFFICIAL && source.sourceUri?.startsWith("https://") == true) {
-            builder.setNeutralButton("공식 원문 열기") { _, _ -> openExternalUrl(source.sourceUri) }
-        }
-        builder.show()
-    }
-
-    private fun openExternalUrl(url: String) {
-        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-            .onFailure { status.text = "공식 원문 링크를 열지 못했습니다. 브라우저 설정을 확인해 주세요." }
+            .show()
     }
 
     private fun showGenerationDialog() {

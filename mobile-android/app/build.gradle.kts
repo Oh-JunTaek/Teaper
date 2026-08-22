@@ -13,8 +13,8 @@ android {
         applicationId = "com.eunmastudio.teacherworkspace"
         minSdk = 29
         targetSdk = 36
-        versionCode = 14
-        versionName = "0.1.0-alpha.14"
+        versionCode = 15
+        versionName = "0.1.0-alpha.15"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
