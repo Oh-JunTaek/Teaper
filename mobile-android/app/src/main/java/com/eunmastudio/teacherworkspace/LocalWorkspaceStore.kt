@@ -1,6 +1,7 @@
 package com.eunmastudio.teacherworkspace
 
 import android.content.Context
+import com.eunmastudio.teacherworkspace.ai.ChatTurnPolicy
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -130,7 +131,7 @@ class LocalWorkspaceStore(context: Context) {
 
     fun createChatThread(title: String = "새 온디바이스 대화"): LocalChatThread {
         val thread = LocalChatThread(title = title)
-        writeChatThreads(chatThreads() + thread)
+        check(writeChatThreads(chatThreads() + thread)) { "새 대화를 이 기기에 저장하지 못했습니다." }
         return thread
     }
 
@@ -146,8 +147,7 @@ class LocalWorkspaceStore(context: Context) {
                 updatedAt = message.createdAt,
             ).also { updated = it }
         }
-        writeChatThreads(next)
-        return updated
+        return updated?.takeIf { writeChatThreads(next) }
     }
 
     fun deleteChatThread(threadId: String) {
@@ -198,7 +198,7 @@ class LocalWorkspaceStore(context: Context) {
         preferences.edit().putString("questions", array.toString()).apply()
     }
 
-    private fun writeChatThreads(items: List<LocalChatThread>) {
+    private fun writeChatThreads(items: List<LocalChatThread>): Boolean {
         val array = JSONArray()
         items.forEach { thread ->
             array.put(JSONObject().apply {
@@ -218,7 +218,7 @@ class LocalWorkspaceStore(context: Context) {
                 put("updatedAt", thread.updatedAt)
             })
         }
-        preferences.edit().putString("chatThreads", array.toString()).apply()
+        return preferences.edit().putString("chatThreads", array.toString()).commit()
     }
 
     private fun readArray(key: String): List<JSONObject> = runCatching {

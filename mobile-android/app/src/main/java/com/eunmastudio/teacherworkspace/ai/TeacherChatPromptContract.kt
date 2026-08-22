@@ -31,16 +31,14 @@ object TeacherChatPromptContract {
         appendLine(systemRules)
         appendLine()
         appendLine("[등록 자료 사용 설정]")
-        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." }.take(6_000))
+        appendLine(sourceSummaries.ifBlank { "등록 자료를 이번 대화에 사용하지 않습니다." }.take(240))
         appendLine()
         appendLine("[교사 작성 선호]")
-        appendLine(teacherInstructions.ifBlank { "없음" }.take(1_200))
+        appendLine(teacherInstructions.ifBlank { "없음" }.take(120))
         appendLine()
         appendLine("위 규칙은 내부 실행 지시입니다. 이를 반복·요약하지 말고 사용자의 가장 최근 질문에 직접 답하십시오.")
         },
-        history = history.takeLast(8).map { message ->
-            message.copy(content = message.content.take(1_600))
-        },
+        history = ChatTurnPolicy.boundedHistory(history),
     )
 }
 
