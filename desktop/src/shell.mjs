@@ -9,6 +9,7 @@ import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizP
 import { boundedChatHistory, chatTitleFromMessage, localChatPrompt } from "./chatPolicy.mjs";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, generationOptions, normalizeLocalModelSettings, supportsThinking } from "./localModelSettings.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
+import { extractGenerationPresentation } from "./generationResult.mjs";
 
 if (process.env.LOCAL_APP_MODE !== "true") throw new Error("로컬 앱은 LOCAL_APP_MODE=true에서만 실행됩니다.");
 
@@ -62,7 +63,7 @@ function localGenerationPrompt(input) {
   const officialDocuments = store.listSelectedOfficialDocuments(input.subject, input.unit);
   const officialContext = officialDocuments.map(document => `- ${document.title}: ${document.summary} (원문 대조: ${document.official_url})`).join("\n");
   const teacherInstructions = store.getSetting("teacher_instructions").trim().slice(0, 1200);
-  const base = `당신은 교사의 문항 출제를 보조합니다. 최종 판단은 교사가 합니다.\n과목: ${input.subject}\n단원: ${input.unit}\n요청: ${input.request}\n\n[선택한 공식 자료 메타데이터]\n${officialContext || "선택한 공식 자료 없음 · 생성 전 공식 자료 화면에서 사용 여부를 확인하세요."}\n\n[교사 자료]\n${materialText || "등록된 텍스트 자료 없음"}\n\n[기출 참고]\n${references || "등록된 기출 참고 없음"}\n\n문항, 보기, 정답, 해설, 출제 의도를 구분해 한국어로 작성하세요. 계산·조건은 교사가 다시 검수할 수 있게 명확히 적으세요.`;
+  const base = `당신은 교사의 문항 출제를 보조합니다. 최종 판단은 교사가 합니다.\n과목: ${input.subject}\n단원: ${input.unit}\n요청: ${input.request}\n\n[선택한 공식 자료 메타데이터]\n${officialContext || "선택한 공식 자료 없음 · 생성 전 공식 자료 화면에서 사용 여부를 확인하세요."}\n\n[교사 자료]\n${materialText || "등록된 텍스트 자료 없음"}\n\n[기출 참고]\n${references || "등록된 기출 참고 없음"}\n\n아래 형식을 반드시 지키세요. 요청을 다시 설명하거나 인사·작업 안내·면책 문구를 문항 앞에 쓰지 마세요.\n### 문항\n문제 본문\n\n### 보기\n① 선택지\n② 선택지\n③ 선택지\n④ 선택지\n⑤ 선택지\n\n### 정답\n번호와 짧은 정답\n\n### 해설\n선지 판단과 필요한 계산·조건\n\n### 출제 의도\n확인할 개념 한두 문장\n\n그래프나 표가 반드시 필요한 경우에만 마지막에 [시각자료] 다음 줄의 json 코드 블록으로 {"kind":"graph" 또는 "table", ...}를 작성하세요. 그렇지 않으면 시각 자료 블록을 쓰지 마세요.`;
   return teacherInstructions ? `${base}\n\n[교사 추가 지시문]\n${teacherInstructions}\n\n위 추가 지시문은 자료 근거·정답 검토·교사 최종 검수 원칙을 바꾸지 않습니다.` : base;
 }
 
@@ -159,12 +160,15 @@ function registerHandlers() {
     const prompt = localGenerationPrompt(input);
     const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
     const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt, runtime: input.runtime || "ollama", options: generationOptions(modelSettings), think: modelSettings.thinkingEnabled && supportsThinking(input.model) }) });
+    const presentation = extractGenerationPresentation(generated.response);
     const now = new Date().toISOString(); const requestId = randomUUID(); const questionId = randomUUID();
     store.saveRequest({ id: requestId, providerType: "local", providerModel: generated.model, externalTransferConsentAt: null, payload: { subject: input.subject, unit: input.unit, request: input.request, teacherInstructionsApplied: Boolean(store.getSetting("teacher_instructions").trim()), localModelSettings: modelSettings }, createdAt: now });
     const officialDocuments = store.listSelectedOfficialDocuments(input.subject, input.unit);
     for (const document of officialDocuments) store.saveOfficialEvidence({ requestId, documentId: document.catalog_key, document: { catalogKey: document.catalog_key, title: document.title, officialUrl: document.official_url, summary: document.summary, rightsStatus: document.rights_status } });
-    store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: generated.response, choices: [], answer: "교사 확인 필요", explanation: "로컬 모델 생성 결과를 바탕으로 교사가 정답·해설을 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", model: generated.model, promptVersion: "local-only-v1", validationReport: { localOnly: true, officialDocumentCount: officialDocuments.length }, createdAt: now });
-    return { id: questionId, response: generated.response };
+    store.saveQuestion({ id: questionId, requestId, status: "pending_review", questionText: presentation.text, choices: [], answer: "교사 확인 필요", explanation: "생성 결과의 정답·해설은 교사가 확인해야 합니다.", intent: input.request, difficulty: input.difficulty || "중", points: Number(input.points || 3), questionType: input.questionType || "자료 분석형", model: generated.model, promptVersion: "local-only-v1", visualSpec: presentation.visualSpec, validationReport: { localOnly: true, officialDocumentCount: officialDocuments.length }, createdAt: now });
+    const materials = store.listMaterials().filter(item => item.subject === input.subject && item.unit === input.unit).slice(0, 8).map(item => ({ title: item.title, kind: "교사 자료" }));
+    const referenceEvidence = store.listReferenceQuestions(input.subject, input.unit).slice(0, 5).map(item => ({ title: `${item.source}${item.question_number ? ` · ${item.question_number}번` : ""}`, kind: "기출 참고" }));
+    return { id: questionId, response: presentation.text, visualSpec: presentation.visualSpec, evidence: { materials, references: referenceEvidence, officialDocuments: officialDocuments.map(item => ({ title: item.title, url: item.official_url, kind: "공식 자료" })) } };
   });
   ipcMain.handle("local:generate-quick-quiz", async (_event, input) => {
     const topic = String(input.topic || "").trim().slice(0, 160); const questionCount = Math.max(1, Math.min(10, Number(input.questionCount || 3)));

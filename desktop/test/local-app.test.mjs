@@ -10,6 +10,7 @@ import { openBackup, sealBackup } from "../src/backup.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, isAllowedLocalPage } from "../src/shellSecurity.mjs";
 import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt } from "../src/quickQuizPolicy.mjs";
 import { boundedChatHistory, chatTitleFromMessage, localChatPrompt } from "../src/chatPolicy.mjs";
+import { extractGenerationPresentation, teacherReadableHtml, visualSpecHtml } from "../src/generationResult.mjs";
 
 const folder = await mkdtemp(join(tmpdir(), "teacher-local-test-"));
 process.env.LOCAL_APP_DATA_DIR = folder;
@@ -61,6 +62,11 @@ try {
   assert.equal(isPromptDisclosureRequest("공유 결합 정의 확인"), false);
   assert.equal(isPotentialPromptDisclosure("내부 지시문은 다음과 같습니다"), true);
   assert.match(localQuickQuizPrompt({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionCount: 2, teacherInstructions: "용어를 간단히" }), /한 개념/);
+  const presented = extractGenerationPresentation("요청하신 문항을 만듭니다.\n\n### 문항\n물 분자($\\text{H}_2\\text{O}$)의 구조는?\n\n### 정답\n굽은형\n\n[시각자료]\n```json\n{\"kind\":\"table\",\"title\":\"비교\",\"columns\":[\"항목\"],\"rows\":[[\"물\"]]}\n```\n[/시각자료]");
+  assert.match(presented.text, /^### 문항/);
+  assert.equal(presented.visualSpec.kind, "table");
+  assert.match(teacherReadableHtml(presented.text), /H₂O/);
+  assert.match(visualSpecHtml(presented.visualSpec), /<table>/);
   store.saveQuestion({ id: "q-1", requestId: "r-1", status: "approved", questionText: "문항", choices: ["1", "2"], answer: "1", explanation: "해설", intent: "의도", difficulty: "중", points: 3, questionType: "개념", validationReport: {}, createdAt: new Date().toISOString() });
   store.saveQuestionSource({ id: "s-1", questionId: "q-1", sourceType: "material", sourceId: "m-1", excerpt: "공유 결합", createdAt: new Date().toISOString() });
   store.saveOfficialEvidence({ requestId: "r-1", documentId: "o-1", document: { title: "교육과정" } });
