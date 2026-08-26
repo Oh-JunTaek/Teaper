@@ -60,6 +60,19 @@ data class LocalNote(
     val updatedAt: Long = createdAt,
 )
 
+/** 시험일·마감·회의·검수 계획은 문항 원문과 분리해 Android 기기 안에서만 관리한다. */
+data class LocalScheduleItem(
+    val id: String = UUID.randomUUID().toString(),
+    val title: String,
+    val scheduleDate: String,
+    val scheduleTime: String = "",
+    val eventType: String = "시험일",
+    val note: String = "",
+    val status: String = "예정",
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = createdAt,
+)
+
 /** 쪽지시험은 일반 문항과 분리해 단일 개념·간결한 형식의 생성 결과와 검수 상태를 보관한다. */
 data class LocalQuickQuiz(
     val id: String = UUID.randomUUID().toString(),
@@ -148,6 +161,16 @@ class LocalWorkspaceStore(context: Context) {
         }.getOrNull()
     }.sortedWith(compareByDescending<LocalNote> { it.isPinned }.thenByDescending { it.updatedAt })
 
+    fun schedules(): List<LocalScheduleItem> = readArray("schedules").mapNotNull { item ->
+        runCatching {
+            LocalScheduleItem(
+                id = item.getString("id"), title = item.getString("title"), scheduleDate = item.getString("scheduleDate"),
+                scheduleTime = item.optString("scheduleTime"), eventType = item.optString("eventType", "시험일"), note = item.optString("note"),
+                status = if (item.optString("status") == "완료") "완료" else "예정", createdAt = item.getLong("createdAt"), updatedAt = item.getLong("updatedAt"),
+            )
+        }.getOrNull()
+    }.sortedWith(compareBy<LocalScheduleItem> { it.scheduleDate }.thenBy { it.scheduleTime }.thenByDescending { it.updatedAt })
+
     fun quickQuizzes(): List<LocalQuickQuiz> = readArray("quickQuizzes").mapNotNull { item ->
         runCatching {
             LocalQuickQuiz(
@@ -210,6 +233,14 @@ class LocalWorkspaceStore(context: Context) {
 
     fun deleteNote(noteId: String) {
         check(writeNotes(notes().filterNot { it.id == noteId })) { "메모를 이 기기에서 삭제하지 못했습니다." }
+    }
+
+    fun saveSchedule(item: LocalScheduleItem) {
+        check(writeSchedules(schedules().filterNot { it.id == item.id } + item)) { "일정을 이 기기에 저장하지 못했습니다." }
+    }
+
+    fun deleteSchedule(scheduleId: String) {
+        check(writeSchedules(schedules().filterNot { it.id == scheduleId })) { "일정을 이 기기에서 삭제하지 못했습니다." }
     }
 
     /** 생성 결과를 항상 ‘검수 대기’부터 시작하도록 정리해 승인 전 사용을 막는다. */
@@ -390,6 +421,17 @@ class LocalWorkspaceStore(context: Context) {
             })
         }
         return preferences.edit().putString("notes", array.toString()).commit()
+    }
+
+    private fun writeSchedules(items: List<LocalScheduleItem>): Boolean {
+        val array = JSONArray()
+        items.forEach { item ->
+            array.put(JSONObject().apply {
+                put("id", item.id); put("title", item.title); put("scheduleDate", item.scheduleDate); put("scheduleTime", item.scheduleTime)
+                put("eventType", item.eventType); put("note", item.note); put("status", item.status); put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
+            })
+        }
+        return preferences.edit().putString("schedules", array.toString()).commit()
     }
 
     private fun writeQuickQuizzes(items: List<LocalQuickQuiz>): Boolean {

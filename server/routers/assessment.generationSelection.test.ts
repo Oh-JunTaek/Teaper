@@ -6,8 +6,11 @@ const db = vi.hoisted(() => ({
   createGeneratedQuestion: vi.fn().mockResolvedValue(901),
   createGenerationRequest: vi.fn().mockResolvedValue(501),
   createAiProviderSetting: vi.fn().mockResolvedValue(55),
+  createTeacherSchedule: vi.fn().mockResolvedValue(801),
   createMaterial: vi.fn().mockResolvedValue(701),
   deleteMaterialForUser: vi.fn().mockResolvedValue(true),
+  deleteTeacherSchedule: vi.fn().mockResolvedValue(true),
+  listTeacherSchedules: vi.fn().mockResolvedValue([]),
   reviewQuickQuizSet: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
@@ -24,11 +27,12 @@ const db = vi.hoisted(() => ({
   recordManagedAiMonthlySuccess: vi.fn().mockResolvedValue({ usageMonth: "2026-08", successCount: 1 }),
   recordManagedAiUsage: vi.fn().mockResolvedValue(undefined),
   updateReferenceQuestion: vi.fn().mockResolvedValue(undefined),
+  updateTeacherSchedule: vi.fn().mockResolvedValue(true),
 }));
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), deleteMaterialForUser: db.deleteMaterialForUser, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewQuickQuizSet: db.reviewQuickQuizSet, reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), createTeacherSchedule: db.createTeacherSchedule, deleteMaterialForUser: db.deleteMaterialForUser, deleteTeacherSchedule: db.deleteTeacherSchedule, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listTeacherSchedules: db.listTeacherSchedules, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewQuickQuizSet: db.reviewQuickQuizSet, reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion, updateTeacherSchedule: db.updateTeacherSchedule,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -69,6 +73,16 @@ describe("generation request evidence integration", () => {
     const caller = assessmentRouter.createCaller(context());
     await expect(caller.quickQuiz.review({ id: 501, status: "approved" })).resolves.toEqual({ success: true });
     expect(db.reviewQuickQuizSet).toHaveBeenCalledWith(501, 42, "approved");
+  });
+
+  it("stores schedule dates only in the current teacher's workspace", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.schedules.create({ title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", note: "고사장 확인" })).resolves.toEqual({ id: 801 });
+    expect(db.createTeacherSchedule).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 42, title: "화학 I 중간고사", scheduleDate: "2026-10-15" }));
+    await expect(caller.schedules.update({ id: 801, title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", note: "고사장 확인", status: "completed" })).resolves.toEqual({ success: true });
+    expect(db.updateTeacherSchedule).toHaveBeenCalledWith(expect.objectContaining({ id: 801, ownerId: 42, status: "completed" }));
+    await caller.schedules.remove({ id: 801 });
+    expect(db.deleteTeacherSchedule).toHaveBeenCalledWith(801, 42);
   });
 
   it("blocks managed AI before generation when the plan's monthly successful-work limit is exhausted", async () => {

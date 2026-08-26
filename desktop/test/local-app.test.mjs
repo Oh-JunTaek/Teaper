@@ -44,6 +44,10 @@ try {
   const now = new Date().toISOString();
   store.saveNote({ id: "n-1", title: "평가 준비", content: "정의 확인 문항 검토", isPinned: true, createdAt: now, updatedAt: now });
   assert.equal(store.listNotes()[0].title, "평가 준비");
+  store.saveSchedule({ id: "schedule-1", title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", status: "planned", note: "고사장 확인", createdAt: now, updatedAt: now });
+  assert.equal(store.listSchedules()[0].title, "화학 I 중간고사");
+  store.saveSchedule({ id: "schedule-1", title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", status: "completed", note: "고사장 확인", createdAt: now, updatedAt: now });
+  assert.equal(store.listSchedules()[0].status, "completed");
   store.saveQuickQuizSet({ id: "qq-1", subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionCount: 2, rawOutput: "문항: 공유 결합의 정의는?\n정답: 전자쌍을 공유하는 결합", model: "gemma-local", promptVersion: "quick-quiz-local-v1", status: "pending_review", createdAt: now, updatedAt: now });
   assert.equal(store.listQuickQuizSets().length, 1);
   store.reviewQuickQuiz({ id: "qq-1", status: "approved", updatedAt: now });
@@ -88,6 +92,8 @@ try {
   assert.equal(store.listMaterials().length, 1);
   assert.equal(store.listQuestionSources("q-1").length, 1);
   assert.equal(store.listNotes().length, 1);
+  assert.equal(store.listSchedules().length, 1);
+  assert.equal(store.listSchedules()[0].status, "completed");
   assert.equal(store.listApprovedQuickQuizSets().length, 1);
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");

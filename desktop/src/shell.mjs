@@ -112,6 +112,17 @@ function registerHandlers() {
     return { id };
   });
   ipcMain.handle("local:delete-note", (_event, id) => { store.deleteNote(String(id)); return { success: true }; });
+  // 일정은 local-only 작업 계획으로만 저장하며, 시험일·메모를 외부 서비스에 전달하지 않는다.
+  ipcMain.handle("local:list-schedules", () => store.listSchedules());
+  ipcMain.handle("local:save-schedule", (_event, input = {}) => {
+    const title = String(input.title || "").trim().slice(0, 160); const scheduleDate = String(input.scheduleDate || ""); const scheduleTime = String(input.scheduleTime || "").trim();
+    if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) throw new Error("일정 제목과 날짜를 확인해 주세요.");
+    if (scheduleTime && !/^\d{2}:\d{2}$/.test(scheduleTime)) throw new Error("시간은 24시간제 HH:MM 형식으로 입력해 주세요.");
+    const now = new Date().toISOString(); const id = String(input.id || randomUUID()); const existing = store.listSchedules().find(item => item.id === id);
+    store.saveSchedule({ id, title, scheduleDate, scheduleTime: scheduleTime || null, eventType: ["exam", "deadline", "meeting", "review", "other"].includes(input.eventType) ? input.eventType : "other", status: input.status === "completed" ? "completed" : "planned", note: String(input.note || "").trim().slice(0, 2000) || null, createdAt: existing?.created_at || now, updatedAt: now });
+    return { id };
+  });
+  ipcMain.handle("local:delete-schedule", (_event, id) => { store.deleteSchedule(String(id)); return { success: true }; });
   ipcMain.handle("local:list-chat-threads", () => store.listChatThreads());
   ipcMain.handle("local:list-chat-messages", (_event, threadId) => store.listChatMessages(String(threadId)));
   ipcMain.handle("local:create-chat-thread", (_event, input = {}) => {

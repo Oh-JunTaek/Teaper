@@ -21,6 +21,7 @@ import {
   reviewEvents,
   quickQuizSets,
   teacherNotes,
+  teacherSchedules,
   userAiPreferences,
   users,
 } from "../drizzle/schema";
@@ -98,6 +99,33 @@ export async function updateTeacherNote(input: { id: number; ownerId: number; ti
 export async function deleteTeacherNote(id: number, ownerId: number) {
   const db = await requireDb();
   const result = await db.update(teacherNotes).set({ deletedAt: new Date() }).where(and(eq(teacherNotes.id, id), eq(teacherNotes.ownerId, ownerId), isNull(teacherNotes.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
+
+export type TeacherScheduleType = "exam" | "deadline" | "meeting" | "review" | "other";
+export type TeacherScheduleStatus = "planned" | "completed";
+
+// 일정은 교사 개인의 시험일·업무 계획만 보관하고 문항·자료 원문이나 AI 요청에는 자동으로 사용하지 않습니다.
+export async function listTeacherSchedules(ownerId: number) {
+  const db = await requireDb();
+  return db.select().from(teacherSchedules).where(and(eq(teacherSchedules.ownerId, ownerId), isNull(teacherSchedules.deletedAt))).orderBy(teacherSchedules.scheduleDate, teacherSchedules.scheduleTime, desc(teacherSchedules.updatedAt));
+}
+
+export async function createTeacherSchedule(input: { ownerId: number; title: string; scheduleDate: string; scheduleTime?: string | null; eventType: TeacherScheduleType; note?: string | null }) {
+  const db = await requireDb();
+  const result = await db.insert(teacherSchedules).values({ ...input, scheduleTime: input.scheduleTime || null, note: input.note || null });
+  return Number(result[0].insertId);
+}
+
+export async function updateTeacherSchedule(input: { id: number; ownerId: number; title: string; scheduleDate: string; scheduleTime?: string | null; eventType: TeacherScheduleType; note?: string | null; status: TeacherScheduleStatus }) {
+  const db = await requireDb();
+  const result = await db.update(teacherSchedules).set({ title: input.title, scheduleDate: input.scheduleDate, scheduleTime: input.scheduleTime || null, eventType: input.eventType, note: input.note || null, status: input.status, updatedAt: new Date() }).where(and(eq(teacherSchedules.id, input.id), eq(teacherSchedules.ownerId, input.ownerId), isNull(teacherSchedules.deletedAt)));
+  return Number(result[0].affectedRows) > 0;
+}
+
+export async function deleteTeacherSchedule(id: number, ownerId: number) {
+  const db = await requireDb();
+  const result = await db.update(teacherSchedules).set({ deletedAt: new Date() }).where(and(eq(teacherSchedules.id, id), eq(teacherSchedules.ownerId, ownerId), isNull(teacherSchedules.deletedAt)));
   return Number(result[0].affectedRows) > 0;
 }
 
@@ -476,6 +504,7 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
   const approvedScope = !includeAll && ownerId ? and(eq(generatedQuestions.status, "approved"), eq(generatedQuestions.creatorId, ownerId)) : eq(generatedQuestions.status, "approved");
   const questionScope = !includeAll && ownerId ? eq(generatedQuestions.creatorId, ownerId) : undefined;
   const noteScope = !includeAll && ownerId ? and(eq(teacherNotes.ownerId, ownerId), isNull(teacherNotes.deletedAt)) : isNull(teacherNotes.deletedAt);
+  const scheduleScope = !includeAll && ownerId ? and(eq(teacherSchedules.ownerId, ownerId), isNull(teacherSchedules.deletedAt), eq(teacherSchedules.status, "planned")) : and(isNull(teacherSchedules.deletedAt), eq(teacherSchedules.status, "planned"));
   const quickQuizScope = !includeAll && ownerId ? and(eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt)) : isNull(quickQuizSets.deletedAt);
   const [materialCount] = await db.select({ value: count() }).from(referenceMaterials).where(materialScope);
   const referenceQuery = db.select({ value: count() }).from(referenceQuestions);
@@ -485,9 +514,10 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
   const questionQuery = db.select({ value: count() }).from(generatedQuestions);
   const [questionCount] = questionScope ? await questionQuery.where(questionScope) : await questionQuery;
   const [noteCount] = await db.select({ value: count() }).from(teacherNotes).where(noteScope);
+  const [scheduleCount] = await db.select({ value: count() }).from(teacherSchedules).where(scheduleScope);
   const [quickQuizCount] = await db.select({ value: count() }).from(quickQuizSets).where(quickQuizScope);
   const [officialDocumentCount] = await db.select({ value: count() }).from(officialDocuments).where(eq(officialDocuments.catalogStatus, "published"));
-  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), questionCount: Number(questionCount.value), noteCount: Number(noteCount.value), quickQuizCount: Number(quickQuizCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
+  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), questionCount: Number(questionCount.value), noteCount: Number(noteCount.value), scheduleCount: Number(scheduleCount.value), quickQuizCount: Number(quickQuizCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
 }
 
 export async function listWorkspaceUsers() {

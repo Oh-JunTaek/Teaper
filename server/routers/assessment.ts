@@ -4,9 +4,11 @@ import {
   createAiProviderSetting,
   createQuickQuizSet,
   createTeacherNote,
+  createTeacherSchedule,
   deleteMaterialForUser,
   deleteQuickQuizSet,
   deleteTeacherNote,
+  deleteTeacherSchedule,
   createGeneratedQuestion,
   createGenerationRequest,
   createMaterial,
@@ -28,6 +30,7 @@ import {
   listMaterials,
   listQuickQuizSets,
   listTeacherNotes,
+  listTeacherSchedules,
   listOfficialDocuments,
   listOfficialDocumentsForUser,
   listPrototypeSamplesForUser,
@@ -51,6 +54,7 @@ import {
   updateMaterialExtraction,
   updateAiProviderVerification,
   updateTeacherNote,
+  updateTeacherSchedule,
   updateReferenceQuestion,
 } from "../db";
 import { storageGetSignedUrl, storagePut } from "../storage";
@@ -247,6 +251,25 @@ export const assessmentRouter = router({
     remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
       const deleted = await deleteTeacherNote(input.id, ctx.user.id);
       if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 메모를 찾을 수 없습니다." });
+      return { success: true };
+    }),
+  }),
+
+  schedules: router({
+    // 일정은 교사 개인의 시험일·업무 계획이며, 외부 캘린더 동기화·알림 전송·AI 요청 연결을 하지 않습니다.
+    list: protectedProcedure.query(({ ctx }) => listTeacherSchedules(ctx.user.id)),
+    create: protectedProcedure.input(z.object({ title: z.string().min(1).max(160), scheduleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 YYYY-MM-DD 형식으로 입력해 주세요."), scheduleTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(), eventType: z.enum(["exam", "deadline", "meeting", "review", "other"]), note: z.string().max(2000).optional().nullable() })).mutation(async ({ ctx, input }) => {
+      const id = await createTeacherSchedule({ ownerId: ctx.user.id, ...input, title: input.title.trim(), note: input.note?.trim() || null });
+      return { id };
+    }),
+    update: protectedProcedure.input(z.object({ id: z.number().int().positive(), title: z.string().min(1).max(160), scheduleDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "날짜를 YYYY-MM-DD 형식으로 입력해 주세요."), scheduleTime: z.string().regex(/^\d{2}:\d{2}$/).optional().nullable(), eventType: z.enum(["exam", "deadline", "meeting", "review", "other"]), note: z.string().max(2000).optional().nullable(), status: z.enum(["planned", "completed"]) })).mutation(async ({ ctx, input }) => {
+      const updated = await updateTeacherSchedule({ ...input, ownerId: ctx.user.id, title: input.title.trim(), note: input.note?.trim() || null });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "수정할 일정을 찾을 수 없습니다." });
+      return { success: true };
+    }),
+    remove: protectedProcedure.input(z.object({ id: z.number().int().positive() })).mutation(async ({ ctx, input }) => {
+      const deleted = await deleteTeacherSchedule(input.id, ctx.user.id);
+      if (!deleted) throw new TRPCError({ code: "NOT_FOUND", message: "삭제할 일정을 찾을 수 없습니다." });
       return { success: true };
     }),
   }),

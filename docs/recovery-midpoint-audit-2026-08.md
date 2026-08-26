@@ -12,7 +12,7 @@
 |---|---|---|
 | 작업 기준점 | 웹 프로젝트는 `origin/main`의 `ea88c09`에서 복구됨 | 정상 |
 | GitHub 연결 | 복구 뒤 누락된 `github` 원격을 `Oh-JunTaek/Teaper`로 다시 등록하고 `main`과 차이 `0 / 0`을 확인 | 정상 |
-| 웹 자동 검증 | TypeScript 검사 및 Vitest 77개 통과 | 정상 |
+| 웹 자동 검증 | TypeScript 검사 및 Vitest 78개 통과 | 정상 |
 | Windows 자동 검증 | local-only Node 테스트 5개 및 JavaScript 구문 검사 통과 | 정상 |
 | Android 자동 검증 | 복구된 샌드박스에 Android SDK가 없어 Gradle 단위 테스트를 시작하지 못함 | 환경 보류 |
 
@@ -26,6 +26,7 @@ Android의 검증 보류는 코드 오류 판정이 아니다. Gradle이 요구�
 | 쪽지시험 상태 | 검수 대기·승인·수정 필요·반려 | 코드 상태를 교사용 한글 표기로 표시 | 기존 `검수 전`·`보류`를 읽을 때 `검수 대기`로 정규화하고 승인·수정 필요·반려로 통일 |
 | 교사용 용어 | 이미 `AI 실행 방식`과 최종 검수 안내 사용 | 쪽지시험의 `로컬 모델` 노출을 `AI 도움 기능`으로 변경 | 생성 버튼·준비 안내의 `로컬 모델` 노출을 `AI 도움 기능`으로 변경 |
 | 승인 쪽지시험 전달 | 승인 뒤 학생용 인쇄/PDF 저장 | 승인 뒤 학생용 TXT와 정답·해설 포함 교사용 TXT를 분리 | 승인 뒤 문항·보기만 Android 공유 시트로 전달 |
+| 시험일·일정 | 교사 계정별 월간 달력에서 시험일·마감·회의·검수 계획 CRUD | 이 PC의 SQLite 날짜순 일정 CRUD·암호화 백업 포함 | private SharedPreferences 일정 CRUD·앱 잠금 화면 진입 |
 
 ## 3. 코드 검토 기준
 
@@ -36,6 +37,7 @@ Android의 검증 보류는 코드 오류 판정이 아니다. Gradle이 요구�
 | 웹 | `server/routers/assessment.ts`, `client/src/pages/QuickQuiz.tsx` | 자료 형식 제한, 개인 AI 전송 동의, 메모 자동 미포함, 쪽지시험 세트 검수 |
 | Windows | `desktop/src/shell.mjs`, `desktop/renderer/renderer.mjs` | loopback bridge, IPC 경계, 대화 보안, 생성 근거·검수 저장, 승인 세트 내보내기 |
 | Android | `LocalWorkspaceStore.kt`, `MainActivity.kt`, `QuickQuizActivity.kt` | 앱 전용 저장, 기존 상태 호환, 모델 준비, 생성 완료형 저장, 교사 검수 |
+| 일정 공통 | `Schedule.tsx`, `desktop/src/store.mjs`, `ScheduleActivity.kt` | 제목·날짜·선택 시간·간단한 메모만 저장, 원문·AI 자동 연결·외부 캘린더 동기화 금지 |
 
 ## 4. 여전히 남은 격차와 검증
 
@@ -44,6 +46,7 @@ Android의 검증 보류는 코드 오류 판정이 아니다. Gradle이 요구�
 | P0 | Windows beta.9 실제 PC 실행 | preload IPC, Ollama 연결, 연속 대화, 인쇄, 재시작 후 저장은 실제 Windows에서만 판단 가능 |
 | P0 | S25+ alpha.26 묶음 확인 | E2B/E4B 발열·오프라인·이미지 질문·앱 잠금·DOCX/PDF 공유는 실기기 확인이 필요 |
 | P1 | 쪽지시험 학생용 출력 형식 검증 | 웹은 학생용 인쇄/PDF, Windows는 학생용 TXT, Android는 학생용 텍스트 공유를 제공한다. 실제 기기·인쇄 환경에서 줄바꿈·답안 미포함·공유 앱 동작을 확인해야 함 |
+| P1 | 일정관리 실환경 검증 | 웹은 계정 분리·월간 달력, Windows는 재시작·암호화 백업 복구, Android는 앱 잠금 재진입·날짜 선택·저장을 각각 실제 환경에서 확인해야 함 |
 | P1 | 원본 PDF 대조 경험 통일 | 웹의 자료명·쪽수·원본 열기 수준을 Windows·Android에서 같은 의미로 제공할지 결정 필요 |
 | P2 | Android 암호화 백업·복구 | Windows의 암호화 백업과 달리 Android는 사용자 통제형 백업이 아직 없음 |
 

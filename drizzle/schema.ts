@@ -196,6 +196,25 @@ export const teacherNotes = mysqlTable(
   table => [index("teacher_notes_owner_updated_idx").on(table.ownerId, table.updatedAt)],
 );
 
+// 일정은 교사별 시험일·마감·회의·검수 계획만 저장하며, 문항 원문이나 자료 본문을 자동으로 연결하지 않습니다.
+export const teacherSchedules = mysqlTable(
+  "teacher_schedules",
+  {
+    id: int("id").autoincrement().primaryKey(),
+    ownerId: int("ownerId").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    scheduleDate: varchar("scheduleDate", { length: 10 }).notNull(),
+    scheduleTime: varchar("scheduleTime", { length: 5 }),
+    eventType: mysqlEnum("eventType", ["exam", "deadline", "meeting", "review", "other"]).default("other").notNull(),
+    status: mysqlEnum("status", ["planned", "completed"]).default("planned").notNull(),
+    note: text("note"),
+    createdAt: timestamp("createdAt").defaultNow().notNull(),
+    updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+    deletedAt: timestamp("deletedAt"),
+  },
+  table => [index("teacher_schedules_owner_date_idx").on(table.ownerId, table.scheduleDate, table.status)],
+);
+
 // 쪽지시험은 일반 문항 생성 요청과 구분된 짧은 개념 확인 세트로 보관합니다.
 export const quickQuizSets = mysqlTable(
   "quick_quiz_sets",
