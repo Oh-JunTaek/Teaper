@@ -2,6 +2,7 @@ package com.eunmastudio.teacherworkspace
 
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -125,7 +126,24 @@ class QuickQuizActivity : AppCompatActivity() {
         fun dp(value: Int) = (value * density).toInt()
         list.removeAllViews()
         if (store.quickQuizzes().isEmpty()) list.addView(TextView(this).apply { text = "아직 만든 쪽지시험이 없습니다."; setTextColor(Color.rgb(181, 200, 185)); setPadding(dp(4), dp(12), dp(4), dp(12)) })
-        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = quiz.content; textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = quiz.content; textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+    }
+
+    /** 승인 세트에서 문항·보기만 남겨 학생용 공유 텍스트를 만들고, 형식이 다르면 공유를 중단한다. */
+    private fun studentShareText(quiz: LocalQuickQuiz): String? {
+        val blocks = quiz.content.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
+        val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
+        val questions = blocks.mapNotNull { block -> marker.find(block)?.let { block.substring(0, it.range.first).trim() } }.filter { it.isNotBlank() }
+        if (questions.isEmpty()) return null
+        return questions.mapIndexed { index, question -> "${index + 1}번\n${question.replace(Regex("(?m)^문항\\s*[:：]\\s*"), "")}" }.joinToString("\n\n")
+    }
+
+    /** 교사가 승인한 뒤에만 정답·해설을 뺀 텍스트를 Android 공유 시트로 전달한다. */
+    private fun shareStudentQuiz(quiz: LocalQuickQuiz) {
+        if (quiz.reviewStatus != "승인") { status.text = "교사가 승인한 쪽지시험만 학생용으로 공유할 수 있습니다."; return }
+        val studentText = studentShareText(quiz)
+        if (studentText == null) { status.text = "학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용을 확인해 주세요."; return }
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
     }
 
     /** 정답·해설을 읽은 교사가 승인·수정 필요·반려 중 하나를 선택해 세트 상태를 기록한다. */

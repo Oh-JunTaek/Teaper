@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { createLocalBridge } from "./bridge.mjs";
 import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
-import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION } from "./quickQuizPolicy.mjs";
+import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION, studentQuickQuizText } from "./quickQuizPolicy.mjs";
 import { boundedChatHistory, chatTitleFromMessage, localChatPrompt } from "./chatPolicy.mjs";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, generationOptions, normalizeLocalModelSettings, supportsThinking } from "./localModelSettings.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
@@ -208,6 +208,12 @@ function registerHandlers() {
     const quizzes = store.listApprovedQuickQuizSets(); if (!quizzes.length) throw new Error("내보낼 승인 쪽지시험이 없습니다.");
     const content = quizzes.map((quiz, index) => `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n개념: ${quiz.topic}\n난이도: ${quiz.difficulty}\n생성 모델: ${quiz.model}\n\n${quiz.raw_output}`).join("\n\n---\n\n");
     const result = await saveExportFile("승인-쪽지시험.txt", `쪽지시험\n교사 최종 검수 후 사용하세요.\n\n${content}`); recordExportAudit("quick_quiz_text", quizzes.length, result.saved ? "saved" : "cancelled"); return result;
+  });
+  // 학생용 파일에는 정답·해설·개념 메모를 넣지 않고, 승인 세트의 문항·보기만 전달한다.
+  ipcMain.handle("local:export-quick-quiz-student", async () => {
+    const quizzes = store.listApprovedQuickQuizSets(); if (!quizzes.length) throw new Error("내보낼 승인 쪽지시험이 없습니다.");
+    const content = quizzes.map((quiz, index) => `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n${studentQuickQuizText(quiz.raw_output)}`).join("\n\n---\n\n");
+    const result = await saveExportFile("승인-쪽지시험-학생용.txt", `쪽지시험\n이름: ____________________    날짜: __________\n\n${content}`); recordExportAudit("quick_quiz_student_text", quizzes.length, result.saved ? "saved" : "cancelled"); return result;
   });
   ipcMain.handle("local:list-questions", (_event, status) => store.listQuestions(status));
   ipcMain.handle("local:review-question", (_event, input) => { store.reviewQuestion({ id: randomUUID(), questionId: String(input.questionId), status: input.status, reason: String(input.reason || ""), createdAt: new Date().toISOString() }); return { success: true }; });
