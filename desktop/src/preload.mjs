@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld("teacherLocal", {
   saveNote: input => ipcRenderer.invoke("local:save-note", input),
   deleteNote: id => ipcRenderer.invoke("local:delete-note", id),
   listSchedules: () => ipcRenderer.invoke("local:list-schedules"),
+  getScheduleNotifications: () => ipcRenderer.invoke("local:get-schedule-notifications"),
+  setScheduleNotifications: enabled => ipcRenderer.invoke("local:set-schedule-notifications", enabled),
   saveSchedule: input => ipcRenderer.invoke("local:save-schedule", input),
   deleteSchedule: id => ipcRenderer.invoke("local:delete-schedule", id),
   listChatThreads: () => ipcRenderer.invoke("local:list-chat-threads"),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, session } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, Notification, shell, session } from "electron";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
@@ -17,6 +17,25 @@ if (process.env.LOCAL_APP_MODE !== "true") throw new Error("로컬 앱은 LOCAL_
 let bridge;
 let store;
 let mainWindow;
+const scheduleReminderTimers = new Map();
+
+/** Windows 알림은 앱을 실행 중이고 교사가 허용한 일정 제목만 표시한다. 메모·자료·문항 원문은 알림에 넣지 않는다. */
+function syncScheduleReminders() {
+  for (const timer of scheduleReminderTimers.values()) clearTimeout(timer);
+  scheduleReminderTimers.clear();
+  if (store?.getSetting("schedule_notifications_enabled") !== "true") return;
+  const now = Date.now();
+  for (const item of store.listSchedules()) {
+    if (item.status !== "planned" || !item.schedule_time || !/^\d{2}:\d{2}$/.test(item.schedule_time)) continue;
+    const target = new Date(`${item.schedule_date}T${item.schedule_time}:00`).getTime();
+    const delay = target - now;
+    if (!Number.isFinite(target) || delay <= 0 || delay > 2_147_000_000) continue;
+    scheduleReminderTimers.set(item.id, setTimeout(() => {
+      if (Notification.isSupported()) new Notification({ title: "교사도우미 일정", body: item.title.slice(0, 160), silent: false }).show();
+      scheduleReminderTimers.delete(item.id);
+    }, delay));
+  }
+}
 
 /** 렌더러가 외부 주소가 아니라 인증된 loopback bridge에만 요청하도록 공통 호출을 감싼다. */
 async function bridgeRequest(path, options = {}) {
@@ -114,15 +133,18 @@ function registerHandlers() {
   ipcMain.handle("local:delete-note", (_event, id) => { store.deleteNote(String(id)); return { success: true }; });
   // 일정은 local-only 작업 계획으로만 저장하며, 시험일·메모를 외부 서비스에 전달하지 않는다.
   ipcMain.handle("local:list-schedules", () => store.listSchedules());
+  ipcMain.handle("local:get-schedule-notifications", () => ({ enabled: store.getSetting("schedule_notifications_enabled") === "true", appMustRemainOpen: true }));
+  ipcMain.handle("local:set-schedule-notifications", (_event, enabled) => { store.setSetting("schedule_notifications_enabled", enabled === true ? "true" : "false"); syncScheduleReminders(); return { enabled: enabled === true }; });
   ipcMain.handle("local:save-schedule", (_event, input = {}) => {
     const title = String(input.title || "").trim().slice(0, 160); const scheduleDate = String(input.scheduleDate || ""); const scheduleTime = String(input.scheduleTime || "").trim();
     if (!title || !/^\d{4}-\d{2}-\d{2}$/.test(scheduleDate)) throw new Error("일정 제목과 날짜를 확인해 주세요.");
     if (scheduleTime && !/^\d{2}:\d{2}$/.test(scheduleTime)) throw new Error("시간은 24시간제 HH:MM 형식으로 입력해 주세요.");
     const now = new Date().toISOString(); const id = String(input.id || randomUUID()); const existing = store.listSchedules().find(item => item.id === id);
     store.saveSchedule({ id, title, scheduleDate, scheduleTime: scheduleTime || null, eventType: ["exam", "deadline", "meeting", "review", "other"].includes(input.eventType) ? input.eventType : "other", status: input.status === "completed" ? "completed" : "planned", note: String(input.note || "").trim().slice(0, 2000) || null, createdAt: existing?.created_at || now, updatedAt: now });
+    syncScheduleReminders();
     return { id };
   });
-  ipcMain.handle("local:delete-schedule", (_event, id) => { store.deleteSchedule(String(id)); return { success: true }; });
+  ipcMain.handle("local:delete-schedule", (_event, id) => { store.deleteSchedule(String(id)); syncScheduleReminders(); return { success: true }; });
   ipcMain.handle("local:list-chat-threads", () => store.listChatThreads());
   ipcMain.handle("local:list-chat-messages", (_event, threadId) => store.listChatMessages(String(threadId)));
   ipcMain.handle("local:create-chat-thread", (_event, input = {}) => {
@@ -181,6 +203,7 @@ function registerHandlers() {
     if (chosen.canceled || !chosen.filePaths[0]) return { restored: false };
     const snapshot = openBackup(await readFile(chosen.filePaths[0], "utf8"), String(input.password || ""));
     store.restoreBackupSnapshot(snapshot);
+    syncScheduleReminders();
     recordExportAudit("encrypted_restore", 0, "restored");
     return { restored: true };
   });
@@ -244,6 +267,7 @@ app.whenReady().then(async () => {
   session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   bridge = await createLocalBridge();
   store = await openLocalStore();
+  syncScheduleReminders();
   registerHandlers();
   mainWindow = new BrowserWindow({ width: 1280, height: 860, minWidth: 980, minHeight: 720, show: false, title: "문제 출제 워크스페이스 · 로컬", backgroundColor: "#f7faf8", webPreferences: { ...LOCAL_WINDOW_WEB_PREFERENCES, preload: join(import.meta.dirname, "preload.cjs") } });
   installWindowBoundary(mainWindow);
@@ -252,4 +276,4 @@ app.whenReady().then(async () => {
 });
 
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-app.on("before-quit", () => { try { store?.close(); bridge?.server.close(); } catch { /* graceful exit */ } });
+app.on("before-quit", () => { try { for (const timer of scheduleReminderTimers.values()) clearTimeout(timer); store?.close(); bridge?.server.close(); } catch { /* graceful exit */ } });

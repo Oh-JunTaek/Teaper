@@ -114,6 +114,10 @@ data class LocalChatThread(
 class LocalWorkspaceStore(context: Context) {
     private val preferences = context.getSharedPreferences("teacher_workspace_local_v1", Context.MODE_PRIVATE)
 
+    /** 일정 알림은 교사가 허용한 경우에만 이 기기의 운영체제에 표시한다. */
+    fun scheduleNotificationsEnabled(): Boolean = preferences.getBoolean("schedule_notifications_enabled", false)
+    fun setScheduleNotificationsEnabled(enabled: Boolean) { preferences.edit().putBoolean("schedule_notifications_enabled", enabled).apply() }
+
     /** 이전 alpha 버전의 ‘검수 전·보류’ 표기를 세 플랫폼 공통 검수 상태로 읽어 들인다. */
     private fun normalizedQuickQuizReviewStatus(value: String): String = when (value.trim()) {
         "승인", "수정 필요", "반려", "검수 대기" -> value.trim()
