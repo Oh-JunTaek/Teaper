@@ -13,10 +13,12 @@ import { extractGenerationPresentation } from "./generationResult.mjs";
 
 if (process.env.LOCAL_APP_MODE !== "true") throw new Error("로컬 앱은 LOCAL_APP_MODE=true에서만 실행됩니다.");
 
+// Electron 주 창, local-only SQLite 저장소, loopback AI bridge를 한 프로세스에서 관리한다.
 let bridge;
 let store;
 let mainWindow;
 
+/** 렌더러가 외부 주소가 아니라 인증된 loopback bridge에만 요청하도록 공통 호출을 감싼다. */
 async function bridgeRequest(path, options = {}) {
   const response = await fetch(`http://127.0.0.1:${bridge.port}${path}`, { ...options, headers: { authorization: `Bearer ${bridge.token}`, "content-type": "application/json", ...(options.headers || {}) } });
   const payload = await response.json();
@@ -26,6 +28,7 @@ async function bridgeRequest(path, options = {}) {
 
 function safeFilename(name) { return name.replace(/[\\/:*?"<>|]/g, "-").slice(0, 80) || "문항"; }
 
+/** 팝업·이동 경로를 제한해 로컬 앱 화면이 신뢰하지 않은 외부 페이지로 바뀌지 않게 한다. */
 function installWindowBoundary(window) {
   window.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("https://")) shell.openExternal(url);
@@ -72,6 +75,7 @@ function cleanSuggestedChatTitle(value, fallback) {
   return (firstLine || fallback).slice(0, 48);
 }
 
+/** 렌더러 UI가 호출하는 IPC 기능을 자료·문항·메모·대화·내보내기 단위로 등록한다. */
 function registerHandlers() {
   ipcMain.handle("local:status", async () => bridgeRequest("/setup-plan"));
   ipcMain.handle("local:pull-model", async (_event, model) => bridgeRequest("/models/pull", { method: "POST", body: JSON.stringify({ model, confirmDownload: true }) }));
@@ -129,6 +133,7 @@ function registerHandlers() {
     store.setSetting("chat_last_model", `${runtime}:${model}`);
     return result;
   });
+  // 최근 대화만 제한해 전달하고, 내부 지시문 공개 가능성이 있는 입력·응답은 저장 전에 차단한다.
   ipcMain.handle("local:send-chat", async (_event, input = {}) => {
     const message = String(input.message || "").trim().slice(0, 6000); const model = String(input.model || "").trim();
     if (!message) throw new Error("질문을 입력해 주세요."); if (!model) throw new Error("실행할 로컬 모델을 선택해 주세요.");
@@ -168,6 +173,7 @@ function registerHandlers() {
     recordExportAudit("encrypted_restore", 0, "restored");
     return { restored: true };
   });
+  // 선택 자료·공식 자료·교사 추가 지시문을 합쳐 local-only 문항을 만들고 근거 이력을 남긴다.
   ipcMain.handle("local:generate-question", async (_event, input) => {
     const prompt = localGenerationPrompt(input);
     const modelSettings = (() => { try { return normalizeLocalModelSettings(JSON.parse(store.getSetting("local_model_settings", "{}"))); } catch { return DEFAULT_LOCAL_MODEL_SETTINGS; } })();
@@ -182,6 +188,7 @@ function registerHandlers() {
     const referenceEvidence = store.listReferenceQuestions(input.subject, input.unit).slice(0, 5).map(item => ({ title: `${item.source}${item.question_number ? ` · ${item.question_number}번` : ""}`, kind: "기출 참고" }));
     return { id: questionId, response: presentation.text, visualSpec: presentation.visualSpec, evidence: { materials, references: referenceEvidence, officialDocuments: officialDocuments.map(item => ({ title: item.title, url: item.official_url, kind: "공식 자료" })) } };
   });
+  // 간결한 쪽지시험은 한 개념만 확인하고, 검수 대기 상태로 분리 저장한다.
   ipcMain.handle("local:generate-quick-quiz", async (_event, input) => {
     const topic = String(input.topic || "").trim().slice(0, 160); const questionCount = Math.max(1, Math.min(10, Number(input.questionCount || 3)));
     if (!topic) throw new Error("확인할 개념 또는 정의를 입력해 주세요.");
@@ -196,6 +203,7 @@ function registerHandlers() {
   ipcMain.handle("local:list-quick-quizzes", () => store.listQuickQuizSets());
   ipcMain.handle("local:review-quick-quiz", (_event, input) => { const status = ["approved", "revised", "rejected"].includes(input.status) ? input.status : "revised"; store.reviewQuickQuiz({ id: String(input.id), status, updatedAt: new Date().toISOString() }); return { success: true }; });
   ipcMain.handle("local:delete-quick-quiz", (_event, id) => { store.deleteQuickQuizSet(String(id)); return { success: true }; });
+  // 승인한 세트만 내보내며, 파일 첫머리에 교사 최종 검수 안내를 남긴다.
   ipcMain.handle("local:export-quick-quiz", async () => {
     const quizzes = store.listApprovedQuickQuizSets(); if (!quizzes.length) throw new Error("내보낼 승인 쪽지시험이 없습니다.");
     const content = quizzes.map((quiz, index) => `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n개념: ${quiz.topic}\n난이도: ${quiz.difficulty}\n생성 모델: ${quiz.model}\n\n${quiz.raw_output}`).join("\n\n---\n\n");

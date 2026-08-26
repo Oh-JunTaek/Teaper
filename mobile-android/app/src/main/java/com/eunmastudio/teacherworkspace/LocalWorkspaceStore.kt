@@ -71,7 +71,7 @@ data class LocalQuickQuiz(
     val content: String,
     val model: String,
     val promptVersion: String,
-    val reviewStatus: String = "검수 전",
+    val reviewStatus: String = "검수 대기",
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
 )
@@ -100,6 +100,12 @@ data class LocalChatThread(
  */
 class LocalWorkspaceStore(context: Context) {
     private val preferences = context.getSharedPreferences("teacher_workspace_local_v1", Context.MODE_PRIVATE)
+
+    /** 이전 alpha 버전의 ‘검수 전·보류’ 표기를 세 플랫폼 공통 검수 상태로 읽어 들인다. */
+    private fun normalizedQuickQuizReviewStatus(value: String): String = when (value.trim()) {
+        "승인", "수정 필요", "반려", "검수 대기" -> value.trim()
+        else -> "검수 대기"
+    }
 
     fun sources(): List<LocalSource> = readArray("sources").mapNotNull { item ->
         runCatching {
@@ -154,7 +160,7 @@ class LocalWorkspaceStore(context: Context) {
                 content = item.getString("content"),
                 model = item.getString("model"),
                 promptVersion = item.getString("promptVersion"),
-                reviewStatus = item.optString("reviewStatus", "검수 전"),
+                reviewStatus = normalizedQuickQuizReviewStatus(item.optString("reviewStatus", "검수 대기")),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
             )
@@ -206,12 +212,16 @@ class LocalWorkspaceStore(context: Context) {
         check(writeNotes(notes().filterNot { it.id == noteId })) { "메모를 이 기기에서 삭제하지 못했습니다." }
     }
 
+    /** 생성 결과를 항상 ‘검수 대기’부터 시작하도록 정리해 승인 전 사용을 막는다. */
     fun saveQuickQuiz(quiz: LocalQuickQuiz) {
-        check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == quiz.id } + quiz)) { "쪽지시험을 이 기기에 저장하지 못했습니다." }
+        val normalized = quiz.copy(reviewStatus = normalizedQuickQuizReviewStatus(quiz.reviewStatus))
+        check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == normalized.id } + normalized)) { "쪽지시험을 이 기기에 저장하지 못했습니다." }
     }
 
+    /** 승인·수정 필요·반려 외의 상태값은 검수 대기로 되돌려 세트 상태를 안전하게 보관한다. */
     fun updateQuickQuizReviewStatus(quizId: String, status: String) {
-        check(writeQuickQuizzes(quickQuizzes().map { if (it.id == quizId) it.copy(reviewStatus = status, updatedAt = System.currentTimeMillis()) else it })) { "쪽지시험 검수 상태를 저장하지 못했습니다." }
+        val normalized = normalizedQuickQuizReviewStatus(status)
+        check(writeQuickQuizzes(quickQuizzes().map { if (it.id == quizId) it.copy(reviewStatus = normalized, updatedAt = System.currentTimeMillis()) else it })) { "쪽지시험 검수 상태를 저장하지 못했습니다." }
     }
 
     fun deleteQuickQuiz(quizId: String) {

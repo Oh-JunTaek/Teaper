@@ -8,6 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 type QuizQuestion = { questionText: string; choices: string[]; answer: string; explanation: string; concept: string };
+/** 웹·Windows·Android에서 같은 의미로 쓰는 쪽지시험 세트 검수 상태의 화면 표시값이다. */
 const reviewMeta = {
   pending_review: { label: "검수 대기", className: "bg-[#FFF2D8] text-[#B56716]" },
   approved: { label: "승인", className: "bg-[#E6F4EE] text-[#15856B]" },
@@ -37,6 +38,7 @@ export default function QuickQuiz() {
   const [selectedQuizId, setSelectedQuizId] = useState<number | null>(null);
   const providers = trpc.assessment.aiProviders.list.useQuery();
   const quizzes = trpc.assessment.quickQuiz.list.useQuery();
+  /** 생성 결과는 현재 세트로 바로 선택하되, 사용 전 교사 검수 상태를 별도로 남긴다. */
   const create = trpc.assessment.quickQuiz.create.useMutation({
     onSuccess: result => { setSelectedQuizId(result.id); toast.success(`${result.questions.length}개 쪽지시험 문항을 만들었습니다.`); void utils.assessment.quickQuiz.list.invalidate(); },
     onError: error => toast.error(error.message),
@@ -45,6 +47,7 @@ export default function QuickQuiz() {
     onSuccess: () => { setSelectedQuizId(null); toast.success("쪽지시험을 삭제했습니다."); void utils.assessment.quickQuiz.list.invalidate(); },
     onError: error => toast.error(error.message),
   });
+  /** 일반 문항 검수함과 분리된 쪽지시험 세트 단위의 승인·수정 필요·반려 처리다. */
   const review = trpc.assessment.quickQuiz.review.useMutation({
     onSuccess: () => { toast.success("쪽지시험 검수 상태를 저장했습니다."); void utils.assessment.quickQuiz.list.invalidate(); },
     onError: error => toast.error(error.message),
@@ -53,6 +56,7 @@ export default function QuickQuiz() {
   const usesExternalProvider = selectedProvider?.providerType === "gemini" || selectedProvider?.providerType === "openai_compatible" || selectedProvider?.providerType === "anthropic";
   const selectedQuiz = quizzes.data?.find(quiz => quiz.id === selectedQuizId) ?? quizzes.data?.[0];
   const quizQuestions = (selectedQuiz?.questions ?? []) as QuizQuestion[];
+  /** 외부 개인 AI를 선택한 경우에만 이번 요청의 전송 동의를 다시 확인한 뒤 생성한다. */
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!form.topic.trim()) return toast.error("확인할 개념 또는 정의를 입력해 주세요.");

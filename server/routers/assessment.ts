@@ -73,6 +73,7 @@ const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
 const base64File = z.string().min(8).max(14_000_000);
 
+/** 업로드 전에 허용 파일 형식과 필수 파일명을 확인해 자료 처리 범위를 PDF·이미지로 제한한다. */
 function ensureFile(input: { base64: string; fileName: string; mimeType: string }) {
   if (!input.mimeType.startsWith("image/") && input.mimeType !== "application/pdf") {
     throw new TRPCError({ code: "BAD_REQUEST", message: "PDF 또는 이미지 파일만 등록할 수 있습니다." });
@@ -171,6 +172,7 @@ export const assessmentRouter = router({
   }),
 
   aiProviders: router({
+    // 개인 AI 연결은 교사가 명시적으로 전송에 동의한 경우에만 저장·검증·생성에 사용한다.
     list: protectedProcedure.query(({ ctx }) => listAiProviderSettings(ctx.user.id)),
     preferences: protectedProcedure.query(async ({ ctx }) => {
       const preferences = await getUserAiPreferences(ctx.user.id);
@@ -231,6 +233,7 @@ export const assessmentRouter = router({
   }),
 
   notes: router({
+    // 메모는 작업 보조용 개인 기록이며, 생성 요청에 자동으로 합쳐지지 않는다.
     list: protectedProcedure.query(({ ctx }) => listTeacherNotes(ctx.user.id)),
     create: protectedProcedure.input(z.object({ title: z.string().min(1).max(160), content: z.string().min(1).max(12_000), isPinned: z.boolean().default(false) })).mutation(async ({ ctx, input }) => {
       const id = await createTeacherNote({ ownerId: ctx.user.id, ...input, title: input.title.trim(), content: input.content.trim() });
@@ -249,6 +252,7 @@ export const assessmentRouter = router({
   }),
 
   quickQuiz: router({
+    // 쪽지시험은 장문형 문항과 분리된 단일 개념 확인 세트이며, 승인 뒤에만 수업용으로 사용한다.
     list: protectedProcedure.query(({ ctx }) => listQuickQuizSets(ctx.user.id)),
     create: protectedProcedure.input(z.object({
       subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), topic: z.string().min(1).max(160), difficulty: z.enum(["낮음", "보통"]), questionCount: z.number().int().min(1).max(10), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),

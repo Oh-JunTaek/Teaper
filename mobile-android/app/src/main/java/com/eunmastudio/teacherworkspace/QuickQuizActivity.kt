@@ -55,6 +55,7 @@ class QuickQuizActivity : AppCompatActivity() {
     override fun onDestroy() { runner.close(); super.onDestroy() }
     override fun onResume() { super.onResume(); if (::appLockGate.isInitialized) appLockGate.authenticateIfRequired(); refreshList() }
 
+    /** 한 개념 입력·모델 준비·생성·세트 검수를 한 화면에서 이어 주는 Android 전용 작업 화면이다. */
     private fun buildScreen(): ScrollView {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
@@ -77,8 +78,8 @@ class QuickQuizActivity : AppCompatActivity() {
         content.addView(fieldLabel("문항 수"))
         val count = select(QuickQuizFormPolicy.questionCounts.map { "${it}문항" }).apply { setSelection(QuickQuizFormPolicy.questionCounts.indexOf(3)) }
         content.addView(count, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { bottomMargin = dp(10) })
-        status = TextView(this).apply { text = "E2B 또는 E4B를 준비한 뒤 생성할 수 있습니다."; textSize = 13f; setTextColor(Color.rgb(191, 207, 195)); setPadding(dp(4), dp(6), dp(4), dp(8)) }; content.addView(status)
-        generate = button("로컬 모델로 쪽지시험 생성", true).apply { setOnClickListener {
+        status = TextView(this).apply { text = "AI 도움 기능을 준비한 뒤 생성할 수 있습니다."; textSize = 13f; setTextColor(Color.rgb(191, 207, 195)); setPadding(dp(4), dp(6), dp(4), dp(8)) }; content.addView(status)
+        generate = button("AI 도움 기능으로 쪽지시험 생성", true).apply { setOnClickListener {
             val term = topic.text.toString().trim()
             val blocked = PromptDisclosurePolicy.safeResponseFor(term)
             if (blocked != null) { status.text = blocked; return@setOnClickListener }
@@ -98,10 +99,11 @@ class QuickQuizActivity : AppCompatActivity() {
         return ScrollView(this).apply { addView(content) }
     }
 
+    /** 기기에 이미 준비된 도움 기능만 초기화하며, 다운로드·외부 전송을 자동으로 시작하지 않는다. */
     private suspend fun ensureModelReady(): Boolean {
         if (activeModel != null) return true
         val selected = ModelSelection.selected(this)
-        if (selected == null || !downloads.isInstalled(selected)) { status.text = "생성 전 모델 관리에서 기본 모델 E2B를 내려받아 선택해 주세요."; return false }
+        if (selected == null || !downloads.isInstalled(selected)) { status.text = "생성 전 모델 관리에서 기본 AI 도움 기능을 준비해 주세요."; return false }
         return try { status.text = "${selected.displayName}을 쪽지시험용으로 준비하고 있습니다."; runner.initialize(downloads.installedFile(selected).absolutePath, preferGpu = false); activeModel = selected; true } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 모델을 준비하지 못했습니다."; false }
     }
 
@@ -116,6 +118,7 @@ class QuickQuizActivity : AppCompatActivity() {
         refreshList()
     }
 
+    /** 앱 전용 저장소의 세트를 최신순으로 다시 그리고, 각 세트의 검수 상태를 함께 보여 준다. */
     private fun refreshList() {
         if (!::list.isInitialized) return
         val density = resources.displayMetrics.density
@@ -125,7 +128,8 @@ class QuickQuizActivity : AppCompatActivity() {
         store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = quiz.content; textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
-    private fun showQuizDetail(quiz: LocalQuickQuiz) { AlertDialog.Builder(this).setTitle("${quiz.topic} · ${quiz.reviewStatus}").setMessage(quiz.content).setNegativeButton("보류") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "보류"); refreshList() }.setNeutralButton("수정 필요") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "수정 필요"); refreshList() }.setPositiveButton("교사 검수 후 승인") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "승인"); refreshList(); status.text = "승인으로 표시했습니다. 실제 사용 전 다시 확인해 주세요." }.show() }
+    /** 정답·해설을 읽은 교사가 승인·수정 필요·반려 중 하나를 선택해 세트 상태를 기록한다. */
+    private fun showQuizDetail(quiz: LocalQuickQuiz) { AlertDialog.Builder(this).setTitle("${quiz.topic} · ${quiz.reviewStatus}").setMessage(quiz.content).setNegativeButton("반려") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "반려"); refreshList() }.setNeutralButton("수정 필요") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "수정 필요"); refreshList() }.setPositiveButton("교사 검수 후 승인") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "승인"); refreshList(); status.text = "승인으로 표시했습니다. 실제 사용 전 다시 확인해 주세요." }.show() }
     private fun fieldLabel(label: String) = TextView(this).apply { text = label; textSize = 13.5f; setTextColor(Color.rgb(194, 211, 195)); setPadding(dp(4), dp(2), dp(4), dp(5)) }
     private fun field(label: String, value: String) = EditText(this).apply { hint = label; setText(value); setTextColor(Color.WHITE); setHintTextColor(Color.rgb(145, 165, 151)); background = surface(Color.rgb(15, 29, 25), (resources.displayMetrics.density * 16).toInt()); setPadding((resources.displayMetrics.density * 16).toInt(), (resources.displayMetrics.density * 12).toInt(), (resources.displayMetrics.density * 16).toInt(), (resources.displayMetrics.density * 12).toInt()) }
     private fun select(values: List<String>) = Spinner(this).apply { adapter = ArrayAdapter(this@QuickQuizActivity, android.R.layout.simple_spinner_dropdown_item, values); background = surface(Color.rgb(15, 29, 25), (resources.displayMetrics.density * 16).toInt()); setPadding((resources.displayMetrics.density * 12).toInt(), 0, (resources.displayMetrics.density * 12).toInt(), 0) }

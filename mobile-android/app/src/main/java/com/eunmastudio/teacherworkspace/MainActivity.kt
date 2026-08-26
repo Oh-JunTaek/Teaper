@@ -170,6 +170,7 @@ class MainActivity : AppCompatActivity() {
         if (::workspaceSummary.isInitialized) refreshWorkspaceSummary()
     }
 
+    /** 자료·문항·쪽지시험·메모·대화로 들어가는 공통 작업 카드를 조립하는 Android 홈 화면이다. */
     private fun buildScreen(): ScrollView {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
