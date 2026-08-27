@@ -113,7 +113,8 @@ async function requireManagedAiQuota(user: { id: number; role: "teacher" | "admi
 }
 
 export const assessmentRouter = router({
-  dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id, ctx.user.role === "admin")),
+  // 개인 교사용 대시보드는 관리자라도 다른 파일럿 참여자의 자료·문항 수를 합산하지 않습니다. 전체 현황은 별도 관리자 기능에서만 조회합니다.
+  dashboard: protectedProcedure.query(({ ctx }) => dashboardStats(ctx.user.id)),
 
   plan: router({
     // 결제 연동 전에도 UI와 서버가 같은 권한 원칙으로 기능을 제어하도록 현재 플랜만 제공합니다.

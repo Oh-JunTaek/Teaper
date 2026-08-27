@@ -52,9 +52,9 @@ vi.mock("../services/assessmentAi", () => ({
 import { assessmentRouter } from "./assessment";
 import { generateDraft, generateQuickQuiz } from "../services/assessmentAi";
 
-function context(): TrpcContext {
+function context(role: "teacher" | "admin" = "teacher"): TrpcContext {
   const now = new Date();
-  return { user: { id: 42, openId: "teacher", email: "teacher@example.com", name: "Teacher", loginMethod: "manus", role: "teacher", membershipPlan: "basic", createdAt: now, updatedAt: now, lastSignedIn: now }, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] as TrpcContext["res"] };
+  return { user: { id: 42, openId: "teacher", email: "teacher@example.com", name: "Teacher", loginMethod: "manus", role, membershipPlan: "basic", createdAt: now, updatedAt: now, lastSignedIn: now }, req: { protocol: "https", headers: {} } as TrpcContext["req"], res: {} as TrpcContext["res"] as TrpcContext["res"] };
 }
 
 describe("generation request evidence integration", () => {
@@ -69,7 +69,15 @@ describe("generation request evidence integration", () => {
     const caller = assessmentRouter.createCaller(context());
 
     await expect(caller.dashboard()).resolves.toMatchObject({ questionCount: 7, noteCount: 5, quickQuizCount: 6, approvedCount: 4 });
-    expect(db.dashboardStats).toHaveBeenCalledWith(42, false);
+    expect(db.dashboardStats).toHaveBeenCalledWith(42);
+  });
+
+  it("keeps an administrator's personal dashboard separate from other pilot workspaces", async () => {
+    db.dashboardStats.mockResolvedValueOnce({ materialCount: 0, referenceCount: 0, reviewCount: 0, approvedCount: 1, questionCount: 1, noteCount: 0, quickQuizCount: 1, officialDocumentCount: 8 });
+    const caller = assessmentRouter.createCaller(context("admin"));
+
+    await expect(caller.dashboard()).resolves.toMatchObject({ approvedCount: 1, quickQuizCount: 1 });
+    expect(db.dashboardStats).toHaveBeenCalledWith(42);
   });
 
   it("records quick-quiz review only for the current teacher's set", async () => {

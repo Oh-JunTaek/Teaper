@@ -70,7 +70,7 @@ PIPC의 생성형 AI 개인정보 처리 안내는 목적 설정부터 개발, �
 | 대상 | 실행 결과 |
 |---|---|
 | 웹 정적 검사 | `pnpm check` 통과 |
-| 웹 회귀 테스트 | `pnpm test` 통과: 30 파일, 94 테스트 |
+| 웹 회귀 테스트 | `pnpm test` 통과: 30 파일, 95 테스트 |
 | 웹 프로덕션 빌드 | `pnpm build` 통과. 대형 청크 경고만 존재 |
 | 웹 운영 의존성 | `pnpm audit --prod --audit-level=high` 통과: 알려진 취약점 없음 |
 | Windows local-only | `desktop/pnpm test` 통과: Node 테스트 5건 |

@@ -163,7 +163,7 @@ class QuickQuizActivity : AppCompatActivity() {
     private fun exportStudentPdf(quiz: LocalQuickQuiz) {
         if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용 PDF에 넣을 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
         val includePoints = CheckBox(this).apply { text = "배점 표기" }
-        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(includePoints); if (OutputPlanPolicy.shouldShowStudentWatermark(this@QuickQuizActivity)) addView(TextView(this@QuickQuizActivity).apply { text = "오른쪽 아래 여백에 EunmaStudio 표기가 들어갑니다."; textSize = 12f; setTextColor(Color.rgb(119, 137, 125)); setPadding(dp(4), dp(4), dp(4), 0) }) }
+        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(includePoints); if (OutputPlanPolicy.shouldShowStudentWatermark(this@QuickQuizActivity)) addView(TextView(this@QuickQuizActivity).apply { text = "오른쪽 아래 여백에 EunmaStudio 워터마크가 표시됩니다."; textSize = 12f; setTextColor(Color.rgb(119, 137, 125)); setPadding(dp(4), dp(4), dp(4), 0) }) }
         AlertDialog.Builder(this).setTitle("학생용 PDF").setView(options).setNegativeButton("취소", null).setPositiveButton("PDF 만들기") { _, _ ->
             val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
             val approved = quickQuizBlocks(quiz.content).mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } == "승인") marker.find(block)?.let { block.substring(0, it.range.first).trim() } else null }
