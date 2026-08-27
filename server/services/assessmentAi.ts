@@ -210,9 +210,16 @@ export function normalizeQuickQuizQuestions(rawQuestions: QuickQuizQuestion[], f
   if (questions.length !== count || questions.some(question => !question.questionText || !question.answer || !question.explanation)) throw new Error("쪽지시험 형식이 완전하지 않습니다. 다시 시도해 주세요.");
   for (const question of questions) {
     if (format === "multiple_choice") {
-      const answerIndex = question.answer.replace(/번$/, "");
+      const selectionMarks = ["①", "②", "③", "④"];
+      const answerIndex = question.answer.replace(/정답\s*[:：]?\s*/i, "").replace(/선택\s*/i, "").replace(/번$/, "").trim();
       const uniqueChoices = new Set(question.choices.map(choice => choice.toLowerCase()));
-      if (question.choices.length !== 4 || uniqueChoices.size !== 4 || !(["1", "2", "3", "4", "①", "②", "③", "④"].includes(answerIndex) || question.choices.includes(question.answer))) throw new Error("객관식은 서로 다른 보기 4개와 정답을 모두 확인할 수 있어야 합니다. 다시 시도해 주세요.");
+      const markedIndex = selectionMarks.indexOf(answerIndex);
+      const numericIndex = ["1", "2", "3", "4"].indexOf(answerIndex);
+      const choiceIndex = question.choices.indexOf(question.answer);
+      const selectedIndex = markedIndex >= 0 ? markedIndex : numericIndex >= 0 ? numericIndex : choiceIndex;
+      if (question.choices.length !== 4 || uniqueChoices.size !== 4 || selectedIndex < 0) throw new Error("객관식은 서로 다른 보기 4개와 정답을 모두 확인할 수 있어야 합니다. 다시 시도해 주세요.");
+      // ‘정답: 4’처럼 번호와 값이 섞인 답을 ‘정답: 선택 ④’로 저장해 오해를 없앤다.
+      question.answer = `선택 ${selectionMarks[selectedIndex]}`;
     }
     if (format === "short_answer" && question.choices.length !== 0) throw new Error("주관식에는 보기를 넣지 않습니다. 다시 시도해 주세요.");
     if (format === "ox") {
