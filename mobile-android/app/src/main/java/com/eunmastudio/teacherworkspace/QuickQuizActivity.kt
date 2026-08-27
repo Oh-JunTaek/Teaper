@@ -142,27 +142,35 @@ class QuickQuizActivity : AppCompatActivity() {
         store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("학생용 PDF").apply { setOnClickListener { exportStudentPdf(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
-    /** 승인한 문항에서만 정답·해설·개념을 뺀 학생용 공유 텍스트를 만든다. */
-    private fun studentShareText(quiz: LocalQuickQuiz): String? {
+    /** 승인한 문항에서만 정답·해설·개념을 빼고, 교사가 선택한 경우에만 해당 문항의 배점을 붙인다. */
+    private fun studentShareText(quiz: LocalQuickQuiz, includePoints: Boolean = false): String? {
         val blocks = quickQuizBlocks(quiz.content)
         val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
-        val questions = blocks.mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } != "승인") null else marker.find(block)?.let { block.substring(0, it.range.first).trim() } }.filter { it.isNotBlank() }
+        val questions = blocks.mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } != "승인") null else marker.find(block)?.let { index to block.substring(0, it.range.first).trim() } }.filter { (_, question) -> question.isNotBlank() }
         if (questions.isEmpty()) return null
-        return questions.mapIndexed { index, question -> "${index + 1}번\n${readableQuickQuizText(question.replace(Regex("(?m)^문항\\s*[:：]\\s*"), ""))}" }.joinToString("\n\n")
+        return questions.mapIndexed { displayIndex, (sourceIndex, question) ->
+            val lines = readableQuickQuizText(question.replace(Regex("(?m)^문항\\s*[:：]\\s*"), "")).lines().toMutableList()
+            val point = if (includePoints) quiz.questionPoints.getOrNull(sourceIndex)?.let { " ［${it}점］" } ?: "" else ""
+            if (lines.isNotEmpty()) lines[0] = "${lines[0]}$point"
+            "${displayIndex + 1}번\n${lines.joinToString("\n")}".trim()
+        }.joinToString("\n\n")
     }
 
     /** 부분 승인 세트도 승인 문항이 하나 이상이면 학생용 공유 시트로 전달한다. */
     private fun shareStudentQuiz(quiz: LocalQuickQuiz) {
         if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용으로 공유할 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
-        val studentText = studentShareText(quiz)
-        if (studentText == null) { status.text = "학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용을 확인해 주세요."; return }
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
+        val includePoints = CheckBox(this).apply { text = "문제 배점 표기" }
+        AlertDialog.Builder(this).setTitle("학생용 텍스트 공유").setView(includePoints).setNegativeButton("취소", null).setPositiveButton("공유") { _, _ ->
+            val studentText = studentShareText(quiz, includePoints.isChecked)
+            if (studentText == null) { status.text = "학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용을 확인해 주세요."; return@setPositiveButton }
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
+        }.show()
     }
 
     /** PDF 만들기 전 교사가 배점 표시 여부를 선택하고, 승인한 문항·보기만 안전하게 공유한다. */
     private fun exportStudentPdf(quiz: LocalQuickQuiz) {
         if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용 PDF에 넣을 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
-        val includePoints = CheckBox(this).apply { text = "배점 표기" }
+        val includePoints = CheckBox(this).apply { text = "문제 배점 표기" }
         val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(includePoints); if (OutputPlanPolicy.shouldShowStudentWatermark(this@QuickQuizActivity)) addView(TextView(this@QuickQuizActivity).apply { text = "오른쪽 아래 여백에 EunmaStudio 워터마크가 표시됩니다."; textSize = 12f; setTextColor(Color.rgb(119, 137, 125)); setPadding(dp(4), dp(4), dp(4), 0) }) }
         AlertDialog.Builder(this).setTitle("학생용 PDF").setView(options).setNegativeButton("취소", null).setPositiveButton("PDF 만들기") { _, _ ->
             val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")

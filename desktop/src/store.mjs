@@ -189,13 +189,18 @@ function localVisualBlocks(spec) {
   return [];
 }
 
+/** 학생용 문항 제목에는 교사가 선택한 배점만 덧붙이고 난이도·유형은 넣지 않는다. */
+export function studentQuestionHeading(question, index, includePoints = false) {
+  return `${index + 1}. ${question.questionText}${includePoints ? ` ［${question.points}점］` : ""}`;
+}
+
 // 실행 환경과 무관하게 같은 문항 구조를 교사가 편집 가능한 DOCX로 전달합니다.
-export async function exportQuestionsDocx(questions, kind = "question-paper") {
+export async function exportQuestionsDocx(questions, kind = "question-paper", options = {}) {
   const answerSheet = kind === "answer-sheet";
   const title = answerSheet ? "정답 및 해설지" : "문항 시험지";
-  const children = [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 }, children: [new TextRun({ text: title, bold: true, size: 34, color: "183248" })] }), new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 320 }, children: [new TextRun({ text: `${questions.length}문항 · 교사 최종 검수 후 실제 시험 범위와 다시 대조하세요.`, size: 18, color: "64748B" })] })];
+  const children = [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 }, children: [new TextRun({ text: title, bold: true, size: 34, color: "183248" })] }), new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 320 }, children: [new TextRun({ text: answerSheet ? `${questions.length}문항 · 교사 최종 검수 후 실제 시험 범위와 다시 대조하세요.` : `${questions.length}문항`, size: 18, color: "64748B" })] })];
   questions.forEach((question, index) => {
-    children.push(new Paragraph({ spacing: { before: index === 0 ? 0 : 280, after: 120 }, children: [new TextRun({ text: `${index + 1}. `, bold: true, size: 24 }), new TextRun({ text: question.questionText, size: 22 })] }), new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, color: "475569", size: 18 })] }));
+    children.push(new Paragraph({ spacing: { before: index === 0 ? 0 : 280, after: 120 }, children: [new TextRun({ text: answerSheet ? `${index + 1}. ${question.questionText}` : studentQuestionHeading(question, index, options.includePoints === true), size: 22, bold: answerSheet })] }), ...(answerSheet ? [new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, color: "475569", size: 18 })] })] : []));
     (question.choices || []).forEach((choice, choiceIndex) => children.push(new Paragraph({ indent: { left: 360 }, spacing: { after: 60 }, children: [new TextRun({ text: `${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${choice}`, size: 21 })] })));
     children.push(...localVisualBlocks(question.visualSpec));
     if (answerSheet) children.push(new Paragraph({ spacing: { before: 120, after: 50 }, children: [new TextRun({ text: "정답  ", bold: true, color: "15856B" }), new TextRun({ text: question.answer, bold: true })] }), new Paragraph({ spacing: { after: 50 }, children: [new TextRun({ text: "해설  ", bold: true, color: "183248" }), new TextRun(question.explanation)] }), new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: "출제 의도  ", bold: true, color: "183248" }), new TextRun(question.intent)] }));
@@ -215,7 +220,7 @@ function localVisualHtml(spec) {
 export function exportQuestionsPrintHtml(questions, kind = "question-paper", options = {}) {
   const answerSheet = kind === "answer-sheet";
   const title = answerSheet ? "정답 및 해설지" : "문항 시험지";
-  const items = questions.map((question, index) => `<article><h2>${index + 1}. ${escapeHtml(question.questionText)}${options.includePoints ? ` <span class="points">［${question.points}점］</span>` : ""}</h2>${(question.choices || []).map((choice, choiceIndex) => `<p class="choice">${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${escapeHtml(choice)}</p>`).join("")}${localVisualHtml(question.visualSpec)}${answerSheet ? `<section class="answer"><p><strong>정답</strong> ${escapeHtml(question.answer)}</p><p><strong>해설</strong> ${escapeHtml(question.explanation)}</p><p><strong>출제 의도</strong> ${escapeHtml(question.intent)}</p></section>` : ""}</article>`).join("");
+  const items = questions.map((question, index) => `<article><h2>${index + 1}. ${escapeHtml(question.questionText)}${!answerSheet && options.includePoints ? ` <span class="points">［${question.points}점］</span>` : ""}</h2>${(question.choices || []).map((choice, choiceIndex) => `<p class="choice">${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${escapeHtml(choice)}</p>`).join("")}${localVisualHtml(question.visualSpec)}${answerSheet ? `<section class="answer"><p><strong>정답</strong> ${escapeHtml(question.answer)}</p><p><strong>해설</strong> ${escapeHtml(question.explanation)}</p><p><strong>출제 의도</strong> ${escapeHtml(question.intent)}</p></section>` : ""}</article>`).join("");
   // 기본 플랜 학생용 시험지에만 하단 여백 표기를 넣어 정답·해설과 교사용 기록을 구분한다.
   const watermark = !answerSheet && options.watermark ? `<div class="student-watermark" aria-hidden="true">EunmaStudio</div>` : "";
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>${title}</title><style>@page{size:A4;margin:18mm}body{font-family:"Noto Sans KR",Arial,sans-serif;color:#172033;line-height:1.6}h1{text-align:center;font-size:22px}h2{font-size:14px;white-space:pre-wrap}.points{font-weight:400;white-space:nowrap}.choice{margin:4px 0 4px 18px}.visual{margin:14px 0;break-inside:avoid}.graph svg{width:100%;height:auto}table{border-collapse:collapse;width:100%;font-size:11px}th,td{border:1px solid #94a3b8;padding:6px;text-align:left}th{background:#e6f4ee}.answer{margin-top:12px;padding:10px 12px;background:#f8fafc;border-left:3px solid #15856b;font-size:12px}article{break-inside:avoid;margin:0 0 25px}.student-watermark{position:fixed;right:0;bottom:0;color:#94a3b8;font-size:9px;letter-spacing:.08em;opacity:.72;pointer-events:none}@media print{article{page-break-inside:avoid}}</style></head><body><h1>${title}</h1>${items}${watermark}</body></html>`;

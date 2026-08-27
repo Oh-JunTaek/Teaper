@@ -79,11 +79,17 @@ function visualBlocks(spec: ExportVisualSpec | null | undefined) {
   return [];
 }
 
-function questionBlocks(question: ExportQuestion, index: number, kind: QuestionDocumentKind) {
+/** 학생용 문항 제목은 문제·보기·선택 배점만 남기고 난이도·유형·검수 정보를 넣지 않는다. */
+export function studentQuestionHeadingText(question: Pick<ExportQuestion, "questionText" | "points">, index: number, includePoints = false) {
+  return `${index}. ${question.questionText}${includePoints ? ` ［${question.points}점］` : ""}`;
+}
+
+function questionBlocks(question: ExportQuestion, index: number, kind: QuestionDocumentKind, options: QuestionPrintOptions = {}) {
   const showAnswers = kind === "answer-sheet";
+  const showStudentPoints = kind === "question-paper" && options.includePoints === true;
   const blocks = [
-    new Paragraph({ spacing: { before: index === 1 ? 0 : 280, after: 120 }, children: [new TextRun({ text: `${index}. `, bold: true, size: 24 }), new TextRun({ text: question.questionText, size: 22 })] }),
-    new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, color: "475569", size: 18 })] }),
+    new Paragraph({ spacing: { before: index === 1 ? 0 : 280, after: 120 }, children: [new TextRun({ text: `${index}. `, bold: true, size: 24 }), new TextRun({ text: question.questionText, size: 22 }), ...(showStudentPoints ? [new TextRun({ text: ` ［${question.points}점］`, size: 20, color: "475569" })] : [])] }),
+    ...(showAnswers ? [new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, color: "475569", size: 18 })] })] : []),
     ...(question.choices || []).map((choice, choiceIndex) => new Paragraph({ indent: { left: 360 }, spacing: { after: 60 }, children: [new TextRun({ text: `${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${choice}`, size: 21 })] })),
     ...visualBlocks(question.visualSpec),
   ];
@@ -97,14 +103,14 @@ function questionBlocks(question: ExportQuestion, index: number, kind: QuestionD
   return blocks;
 }
 
-export async function createQuestionDocx(questions: ExportQuestion[], kind: QuestionDocumentKind) {
+export async function createQuestionDocx(questions: ExportQuestion[], kind: QuestionDocumentKind, options: QuestionPrintOptions = {}) {
   const title = kind === "question-paper" ? "문항 시험지" : "정답 및 해설지";
   const document = new Document({
     sections: [{
       children: [
         new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 100 }, children: [new TextRun({ text: title, bold: true, size: 34, color: "183248" })] }),
-        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 320 }, children: [new TextRun({ text: `${questions.length}문항 · 교사 최종 검수 후 실제 시험 범위와 다시 대조하세요.`, size: 18, color: "64748B" })] }),
-        ...questions.flatMap((question, index) => questionBlocks(question, index + 1, kind)),
+        new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 320 }, children: [new TextRun({ text: kind === "question-paper" ? `${questions.length}문항` : `${questions.length}문항 · 교사 최종 검수 후 실제 시험 범위와 다시 대조하세요.`, size: 18, color: "64748B" })] }),
+        ...questions.flatMap((question, index) => questionBlocks(question, index + 1, kind, options)),
       ],
     }],
   });

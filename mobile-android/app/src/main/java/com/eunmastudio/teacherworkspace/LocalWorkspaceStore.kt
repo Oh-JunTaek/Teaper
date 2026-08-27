@@ -47,6 +47,7 @@ data class LocalQuestion(
     val content: String,
     val sourceIds: List<String>,
     val reviewStatus: String = "검수 전",
+    val points: Double? = null,
     val createdAt: Long = System.currentTimeMillis(),
 )
 
@@ -177,6 +178,7 @@ class LocalWorkspaceStore(context: Context) {
                 content = item.getString("content"),
                 sourceIds = item.getJSONArray("sourceIds").toStringList(),
                 reviewStatus = item.getString("reviewStatus"),
+                points = item.takeIf { it.has("points") && !it.isNull("points") }?.optDouble("points")?.takeIf { it.isFinite() && it >= 0 && it <= 100 && kotlin.math.round(it * 10) == it * 10 },
                 createdAt = item.getLong("createdAt"),
             )
         }.getOrNull()
@@ -254,6 +256,11 @@ class LocalWorkspaceStore(context: Context) {
 
     fun updateReviewStatus(questionId: String, status: String) {
         writeQuestions(questions().map { if (it.id == questionId) it.copy(reviewStatus = status) else it })
+    }
+
+    /** 일반 문항 배점은 교사가 정한 0~100점·소수 첫째 자리 값만 이 기기에 저장한다. */
+    fun updateQuestionPoints(questionId: String, points: Double) {
+        writeQuestions(questions().map { if (it.id == questionId) it.copy(points = points) else it })
     }
 
     fun deleteSource(sourceId: String) {
@@ -466,6 +473,7 @@ class LocalWorkspaceStore(context: Context) {
                 put("content", item.content)
                 put("sourceIds", JSONArray(item.sourceIds))
                 put("reviewStatus", item.reviewStatus)
+                put("points", item.points)
                 put("createdAt", item.createdAt)
             })
         }

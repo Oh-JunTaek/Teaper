@@ -20,21 +20,21 @@ enum class QuestionExportType(val label: String, val extension: String, val mime
  * 공유 대상 앱에는 FileProvider URI로 읽기 권한만 일시 부여한다. 검수 상태·정답·해설은 학생용 결과에 넣지 않는다.
  */
 class ApprovedQuestionExporter(private val context: Context) {
-    fun export(question: LocalQuestion, type: QuestionExportType): File {
+    fun export(question: LocalQuestion, type: QuestionExportType, includePoints: Boolean = false): File {
         val directory = File(context.cacheDir, "exports").apply { mkdirs() }
         val output = File(directory, "${safeFileStem(question.title)}.${type.extension}")
         when (type) {
-            QuestionExportType.DOCX -> writeDocx(question, output)
-            QuestionExportType.PDF -> writePdf(question, output)
+            QuestionExportType.DOCX -> writeDocx(question, output, includePoints)
+            QuestionExportType.PDF -> writePdf(question, output, includePoints)
         }
         return output
     }
 
-    private fun writeDocx(question: LocalQuestion, file: File) {
+    private fun writeDocx(question: LocalQuestion, file: File, includePoints: Boolean) {
         val documentParagraphs = buildList {
             add(question.title)
             add("")
-            add(studentQuestionText(question.content))
+            add(studentQuestionText(question.content, question.points, includePoints))
         }.flatMap { it.lineSequence().toList() }
 
         ZipOutputStream(FileOutputStream(file)).use { zip ->
@@ -67,9 +67,9 @@ class ApprovedQuestionExporter(private val context: Context) {
         }
     }
 
-    private fun writePdf(question: LocalQuestion, file: File) {
+    private fun writePdf(question: LocalQuestion, file: File, includePoints: Boolean) {
         val document = PdfDocument()
-        val allLines = listOf(question.title, "") + studentQuestionText(question.content).lineSequence().toList()
+        val allLines = listOf(question.title, "") + studentQuestionText(question.content, question.points, includePoints).lineSequence().toList()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
         val margin = 48f
         val pageWidth = 595
@@ -116,16 +116,21 @@ class ApprovedQuestionExporter(private val context: Context) {
         return lines
     }
 
-    /** 생성 결과의 답·해설 구간은 학생용 출력 직전에 다시 한 번 제거한다. */
-    private fun studentQuestionText(content: String): String = content
+    /** 생성 결과의 답·해설 구간을 제거하고, 선택한 경우 첫 문제 줄 끝에만 교사 지정 배점을 붙인다. */
+    private fun studentQuestionText(content: String, points: Double?, includePoints: Boolean): String {
+        val studentLines = content
         .lineSequence()
         .takeWhile { line ->
             val normalized = line.trim().replace("*", "")
             !normalized.startsWith("정답:") && !normalized.startsWith("해설:") &&
                 !normalized.startsWith("[정답]") && !normalized.startsWith("[해설]")
         }
-        .joinToString("\n")
-        .trim()
+        .toMutableList()
+        val point = if (includePoints) points?.let { " ［${it}점］" } ?: "" else ""
+        val firstQuestionLine = studentLines.indexOfFirst { it.trim().isNotEmpty() }
+        if (firstQuestionLine >= 0) studentLines[firstQuestionLine] = "${studentLines[firstQuestionLine]}$point"
+        return studentLines.joinToString("\n").trim()
+    }
 
     /** 기본 플랜의 표기는 학생용 PDF의 오른쪽 아래 여백에만 놓아 문항과 배점을 가리지 않는다. */
     private fun drawStudentWatermark(canvas: android.graphics.Canvas, pageWidth: Int, pageHeight: Int) {

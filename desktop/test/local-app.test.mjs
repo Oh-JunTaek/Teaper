@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { setSecret, getSecret } from "../src/vault.mjs";
 import { createLocalBridge } from "../src/bridge.mjs";
-import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml } from "../src/store.mjs";
+import { openLocalStore, exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, studentQuestionHeading } from "../src/store.mjs";
 import { fallbackOptions } from "../src/fallback.mjs";
 import { openBackup, sealBackup } from "../src/backup.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, isAllowedLocalPage } from "../src/shellSecurity.mjs";
@@ -79,6 +79,8 @@ try {
   assert.match(studentQuickQuiz, /공유 결합의 정의/);
   assert.doesNotMatch(studentQuickQuiz, /이온 결합의 정의/);
   assert.doesNotMatch(studentQuickQuiz, /정답|해설|개념/);
+  const studentQuickQuizWithPoints = studentQuickQuizText("문항: 공유 결합의 정의로 옳은 것은?\n보기: ① 전자쌍을 공유한다\n정답: ①\n해설: 전자쌍을 공유한다.\n개념: 공유 결합", [0], [2], true);
+  assert.match(studentQuickQuizWithPoints, /공유 결합의 정의로 옳은 것은\? ［2점］/);
   const presented = extractGenerationPresentation("요청하신 문항을 만듭니다.\n\n### 문항\n물 분자($\\text{H}_2\\text{O}$)의 구조는?\n\n### 정답\n굽은형\n\n[시각자료]\n```json\n{\"kind\":\"table\",\"title\":\"비교\",\"columns\":[\"항목\"],\"rows\":[[\"물\"]]}\n```\n[/시각자료]");
   assert.match(presented.text, /^### 문항/);
   assert.equal(presented.visualSpec.kind, "table");
@@ -110,6 +112,10 @@ try {
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");
   assert.ok(docx.length > 500);
+  assert.equal(studentQuestionHeading(store.listApproved()[0], 0, false), "1. 문항");
+  assert.equal(studentQuestionHeading(store.listApproved()[0], 0, true), "1. 문항 ［3점］");
+  const studentDocx = await exportQuestionsDocx(store.listApproved(), "question-paper", { includePoints: true });
+  assert.equal(studentDocx.subarray(0, 2).toString(), "PK");
   const printHtml = exportQuestionsPrintHtml(store.listApproved(), "answer-sheet");
   assert.match(printHtml, /정답 및 해설지/);
   assert.match(printHtml, /해설/);

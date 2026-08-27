@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createQuestionDocx, openQuestionPrintView, type ExportQuestion } from "./questionExport";
+import { createQuestionDocx, openQuestionPrintView, studentQuestionHeadingText, type ExportQuestion } from "./questionExport";
 
 const sampleQuestion: ExportQuestion = {
   id: 1,
@@ -17,8 +17,13 @@ const sampleQuestion: ExportQuestion = {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("question document export", () => {
+  it("keeps difficulty and type out of the student heading while applying points only when selected", () => {
+    expect(studentQuestionHeadingText(sampleQuestion, 1)).toBe("1. 다음 자료를 보고 옳은 것을 고르시오.");
+    expect(studentQuestionHeadingText(sampleQuestion, 1, true)).toBe("1. 다음 자료를 보고 옳은 것을 고르시오. ［3점］");
+  });
+
   it("creates separate editable question-paper and answer-sheet DOCX files", async () => {
-    const questionPaper = await createQuestionDocx([sampleQuestion], "question-paper");
+    const questionPaper = await createQuestionDocx([sampleQuestion], "question-paper", { includePoints: true });
     const answerSheet = await createQuestionDocx([sampleQuestion], "answer-sheet");
 
     expect(questionPaper.type).toBe("application/vnd.openxmlformats-officedocument.wordprocessingml.document");

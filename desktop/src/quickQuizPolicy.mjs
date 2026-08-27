@@ -41,7 +41,7 @@ export function localQuickQuizPrompt(input) {
  * 승인 문항의 표준 구분자를 기준으로 학생용 본문만 남긴다.
  * 정답·해설·개념 표기가 없으면 안전하게 학생용 파일을 만들지 않는다.
  */
-export function studentQuickQuizText(rawOutput, approvedQuestionIndexes = null) {
+export function studentQuickQuizText(rawOutput, approvedQuestionIndexes = null, questionPoints = [], includePoints = false) {
   const blocks = String(rawOutput || "")
     .split(/(?=^\s*문항\s*[:：])/m)
     .map(block => block.trim())
@@ -55,5 +55,11 @@ export function studentQuickQuizText(rawOutput, approvedQuestionIndexes = null) 
   if (!studentBlocks.length || studentBlocks.some(block => !/^문항\s*[:：]/m.test(block))) {
     throw new Error("학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용에서 문항 형식을 확인해 주세요.");
   }
-  return studentBlocks.map((block, index) => `${index + 1}번\n${block.replace(/^문항\s*[:：]\s*/m, "").replace(/^(\s*)선택\s*([①②③④])\s*:\s*(?:선택\s*)?\2\s*:\s*/gm, "$1$2 ").replace(/^(\s*)선택\s*([①②③④])\s*:\s*/gm, "$1$2 ")}`).join("\n\n");
+  return studentBlocks.map((block, displayIndex) => {
+    const sourceIndex = allowedIndexes[displayIndex];
+    const lines = block.replace(/^문항\s*[:：]\s*/m, "").replace(/^(\s*)선택\s*([①②③④])\s*:\s*(?:선택\s*)?\2\s*:\s*/gm, "$1$2 ").replace(/^(\s*)선택\s*([①②③④])\s*:\s*/gm, "$1$2 ").split("\n");
+    const point = includePoints && Number.isFinite(Number(questionPoints?.[sourceIndex])) ? ` ［${Number(questionPoints[sourceIndex])}점］` : "";
+    if (lines.length) lines[0] = `${lines[0]}${point}`;
+    return `${displayIndex + 1}번\n${lines.join("\n")}`;
+  }).join("\n\n");
 }

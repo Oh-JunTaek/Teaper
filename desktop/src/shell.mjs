@@ -259,9 +259,9 @@ function registerHandlers() {
     const result = await saveExportFile("쪽지시험-교사용.txt", `쪽지시험 교사용\n학생용 전달에는 문항별 승인 문항만 사용하세요.\n\n${content}`); recordExportAudit("quick_quiz_text", quizzes.length, result.saved ? "saved" : "cancelled"); return result;
   });
   // 학생용 파일에는 정답·해설·개념 메모를 넣지 않고, 문항별로 승인한 문항·보기만 전달한다.
-  ipcMain.handle("local:export-quick-quiz-student", async () => {
+  ipcMain.handle("local:export-quick-quiz-student", async (_event, input = {}) => {
     const quizzes = store.listQuickQuizSetsWithApprovedQuestions(); if (!quizzes.length) throw new Error("내보낼 승인 쪽지시험 문항이 없습니다.");
-    const content = quizzes.map((quiz, index) => { const approvedIndexes = quiz.questionReviewStates.reduce((indexes, status, questionIndex) => status === "approved" ? [...indexes, questionIndex] : indexes, []); return `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n${studentQuickQuizText(quiz.raw_output, approvedIndexes)}`; }).join("\n\n---\n\n");
+    const content = quizzes.map((quiz, index) => { const approvedIndexes = quiz.questionReviewStates.reduce((indexes, status, questionIndex) => status === "approved" ? [...indexes, questionIndex] : indexes, []); return `# ${index + 1}. ${quiz.subject} · ${quiz.unit}\n${studentQuickQuizText(quiz.raw_output, approvedIndexes, quiz.questionPoints, input.includePoints === true)}`; }).join("\n\n---\n\n");
     const result = await saveExportFile("승인-쪽지시험-학생용.txt", `쪽지시험\n이름: ____________________    날짜: __________\n\n${content}`); recordExportAudit("quick_quiz_student_text", quizzes.length, result.saved ? "saved" : "cancelled"); return result;
   });
   ipcMain.handle("local:list-questions", (_event, status) => store.listQuestions(status));
@@ -269,7 +269,7 @@ function registerHandlers() {
   ipcMain.handle("local:export-approved", async (_event, input) => {
     const questions = store.listApproved(); if (!questions.length) throw new Error("내보낼 승인 문항이 없습니다.");
     if (input.kind === "csv") { const result = await saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
-    if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
+    if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper", { includePoints: input.includePoints === true })); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-answer") { const result = await saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     // 서명된 설치본의 플랜 메타데이터만 신뢰한다. 기본은 워터마크 표시, plus 서명 빌드만 제거한다.
     if (input.kind === "print-question") { const plan = await installedOutputPlan(); const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true, watermark: plan !== "plus" })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }

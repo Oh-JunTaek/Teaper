@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.text.InputType
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -980,17 +982,28 @@ class MainActivity : AppCompatActivity() {
             status.text = "검수 중인 문항입니다. 교사가 승인으로 표시한 뒤 문서로 내보낼 수 있습니다."
             return
         }
+        val includePoints = CheckBox(this).apply { text = "문제 배점 표기" }
+        val pointInput = EditText(this).apply { hint = "배점 0~100점 (소수 첫째 자리)"; inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL; setText(question.points?.toString() ?: "") }
+        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(8, 8, 8, 0); addView(includePoints); addView(pointInput) }
+        fun exportWithPoints(type: QuestionExportType) {
+            val points = pointInput.text.toString().trim().takeIf { it.isNotEmpty() }?.toDoubleOrNull()
+            if (points != null && (points < 0 || points > 100 || kotlin.math.round(points * 10) != points * 10)) { status.text = "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요."; return }
+            if (includePoints.isChecked && points == null) { status.text = "문제 배점 표기를 선택한 경우 배점을 입력해 주세요."; return }
+            val exportQuestion = if (points != null) { store.updateQuestionPoints(question.id, points); question.copy(points = points) } else question
+            exportAndShare(exportQuestion, type, includePoints.isChecked)
+        }
         AlertDialog.Builder(this)
             .setTitle("승인 문항 학생용 내보내기")
-            .setMessage("학생용 문서에는 검수 상태·정답·해설을 넣지 않습니다. 문서는 앱 전용 캐시에 만든 뒤 선택한 앱에만 공유합니다.")
+            .setMessage("학생용 문서에는 난이도·문항 유형·검수 상태·정답·해설을 넣지 않습니다. 문서는 앱 전용 캐시에 만든 뒤 선택한 앱에만 공유합니다.")
+            .setView(options)
             .setNegativeButton("취소", null)
-            .setNeutralButton("인쇄용 PDF") { _, _ -> exportAndShare(question, QuestionExportType.PDF) }
-            .setPositiveButton("학생용 DOCX") { _, _ -> exportAndShare(question, QuestionExportType.DOCX) }
+            .setNeutralButton("인쇄용 PDF") { _, _ -> exportWithPoints(QuestionExportType.PDF) }
+            .setPositiveButton("학생용 DOCX") { _, _ -> exportWithPoints(QuestionExportType.DOCX) }
             .show()
     }
 
-    private fun exportAndShare(question: LocalQuestion, type: QuestionExportType) {
-        runCatching { questionExporter.export(question, type) }
+    private fun exportAndShare(question: LocalQuestion, type: QuestionExportType, includePoints: Boolean) {
+        runCatching { questionExporter.export(question, type, includePoints) }
             .onSuccess { output ->
                 val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", output)
                 val shareIntent = Intent(Intent.ACTION_SEND).apply {
