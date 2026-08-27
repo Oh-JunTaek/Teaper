@@ -60,7 +60,7 @@ export function buildValidationSystemPrompt(provider: ProviderKind = "managed") 
 function quickQuizFormatRule(format: QuickQuizFormat) {
   if (format === "short_answer") return "- 형식은 주관식입니다. choices는 반드시 빈 배열로 두고, 학생이 짧은 용어·수식·숫자로 답할 수 있는 문항만 작성하십시오. 정답은 한 개의 짧은 모범 답으로 작성하십시오.";
   if (format === "ox") return "- 형식은 O/X입니다. 짧은 진술 하나를 제시하고 choices는 반드시 [\"O\", \"X\"]로 작성하십시오. 정답은 반드시 O 또는 X 하나만 작성하십시오.";
-  return "- 형식은 객관식 4지선다입니다. choices는 서로 다른 선택지 4개를 정확히 담고 각 선택지는 한 줄씩 ‘선택 ①: 내용’처럼 표시하십시오. 숫자만 쓰지 마십시오. 정답은 반드시 ‘선택 ①’, ‘선택 ②’, ‘선택 ③’, ‘선택 ④’ 중 하나로 작성하십시오.";
+  return "- 형식은 객관식 4지선다입니다. choices는 서로 다른 선택지 4개를 정확히 담고 각 선택지는 한 줄씩 ‘① 내용’처럼 표시하십시오. 숫자만 쓰지 마십시오. 정답은 반드시 ‘①번’, ‘②번’, ‘③번’, ‘④번’ 중 하나로 작성하십시오.";
 }
 
 /** 쪽지시험은 장문 시험형 문항과 달리 한 개념을 즉시 확인하는 짧은 문항만 허용합니다. */

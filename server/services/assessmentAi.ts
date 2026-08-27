@@ -212,14 +212,16 @@ export function normalizeQuickQuizQuestions(rawQuestions: QuickQuizQuestion[], f
     if (format === "multiple_choice") {
       const selectionMarks = ["①", "②", "③", "④"];
       const answerIndex = question.answer.replace(/정답\s*[:：]?\s*/i, "").replace(/선택\s*/i, "").replace(/번$/, "").trim();
+      // 모델이 번호까지 넣어도 저장값에는 보기 내용만 남겨 화면에서 번호가 두 번 나오지 않게 한다.
+      question.choices = question.choices.map(choice => choice.replace(/^(?:선택\s*)?[①②③④]\s*[:.)-]?\s*/, "").trim());
       const uniqueChoices = new Set(question.choices.map(choice => choice.toLowerCase()));
       const markedIndex = selectionMarks.indexOf(answerIndex);
       const numericIndex = ["1", "2", "3", "4"].indexOf(answerIndex);
       const choiceIndex = question.choices.indexOf(question.answer);
       const selectedIndex = markedIndex >= 0 ? markedIndex : numericIndex >= 0 ? numericIndex : choiceIndex;
       if (question.choices.length !== 4 || uniqueChoices.size !== 4 || selectedIndex < 0) throw new Error("객관식은 서로 다른 보기 4개와 정답을 모두 확인할 수 있어야 합니다. 다시 시도해 주세요.");
-      // ‘정답: 4’처럼 번호와 값이 섞인 답을 ‘정답: 선택 ④’로 저장해 오해를 없앤다.
-      question.answer = `선택 ${selectionMarks[selectedIndex]}`;
+      // ‘정답: 4’처럼 번호와 값이 섞인 답을 ‘정답: ④번’으로 저장해 오해를 없앤다.
+      question.answer = `${selectionMarks[selectedIndex]}번`;
     }
     if (format === "short_answer" && question.choices.length !== 0) throw new Error("주관식에는 보기를 넣지 않습니다. 다시 시도해 주세요.");
     if (format === "ox") {

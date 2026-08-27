@@ -78,7 +78,7 @@ async function renderFriendlySettings() {
 
 function evidenceHtml(evidence = {}) { const items = [...(evidence.materials || []), ...(evidence.references || []), ...(evidence.officialDocuments || [])]; if (!items.length) return `<p class="notice warning">이번 생성에 선택된 자료가 없습니다. 다음 문항에서는 ‘참고 자료’ 또는 ‘공식 자료’에서 사용할 자료를 먼저 골라 보세요.</p>`; return `<section class="generation-evidence"><h3>이번 문항에 참고한 자료</h3><p>아래 자료는 생성에 참고한 범위입니다. 사실·수치·정답은 원문을 다시 확인하세요.</p><ul>${items.map(item => `<li><span>${escapeHtml(item.kind)}</span>${item.url ? `<a href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${escapeHtml(item.title)} ↗</a>` : escapeHtml(item.title)}</li>`).join("")}</ul></section>`; }
 // 기존에 저장한 ‘③ 6’ 같은 숫자형 보기도 선택 번호와 값이 분명히 구분되게 화면에서 보정한다.
-function readableQuickQuizText(value) { return String(value || "").replace(/^(\s*)([①②③④])\s+([-+]?\d+(?:\.\d+)?)\s*$/gm, "$1선택 $2: $3"); }
+function readableQuickQuizText(value) { return String(value || "").replace(/^(\s*)선택\s*([①②③④])\s*:\s*(?:선택\s*)?\2\s*:\s*/gm, "$1$2 ").replace(/^(\s*)선택\s*([①②③④])\s*:\s*/gm, "$1$2 ").replace(/^(정답\s*[:：]\s*)선택\s*([①②③④])\s*$/gm, "$1$2번"); }
 
 async function renderFriendlyGenerate() {
   const models = localStatus?.runtimes?.ollama?.models || []; const officialDocuments = await api.listOfficialDocuments({ subject: "화학 I", unit: "공통" }); const selectedOfficial = officialDocuments.filter(item => item.use_for_generation).length; const recommendation = localStatus?.recommendation?.model;

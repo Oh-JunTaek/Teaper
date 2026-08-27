@@ -24,7 +24,7 @@ export function localQuickQuizPrompt(input) {
     ? "문항 형식은 주관식입니다. 보기는 반드시 ‘보기: 없음’으로 쓰고, 학생이 짧은 용어·수식·숫자로 답할 수 있는 문항만 작성하십시오."
     : questionFormat === "ox"
       ? "문항 형식은 O/X입니다. 짧은 진술 하나를 제시하고 ‘보기: O / X’로 쓰며, 정답은 O 또는 X 하나만 작성하십시오."
-      : "문항 형식은 객관식 4지선다입니다. 서로 다른 보기 4개를 한 줄씩 ‘선택 ①: 내용’ 형태로 정확히 쓰고, 숫자만 쓰지 마십시오. 정답은 반드시 ‘선택 ①’·‘선택 ②’·‘선택 ③’·‘선택 ④’ 중 하나로 작성하십시오.";
+      : "문항 형식은 객관식 4지선다입니다. 서로 다른 보기 4개를 한 줄씩 ‘① 내용’ 형태로 정확히 쓰고, 숫자만 쓰지 마십시오. 정답은 반드시 ‘①번’·‘②번’·‘③번’·‘④번’ 중 하나로 작성하십시오.";
   const base = `당신은 교사의 쪽지시험 출제를 보조합니다. 최종 사용 전 교사가 반드시 정답과 해설을 검수합니다.
 과목: ${input.subject}
 단원: ${input.unit}
@@ -53,5 +53,5 @@ export function studentQuickQuizText(rawOutput) {
   if (!studentBlocks.length || studentBlocks.some(block => !/^문항\s*[:：]/m.test(block))) {
     throw new Error("학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용에서 문항 형식을 확인해 주세요.");
   }
-  return studentBlocks.map((block, index) => `${index + 1}번\n${block.replace(/^문항\s*[:：]\s*/m, "").replace(/^(\s*)([①②③④])\s+([-+]?\d+(?:\.\d+)?)\s*$/gm, "$1선택 $2: $3")}`).join("\n\n");
+  return studentBlocks.map((block, index) => `${index + 1}번\n${block.replace(/^문항\s*[:：]\s*/m, "").replace(/^(\s*)선택\s*([①②③④])\s*:\s*(?:선택\s*)?\2\s*:\s*/gm, "$1$2 ").replace(/^(\s*)선택\s*([①②③④])\s*:\s*/gm, "$1$2 ")}`).join("\n\n");
 }
