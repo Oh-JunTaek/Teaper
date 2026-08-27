@@ -15,6 +15,10 @@ enum ModelFileStore {
         let destination = folder.appendingPathComponent("\(profile.id).litertlm")
         try? FileManager.default.removeItem(at: destination)
         try FileManager.default.copyItem(at: sourceURL, to: destination)
+        // 모델은 개인 자료와 함께 iCloud·기기 백업에 자동 복사하지 않고, 기기 잠금 뒤에만 접근한다.
+        try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: destination.path)
+        var protectedDestination = destination
+        try? protectedDestination.setResourceValue(true, forKey: .isExcludedFromBackupKey)
         return destination
     }
     static func delete(profile: ModelProfile) throws { try? FileManager.default.removeItem(at: try modelURL(profile: profile)) }

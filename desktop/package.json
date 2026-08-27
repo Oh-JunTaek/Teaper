@@ -6,6 +6,7 @@
   "license": "UNLICENSED",
   "main": "src/shell.mjs",
   "private": true,
+  "eunmaOutputPlan": "basic",
   "type": "module",
   "scripts": {
     "start": "node src/launch-bridge.mjs",

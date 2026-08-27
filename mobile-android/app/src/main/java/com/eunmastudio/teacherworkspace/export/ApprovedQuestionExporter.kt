@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import com.eunmastudio.teacherworkspace.LocalQuestion
+import com.eunmastudio.teacherworkspace.OutputPlanPolicy
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -15,8 +16,8 @@ enum class QuestionExportType(val label: String, val extension: String, val mime
 }
 
 /**
- * 승인 문항을 앱의 cacheDir에만 생성한다. 외부 저장소 권한과 공유 폴더 저장을 사용하지 않으며,
- * 공유 대상 앱에는 FileProvider URI로 읽기 권한만 일시 부여한다.
+ * 승인 문항의 학생용 시험지를 앱 cacheDir에만 생성한다. 외부 저장소 권한과 공유 폴더 저장을 사용하지 않으며,
+ * 공유 대상 앱에는 FileProvider URI로 읽기 권한만 일시 부여한다. 검수 상태·정답·해설은 학생용 결과에 넣지 않는다.
  */
 class ApprovedQuestionExporter(private val context: Context) {
     fun export(question: LocalQuestion, type: QuestionExportType): File {
@@ -31,11 +32,9 @@ class ApprovedQuestionExporter(private val context: Context) {
 
     private fun writeDocx(question: LocalQuestion, file: File) {
         val documentParagraphs = buildList {
-            add("${question.title} · 검수 상태: ${question.reviewStatus}")
+            add(question.title)
             add("")
-            add(question.content)
-            add("")
-            add("본 문서는 EunmaStudio 문제 출제 워크스페이스에서 생성한 검수용 문항입니다. 교사의 최종 검수가 필요합니다.")
+            add(studentQuestionText(question.content))
         }.flatMap { it.lineSequence().toList() }
 
         ZipOutputStream(FileOutputStream(file)).use { zip ->
@@ -70,8 +69,7 @@ class ApprovedQuestionExporter(private val context: Context) {
 
     private fun writePdf(question: LocalQuestion, file: File) {
         val document = PdfDocument()
-        val title = "${question.title} · ${question.reviewStatus}"
-        val allLines = listOf(title, "") + question.content.lineSequence().toList() + listOf("", "교사 최종 검수용 문항")
+        val allLines = listOf(question.title, "") + studentQuestionText(question.content).lineSequence().toList()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
         val margin = 48f
         val pageWidth = 595
@@ -83,6 +81,7 @@ class ApprovedQuestionExporter(private val context: Context) {
 
         allLines.flatMap { wrapForPdf(it, paint, pageWidth - margin * 2) }.forEach { line ->
             if (y > pageHeight - margin) {
+                drawStudentWatermark(canvas, pageWidth, pageHeight)
                 document.finishPage(page)
                 pageNumber += 1
                 page = document.startPage(PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create())
@@ -92,6 +91,7 @@ class ApprovedQuestionExporter(private val context: Context) {
             canvas.drawText(line, margin, y, paint)
             y += 20f
         }
+        drawStudentWatermark(canvas, pageWidth, pageHeight)
         document.finishPage(page)
         FileOutputStream(file).use { document.writeTo(it) }
         document.close()
@@ -114,6 +114,24 @@ class ApprovedQuestionExporter(private val context: Context) {
             remaining = remaining.substring(splitAt).trimStart()
         }
         return lines
+    }
+
+    /** 생성 결과의 답·해설 구간은 학생용 출력 직전에 다시 한 번 제거한다. */
+    private fun studentQuestionText(content: String): String = content
+        .lineSequence()
+        .takeWhile { line ->
+            val normalized = line.trim().replace("*", "")
+            !normalized.startsWith("정답:") && !normalized.startsWith("해설:") &&
+                !normalized.startsWith("[정답]") && !normalized.startsWith("[해설]")
+        }
+        .joinToString("\n")
+        .trim()
+
+    /** 기본 플랜의 표기는 학생용 PDF의 오른쪽 아래 여백에만 놓아 문항과 배점을 가리지 않는다. */
+    private fun drawStudentWatermark(canvas: android.graphics.Canvas, pageWidth: Int, pageHeight: Int) {
+        if (!OutputPlanPolicy.shouldShowStudentWatermark(context)) return
+        val watermarkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 8f; color = android.graphics.Color.rgb(130, 130, 130); textAlign = Paint.Align.RIGHT }
+        canvas.drawText("EunmaStudio", pageWidth - 48f, pageHeight - 24f, watermarkPaint)
     }
 
     private fun safeFileStem(value: String): String = value

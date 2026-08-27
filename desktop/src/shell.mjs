@@ -19,6 +19,16 @@ let store;
 let mainWindow;
 const scheduleReminderTimers = new Map();
 
+/** 서명된 설치본의 패키지 메타데이터만 읽어 학생용 워터마크 플랜을 정한다. 실패 시 기본 플랜으로 안전하게 처리한다. */
+async function installedOutputPlan() {
+  try {
+    const packageMetadata = JSON.parse(await readFile(join(app.getAppPath(), "package.json"), "utf8"));
+    return packageMetadata.eunmaOutputPlan === "plus" ? "plus" : "basic";
+  } catch {
+    return "basic";
+  }
+}
+
 /** Windows 알림은 앱을 실행 중이고 교사가 허용한 일정 제목만 표시한다. 메모·자료·문항 원문은 알림에 넣지 않는다. */
 function syncScheduleReminders() {
   for (const timer of scheduleReminderTimers.values()) clearTimeout(timer);
@@ -261,8 +271,8 @@ function registerHandlers() {
     if (input.kind === "csv") { const result = await saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-answer") { const result = await saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
-    // 로컬 플랜은 서명 배포 환경 변수만 신뢰한다. 기본은 워터마크 표시, plus 서명 빌드만 제거한다.
-    if (input.kind === "print-question") { const plan = process.env.EUNMASTUDIO_LOCAL_PLAN === "plus" ? "plus" : "basic"; const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true, watermark: plan !== "plus" })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
+    // 서명된 설치본의 플랜 메타데이터만 신뢰한다. 기본은 워터마크 표시, plus 서명 빌드만 제거한다.
+    if (input.kind === "print-question") { const plan = await installedOutputPlan(); const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true, watermark: plan !== "plus" })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     if (input.kind === "print-answer") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     throw new Error("지원하지 않는 내보내기 형식입니다.");
   });

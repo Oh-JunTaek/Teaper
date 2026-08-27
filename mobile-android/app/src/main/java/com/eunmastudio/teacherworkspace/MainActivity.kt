@@ -981,11 +981,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("승인 문항 내보내기")
-            .setMessage("문서는 앱 전용 캐시에 생성한 뒤 선택한 앱으로만 공유합니다. 시험 보안과 최종 검수를 다시 확인해 주세요.")
+            .setTitle("승인 문항 학생용 내보내기")
+            .setMessage("학생용 문서에는 검수 상태·정답·해설을 넣지 않습니다. 문서는 앱 전용 캐시에 만든 뒤 선택한 앱에만 공유합니다.")
             .setNegativeButton("취소", null)
             .setNeutralButton("인쇄용 PDF") { _, _ -> exportAndShare(question, QuestionExportType.PDF) }
-            .setPositiveButton("시험지 DOCX") { _, _ -> exportAndShare(question, QuestionExportType.DOCX) }
+            .setPositiveButton("학생용 DOCX") { _, _ -> exportAndShare(question, QuestionExportType.DOCX) }
             .show()
     }
 

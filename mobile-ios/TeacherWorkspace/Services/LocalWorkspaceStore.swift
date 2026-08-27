@@ -13,6 +13,8 @@ final class LocalWorkspaceStore: ObservableObject {
         let folder = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!.appendingPathComponent("TeacherWorkspace", isDirectory: true)
         try? fileManager.createDirectory(at: folder, withIntermediateDirectories: true)
         fileURL = folder.appendingPathComponent("workspace.json")
+        // 문항·검수 기록은 기기 잠금 해제 뒤에만 읽고, OS 백업으로 자동 이전하지 않는다.
+        protectLocalFile(fileURL)
         load()
     }
 
@@ -59,6 +61,14 @@ final class LocalWorkspaceStore: ObservableObject {
         let snapshot = Snapshot(quickQuizzes: quickQuizzes, assessmentQuestions: assessmentQuestions)
         guard let data = try? JSONEncoder.workspace.encode(snapshot) else { return }
         try? data.write(to: fileURL, options: .atomic)
+        protectLocalFile(fileURL)
+    }
+
+    private func protectLocalFile(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        try? FileManager.default.setAttributes([.protectionKey: FileProtectionType.complete], ofItemAtPath: url.path)
+        var mutableURL = url
+        try? mutableURL.setResourceValue(true, forKey: .isExcludedFromBackupKey)
     }
 }
 
