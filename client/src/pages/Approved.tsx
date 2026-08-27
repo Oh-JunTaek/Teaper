@@ -1,94 +1,66 @@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { approvedQuickQuizBankItems } from "@/lib/quickQuizApprovedItems";
 import { createQuestionDocx, openQuestionPrintView } from "@/lib/questionExport";
 import type { ExportQuestion, ExportVisualSpec, QuestionDocumentKind } from "@/lib/questionExport";
 import { trpc } from "@/lib/trpc";
-import { Check, Download, FileDown, FileSpreadsheet, FileText, Printer, ShieldCheck, Sparkles } from "lucide-react";
-import { useState } from "react";
+import { CheckSquare, Download, FileDown, FileSpreadsheet, FileText, Printer, Search, ShieldCheck, Square } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import { toast } from "sonner";
 
-function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
+type SourceFilter = "all" | "regular" | "quick_quiz";
+type ApprovedBankItem = { key: string; source: "regular" | "quick_quiz"; createdAt: Date | string; title: string; context: string; exportQuestion: ExportQuestion };
 
+function downloadBlob(blob: Blob, name: string) { const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); }
+function dateLabel(value: Date | string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "날짜 확인 필요" : new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium" }).format(date); }
+function csvCell(value: unknown) { return `"${String(value ?? "").replace(/"/g, '""')}"`; }
+
+/** 일반 문항과 개별 승인 쪽지시험을 한 보관함에 모으되, 원래 출처는 항상 명확하게 보여 준다. */
 export default function Approved() {
-  const { data: questions, isLoading } = trpc.assessment.questions.list.useQuery({ status: "approved" });
+  const { data: questions, isLoading: questionsLoading } = trpc.assessment.questions.list.useQuery({ status: "approved" });
+  const quickQuizzes = trpc.assessment.quickQuiz.list.useQuery();
   const { data: plan } = trpc.assessment.plan.me.useQuery();
-  const { data: exportData, refetch } = trpc.assessment.questions.exportCsv.useQuery(undefined, { enabled: false });
   const { refetch: loadWorkbookQuestions } = trpc.assessment.questions.workbookExport.useQuery(undefined, { enabled: false });
   const [isExporting, setIsExporting] = useState(false);
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false);
-  const exportQuestions: ExportQuestion[] = (questions || []).map(question => ({ ...question, visualSpec: question.visualSpec as ExportVisualSpec | null }));
+  const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(() => new Set());
 
-  const requireQuestions = () => {
-    if (exportQuestions.length) return true;
-    toast.error("내보낼 승인 문항이 없습니다.");
-    return false;
-  };
+  const regularItems = useMemo<ApprovedBankItem[]>(() => (questions || []).map(question => ({ key: `regular-${question.id}`, source: "regular", createdAt: question.createdAt, title: question.questionText, context: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, exportQuestion: { ...question, visualSpec: question.visualSpec as ExportVisualSpec | null } })), [questions]);
+  const quickItems = useMemo<ApprovedBankItem[]>(() => approvedQuickQuizBankItems((quickQuizzes.data || []) as Parameters<typeof approvedQuickQuizBankItems>[0]).map(item => ({ key: item.key, source: "quick_quiz", createdAt: item.createdAt, title: item.exportQuestion.questionText, context: `${item.subject} · ${item.unit} · ${item.topic} · ${item.exportQuestion.questionType}`, exportQuestion: item.exportQuestion })), [quickQuizzes.data]);
+  const allItems = useMemo(() => [...regularItems, ...quickItems].sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime()), [regularItems, quickItems]);
+  const visibleItems = allItems.filter(item => (sourceFilter === "all" || item.source === sourceFilter) && `${item.title} ${item.context}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()));
+  const chosenItems = selectedKeys.size ? allItems.filter(item => selectedKeys.has(item.key)) : visibleItems;
+  const exportQuestions = chosenItems.map(item => item.exportQuestion);
+  const isLoading = questionsLoading || quickQuizzes.isLoading;
+  const allVisibleSelected = visibleItems.length > 0 && visibleItems.every(item => selectedKeys.has(item.key));
 
-  const downloadCsv = async () => {
-    const result = exportData ?? (await refetch()).data;
-    if (!result?.count) return toast.error("내보낼 승인 문항이 없습니다.");
-    downloadBlob(new Blob([`\ufeff${result.csv}`], { type: "text/csv;charset=utf-8" }), "승인-문항-목록.csv");
-    toast.success(`${result.count}개 승인 문항을 CSV로 내보냈습니다.`);
-  };
+  const requireQuestions = () => { if (exportQuestions.length) return true; toast.error("내보낼 승인 문항이 없습니다."); return false; };
+  const toggleItem = (key: string) => setSelectedKeys(current => { const next = new Set(current); next.has(key) ? next.delete(key) : next.add(key); return next; });
+  const toggleVisible = () => setSelectedKeys(current => { const next = new Set(current); visibleItems.forEach(item => allVisibleSelected ? next.delete(item.key) : next.add(item.key)); return next; });
+  const clearSelection = () => setSelectedKeys(new Set());
 
-  const downloadDocx = async (kind: QuestionDocumentKind) => {
+  const downloadCsv = () => {
     if (!requireQuestions()) return;
-    setIsExporting(true);
-    try {
-      const blob = await createQuestionDocx(exportQuestions, kind);
-      downloadBlob(blob, kind === "question-paper" ? "문항-시험지.docx" : "문항-정답-해설지.docx");
-      toast.success(kind === "question-paper" ? "시험지 DOCX를 만들었습니다." : "정답·해설지 DOCX를 만들었습니다.");
-    } catch {
-      toast.error("문서 파일을 만들지 못했습니다. 다시 시도해 주세요.");
-    } finally {
-      setIsExporting(false);
-    }
+    const csv = [["출처", "문항", "유형", "난이도", "정답", "해설", "출제 의도"], ...chosenItems.map(item => [item.source === "quick_quiz" ? "쪽지시험" : "일반 문항", item.exportQuestion.questionText, item.exportQuestion.questionType, item.exportQuestion.difficulty, item.exportQuestion.answer, item.exportQuestion.explanation, item.exportQuestion.intent])].map(row => row.map(csvCell).join(",")).join("\n");
+    downloadBlob(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }), "승인-문항-보관함.csv");
+    toast.success(`${chosenItems.length}개 승인 문항을 CSV로 내보냈습니다.`);
   };
-
-  const printPdf = (kind: QuestionDocumentKind) => {
-    if (!requireQuestions()) return;
-    if (!openQuestionPrintView(exportQuestions, kind)) return toast.error("인쇄 창을 열지 못했습니다. 브라우저 팝업 차단 설정을 확인해 주세요.");
-    toast.message("인쇄 창에서 프린터 또는 ‘PDF로 저장’을 선택해 주세요.");
-  };
-
-  const printWorkbook = async (kind: QuestionDocumentKind) => {
-    if (!plan?.canUseWorkbookExport) return setIsPlanDialogOpen(true);
-    setIsExporting(true);
-    try {
-      const result = (await loadWorkbookQuestions()).data as ExportQuestion[] | undefined;
-      if (!result?.length) return toast.error("내보낼 승인 문항이 없습니다.");
-      const workbookTitle = kind === "question-paper" ? "교사 문제집" : "교사 문제집 · 정답 및 해설";
-      if (!openQuestionPrintView(result.map(question => ({ ...question, visualSpec: question.visualSpec as ExportVisualSpec | null })), kind, { title: workbookTitle, subtitle: "승인 문항 · 출력 전 범위와 정답을 다시 확인해 주세요.", includeStudentFields: true })) return toast.error("문제집 인쇄 창을 열지 못했습니다. 브라우저 팝업 차단 설정을 확인해 주세요.");
-      toast.success("문제집 인쇄 창을 열었습니다. 프린터 또는 ‘PDF로 저장’을 선택해 주세요.");
-    } catch (error: any) {
-      if (error?.data?.code === "FORBIDDEN" || error?.message?.includes("교사 플러스")) setIsPlanDialogOpen(true);
-      else toast.error(error?.message || "문제집 출력 권한을 확인하지 못했습니다.");
-    } finally {
-      setIsExporting(false);
-    }
-  };
+  const downloadDocx = async (kind: QuestionDocumentKind) => { if (!requireQuestions()) return; setIsExporting(true); try { downloadBlob(await createQuestionDocx(exportQuestions, kind), kind === "question-paper" ? "승인-문항-시험지.docx" : "승인-문항-정답-해설지.docx"); toast.success(kind === "question-paper" ? "시험지 DOCX를 만들었습니다." : "정답·해설 DOCX를 만들었습니다."); } catch { toast.error("문서 파일을 만들지 못했습니다. 다시 시도해 주세요."); } finally { setIsExporting(false); } };
+  const printPdf = (kind: QuestionDocumentKind) => { if (!requireQuestions()) return; if (!openQuestionPrintView(exportQuestions, kind)) return toast.error("인쇄 창을 열지 못했습니다. 브라우저 팝업 차단 설정을 확인해 주세요."); toast.message("인쇄 창에서 프린터 또는 ‘PDF로 저장’을 선택해 주세요."); };
+  const printWorkbook = async () => { if (!plan?.canUseWorkbookExport) return setIsPlanDialogOpen(true); setIsExporting(true); try { const result = (await loadWorkbookQuestions()).data as ExportQuestion[] | undefined; if (!result?.length) return toast.error("일반 승인 문항이 없습니다."); if (!openQuestionPrintView(result.map(question => ({ ...question, visualSpec: question.visualSpec as ExportVisualSpec | null })), "question-paper", { title: "교사 문제집", subtitle: "일반 승인 문항 · 출력 전 범위와 정답을 다시 확인해 주세요.", includeStudentFields: true })) return toast.error("문제집 인쇄 창을 열지 못했습니다. 브라우저 팝업 차단 설정을 확인해 주세요."); toast.success("일반 문항 문제집 인쇄 창을 열었습니다."); } catch (error: any) { if (error?.data?.code === "FORBIDDEN" || error?.message?.includes("교사 플러스")) setIsPlanDialogOpen(true); else toast.error(error?.message || "문제집 출력 권한을 확인하지 못했습니다."); } finally { setIsExporting(false); } };
 
   return <div className="mx-auto max-w-6xl">
-    <Dialog open={isPlanDialogOpen} onOpenChange={setIsPlanDialogOpen}>
-      <DialogContent className="max-w-2xl overflow-hidden border-0 p-0">
-        <div className="bg-[#173B53] px-6 py-6 text-white"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#52B788] text-[#123144]"><Sparkles className="h-5 w-5" /></div><DialogHeader className="mt-4"><DialogTitle className="text-2xl text-white">문제집 출력을 더 편하게 준비하세요.</DialogTitle><DialogDescription className="mt-2 text-slate-200">교사 플러스는 승인 문항을 바로 인쇄 가능한 문제집 형태로 정리하는 출력 패키지입니다.</DialogDescription></DialogHeader></div>
-        <div className="space-y-5 px-6 py-5"><div className="grid gap-3 sm:grid-cols-2"><section className="rounded-2xl border border-slate-200 p-4"><p className="text-sm font-semibold text-[#183248]">교사 기본</p><p className="mt-1 text-xs text-slate-500">현재 사용 중인 기본 작업 환경</p><ul className="mt-4 space-y-2 text-sm text-slate-600"><li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 text-[#15856B]" />문항 생성·검수·자료 관리</li><li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 text-[#15856B]" />DOCX·기본 PDF·CSV 내보내기</li></ul></section><section className="rounded-2xl border-2 border-[#D9B75F] bg-[#FFFCF3] p-4 shadow-sm"><div className="flex items-center justify-between gap-2"><p className="text-sm font-semibold text-[#694100]">교사 플러스</p><Badge className="bg-[#F6E5B8] text-[#8A5B08] hover:bg-[#F6E5B8]">파일럿 제안</Badge></div><p className="mt-1 text-2xl font-bold text-[#694100]">연 10,000원</p><p className="mt-1 text-xs text-[#7A5B21]">현재는 가격·혜택 검증 단계이며 결제는 아직 연결하지 않았습니다.</p><ul className="mt-4 space-y-2 text-sm text-[#5E481D]"><li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 text-[#A66C08]" />문제집 표지와 학생 정보란</li><li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 text-[#A66C08]" />교사용 정답·해설 PDF 조판</li><li className="flex gap-2"><Check className="mt-0.5 h-4 w-4 text-[#A66C08]" />승인 문항의 인쇄 준비 흐름</li></ul></section></div><div className="rounded-xl bg-[#F2FBF6] p-3 text-xs leading-5 text-[#386554]">플랜 전환·결제·영수증 기능은 정식 출시 정책이 확정된 뒤에만 연결됩니다. 현재 파일럿에서는 관리자 권한으로 플랜을 테스트할 수 있습니다.</div></div>
-        <DialogFooter className="border-t border-slate-100 px-6 py-4"><Button variant="outline" onClick={() => setIsPlanDialogOpen(false)}>나중에 보기</Button><Button className="bg-[#173B53] hover:bg-[#102C40]" onClick={() => toast.message("교사 플러스는 현재 파일럿 검증 중입니다. 결제 연결 전까지는 관리자 플랜 설정으로 테스트할 수 있습니다.")}>플러스 혜택 확인</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-    <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-      <div><p className="text-sm font-semibold text-[#15856B]">APPROVED ITEM BANK</p><h1 className="mt-1 text-3xl font-bold text-[#183248]">승인 문항</h1><p className="mt-2 text-slate-500">최종 승인된 문항과 생성 모델·프롬프트 버전을 관리합니다.</p></div>
-      <AlertDialog><AlertDialogTrigger asChild><Button className="h-11 rounded-xl bg-[#173B53] hover:bg-[#102C40]"><Download className="mr-2 h-4 w-4" />문서·PDF 내보내기</Button></AlertDialogTrigger><AlertDialogContent className="max-w-lg"><AlertDialogHeader><AlertDialogTitle>승인 문항 내보내기</AlertDialogTitle><AlertDialogDescription className="leading-6">내보낸 파일에는 시험 문항과 정답·해설이 포함될 수 있습니다. 학교의 시험 보안 지침에 맞는 저장 위치와 출력 장치를 사용해 주세요.</AlertDialogDescription></AlertDialogHeader><div className="space-y-2 rounded-lg border border-[#B9DCCF] bg-[#F2FBF6] p-3 text-sm text-slate-700"><div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#15856B]" /><p><strong>문서 호환:</strong> DOCX는 Word와 최신 한글에서 열 수 있습니다. 한글 전용 형식이 필요하면 한글에서 열어 HWPX로 다시 저장해 주세요.</p></div><p className="pl-6 text-xs text-slate-500">구형 HWP 직접 출력은 지원하지 않습니다. 그래프·표는 최신 Word 또는 한글에서 열어 최종 모양을 확인해 주세요.</p></div><div className="grid gap-2 sm:grid-cols-2"><AlertDialogAction asChild><Button variant="outline" disabled={isExporting} onClick={() => downloadDocx("question-paper")} className="h-auto justify-start border-slate-200 bg-white py-3 text-left hover:bg-slate-50"><FileText className="mr-3 h-5 w-5 text-[#2D6496]" /><span><strong className="block">시험지 DOCX</strong><small className="text-slate-500">문항·보기·그래프·표</small></span></Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" disabled={isExporting} onClick={() => downloadDocx("answer-sheet")} className="h-auto justify-start border-slate-200 bg-white py-3 text-left hover:bg-slate-50"><FileText className="mr-3 h-5 w-5 text-[#15856B]" /><span><strong className="block">정답·해설 DOCX</strong><small className="text-slate-500">문항·정답·해설·의도</small></span></Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={() => printPdf("question-paper")} className="h-auto justify-start border-slate-200 bg-white py-3 text-left hover:bg-slate-50"><Printer className="mr-3 h-5 w-5 text-[#B56716]" /><span><strong className="block">시험지 PDF</strong><small className="text-slate-500">인쇄 창에서 PDF 저장</small></span></Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={() => printPdf("answer-sheet")} className="h-auto justify-start border-slate-200 bg-white py-3 text-left hover:bg-slate-50"><Printer className="mr-3 h-5 w-5 text-[#7B56B3]" /><span><strong className="block">정답·해설 PDF</strong><small className="text-slate-500">인쇄 창에서 PDF 저장</small></span></Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={downloadCsv} className="h-auto justify-start border-slate-200 bg-white py-3 text-left hover:bg-slate-50 sm:col-span-2"><FileSpreadsheet className="mr-3 h-5 w-5 text-[#15856B]" /><span><strong className="block">CSV 목록</strong><small className="text-slate-500">문항 은행 정리용 표 형식</small></span></Button></AlertDialogAction></div><section className="mt-3 rounded-xl border border-[#D9C18C] bg-[#FFFAEC] p-3"><div className="flex items-start gap-2"><div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[#F6E5B8] text-[#A66C08]"><Sparkles className="h-4 w-4" /></div><div><div className="flex items-center gap-2"><p className="font-semibold text-[#694100]">문제집 출력 패키지</p><Badge className="bg-[#F6E5B8] text-[#8A5B08] hover:bg-[#F6E5B8]">{plan?.label || "플랜 확인 중"}</Badge></div><p className="mt-1 text-xs leading-5 text-[#7A5B21]">표지·학생 정보란·교사용 정답 해설을 갖춘 문제집 조판을 인쇄 창에서 PDF로 저장합니다.</p></div></div><div className="mt-3 grid gap-2 sm:grid-cols-2"><Button disabled={isExporting} onClick={() => printWorkbook("question-paper")} className="bg-[#9A6711] hover:bg-[#7D510A]"><Printer className="mr-2 h-4 w-4" />문제집 PDF</Button><Button disabled={isExporting} onClick={() => printWorkbook("answer-sheet")} variant="outline" className="border-[#D9C18C] bg-white text-[#7A4E05] hover:bg-[#FFF6DD]"><FileText className="mr-2 h-4 w-4" />교사용 해설 PDF</Button></div>{!plan?.canUseWorkbookExport ? <button type="button" onClick={() => setIsPlanDialogOpen(true)} className="mt-2 text-left text-xs font-medium text-[#8A5B08] underline decoration-[#D9B75F] underline-offset-2">교사 플러스 혜택과 파일럿 가격 보기</button> : null}</section><AlertDialogFooter><AlertDialogCancel>취소</AlertDialogCancel></AlertDialogFooter></AlertDialogContent></AlertDialog>
-    </div>
-    <section className="mt-7 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="overflow-x-auto"><table className="w-full min-w-[850px] text-left text-sm"><thead className="bg-slate-50 text-xs text-slate-500"><tr>{["문항", "유형·난이도", "정답", "출제 의도", "생성 이력"].map(item => <th key={item} className="px-5 py-4 font-semibold">{item}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{isLoading ? <tr><td colSpan={5} className="px-5 py-10 text-center text-slate-400">승인 문항을 불러오는 중입니다.</td></tr> : questions?.length ? questions.map(item => <tr key={item.id} className="align-top"><td className="max-w-md px-5 py-4"><p className="line-clamp-3 font-medium leading-6 text-[#183248]">{item.questionText}</p><span className="mt-2 inline-block text-xs text-slate-400">문항 #{item.id} · {new Date(item.createdAt).toLocaleDateString("ko-KR")}</span></td><td className="px-5 py-4"><Badge variant="outline">{item.questionType}</Badge><p className="mt-2 text-xs text-slate-500">난이도 {item.difficulty} · {item.points}점</p></td><td className="px-5 py-4 font-semibold text-[#15856B]">{item.answer}</td><td className="max-w-xs px-5 py-4 leading-5 text-slate-600">{item.intent}</td><td className="px-5 py-4 text-xs text-slate-500"><p>{item.model}</p><p className="mt-1">{item.promptVersion}</p></td></tr>) : <tr><td colSpan={5} className="px-5 py-14 text-center"><FileDown className="mx-auto h-8 w-8 text-slate-300" /><p className="mt-3 font-medium text-slate-600">승인된 문항이 없습니다.</p><p className="mt-1 text-sm text-slate-400">검수함에서 문항을 승인하면 이 목록에서 관리할 수 있습니다.</p></td></tr>}</tbody></table></div></section>
+    <DialogPlaceholder open={isPlanDialogOpen} onOpenChange={setIsPlanDialogOpen} />
+    <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end"><div><p className="text-sm font-semibold text-[#15856B]">APPROVED ITEM BANK</p><h1 className="mt-1 text-3xl font-bold text-[#183248]">승인 문항 보관함</h1><p className="mt-2 text-slate-500">일반 문항과 쪽지시험의 <strong>개별 승인 문항</strong>을 함께 찾아 선택·출력합니다.</p></div><AlertDialog><AlertDialogTrigger asChild><Button className="h-11 rounded-xl bg-[#173B53] hover:bg-[#102C40]"><Download className="mr-2 h-4 w-4" />선택 문항 내보내기{selectedKeys.size ? ` (${chosenItems.length})` : ""}</Button></AlertDialogTrigger><AlertDialogContent className="max-w-lg"><AlertDialogHeader><AlertDialogTitle>승인 문항 내보내기</AlertDialogTitle><AlertDialogDescription className="leading-6">선택한 문항이 있으면 선택 문항만, 선택하지 않으면 현재 목록의 문항을 내보냅니다. 시험 보안 지침에 맞는 저장 위치와 출력 장치를 사용해 주세요.</AlertDialogDescription></AlertDialogHeader><div className="rounded-lg border border-[#B9DCCF] bg-[#F2FBF6] p-3 text-sm text-slate-700"><div className="flex gap-2"><ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#15856B]" /><p><strong>{exportQuestions.length}문항 준비됨.</strong> 시험지에는 문항·보기만, 정답·해설지에는 교사용 정답과 해설을 포함합니다.</p></div></div><div className="grid gap-2 sm:grid-cols-2"><AlertDialogAction asChild><Button variant="outline" disabled={isExporting} onClick={() => downloadDocx("question-paper")}><FileText className="mr-2 h-4 w-4 text-[#2D6496]" />시험지 DOCX</Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" disabled={isExporting} onClick={() => downloadDocx("answer-sheet")}><FileText className="mr-2 h-4 w-4 text-[#15856B]" />정답·해설 DOCX</Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={() => printPdf("question-paper")}><Printer className="mr-2 h-4 w-4 text-[#B56716]" />시험지 PDF</Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={() => printPdf("answer-sheet")}><Printer className="mr-2 h-4 w-4 text-[#7B56B3]" />정답·해설 PDF</Button></AlertDialogAction><AlertDialogAction asChild><Button variant="outline" onClick={downloadCsv} className="sm:col-span-2"><FileSpreadsheet className="mr-2 h-4 w-4 text-[#15856B]" />CSV 목록</Button></AlertDialogAction></div><div className="border-t border-slate-100 pt-3"><Button disabled={isExporting} onClick={printWorkbook} className="w-full bg-[#9A6711] hover:bg-[#7D510A]"><Printer className="mr-2 h-4 w-4" />일반 문항 문제집 PDF</Button><p className="mt-2 text-xs text-slate-500">문제집 조판은 현재 일반 문항만 지원합니다. 쪽지시험은 위의 선택 문항 출력으로 준비할 수 있습니다.</p></div><AlertDialogFooter><AlertDialogCancel>취소</AlertDialogCancel></AlertDialogFooter></AlertDialogContent></AlertDialog></div>
+    <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="flex flex-wrap gap-2"><FilterButton active={sourceFilter === "all"} onClick={() => setSourceFilter("all")} label={`전체 ${allItems.length}`} /><FilterButton active={sourceFilter === "regular"} onClick={() => setSourceFilter("regular")} label={`일반 문항 ${regularItems.length}`} /><FilterButton active={sourceFilter === "quick_quiz"} onClick={() => setSourceFilter("quick_quiz")} label={`쪽지시험 ${quickItems.length}`} /></div><div className="relative w-full sm:w-72"><Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" /><Input value={search} onChange={event => setSearch(event.target.value)} placeholder="문항·단원·개념 검색" className="pl-9" /></div></div>{visibleItems.length ? <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3 text-sm"><button type="button" onClick={toggleVisible} className="inline-flex items-center gap-2 font-medium text-[#183248] hover:text-[#15856B]">{allVisibleSelected ? <CheckSquare className="h-4 w-4 text-[#15856B]" /> : <Square className="h-4 w-4" />}{allVisibleSelected ? "현재 목록 선택 해제" : "현재 목록 전체 선택"}</button>{selectedKeys.size ? <button type="button" onClick={clearSelection} className="text-xs text-slate-500 underline underline-offset-2">선택 초기화 ({selectedKeys.size})</button> : <span className="text-xs text-slate-500">필요한 문항만 선택하면 선택 항목만 내보냅니다.</span>}</div> : null}</section>
+    <section className="mt-4 grid gap-3 md:grid-cols-2">{isLoading ? <div className="col-span-full rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-400">승인 문항을 불러오는 중입니다.</div> : visibleItems.length ? visibleItems.map(item => <article key={item.key} className={`rounded-2xl border bg-white p-5 shadow-sm transition-colors ${selectedKeys.has(item.key) ? "border-[#65B99B] ring-1 ring-[#B9DCCF]" : "border-slate-200"}`}><div className="flex items-start justify-between gap-3"><div className="flex flex-wrap gap-2"><Badge className={item.source === "quick_quiz" ? "bg-[#FFF2D8] text-[#B56716] hover:bg-[#FFF2D8]" : "bg-[#E6F4EE] text-[#15856B] hover:bg-[#E6F4EE]"}>{item.source === "quick_quiz" ? "쪽지시험" : "일반 문항"}</Badge><Badge variant="outline">{item.exportQuestion.questionType}</Badge></div><label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-500"><input type="checkbox" checked={selectedKeys.has(item.key)} onChange={() => toggleItem(item.key)} />선택</label></div><p className="mt-4 line-clamp-3 font-semibold leading-6 text-[#183248]">{item.title}</p><p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">{item.context}</p><div className="mt-4 flex items-center justify-between gap-3 border-t border-slate-100 pt-3"><span className="text-xs text-slate-400">승인 문항 · {dateLabel(item.createdAt)}</span>{item.source === "quick_quiz" ? <Link href="/quick-quiz" className="text-xs font-medium text-[#B56716] hover:underline">쪽지시험 검수 열기</Link> : <Link href="/review" className="text-xs font-medium text-[#15856B] hover:underline">검수함 열기</Link>}</div></article>) : <div className="col-span-full rounded-2xl border border-dashed border-[#B9DCCF] bg-[#F7FCF9] p-12 text-center"><FileDown className="mx-auto h-8 w-8 text-[#15856B]" /><p className="mt-3 font-medium text-[#183248]">표시할 승인 문항이 없습니다.</p><p className="mt-1 text-sm text-slate-500">일반 문항 또는 쪽지시험에서 문항을 승인하면 이 보관함에서 함께 관리할 수 있습니다.</p></div>}</section>
   </div>;
 }
+
+function FilterButton({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) { return <Button type="button" size="sm" variant={active ? "default" : "outline"} onClick={onClick} className={active ? "bg-[#173B53] hover:bg-[#102C40]" : "bg-white"}>{label}</Button>; }
+function DialogPlaceholder({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) { return <AlertDialog open={open} onOpenChange={onOpenChange}><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>교사 플러스 문제집 출력</AlertDialogTitle><AlertDialogDescription>현재 파일럿 단계에서는 일반 승인 문항 문제집 출력 권한을 확인 중입니다. 결제는 연결하지 않았습니다.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogAction onClick={() => onOpenChange(false)}>확인</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>; }

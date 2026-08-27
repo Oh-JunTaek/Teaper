@@ -35,7 +35,10 @@ class ProfileActivity : AppCompatActivity() {
                 addView(TextView(this@ProfileActivity).apply { text = "나의 작업 현황"; textSize = 27f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) })
                 addView(TextView(this@ProfileActivity).apply { text = "이 기기에 저장된 작업을 간단히 확인합니다."; textSize = 14f; setTextColor(Color.rgb(190, 207, 190)); setPadding(0, dp(8), 0, dp(16)) })
                 val questions = store.questions()
-                val summary = listOf("등록 자료" to store.sources().size, "문항" to questions.size, "승인 문항" to questions.count { it.reviewStatus == "승인" }, "메모" to store.notes().size, "쪽지시험" to store.quickQuizzes().size, "대화" to store.chatThreads().size)
+                val quickQuizzes = store.quickQuizzes()
+                // 개인 작업 현황도 쪽지시험 세트가 아닌 개별 승인 문항을 포함한 같은 기준으로 계산한다.
+                val approvedCount = questions.count { it.reviewStatus == "승인" } + quickQuizzes.sumOf { quiz -> quiz.questionReviewStatuses.count { it == "승인" } }
+                val summary = listOf("등록 자료" to store.sources().size, "문항" to questions.size, "승인 문항" to approvedCount, "메모" to store.notes().size, "쪽지시험" to quickQuizzes.size, "대화" to store.chatThreads().size)
                 summary.chunked(2).forEach { row ->
                     addView(LinearLayout(this@ProfileActivity).apply {
                         orientation = LinearLayout.HORIZONTAL

@@ -224,6 +224,7 @@ class MainActivity : AppCompatActivity() {
                 startActivity(Intent(this@MainActivity, ScheduleActivity::class.java))
             },
             WorkCardItem("review", "검수함", "근거 대조·승인 문항 내보내기", R.drawable.ic_workspace_review, Color.rgb(238, 177, 77)) { showReviewDialog() },
+            WorkCardItem("approved", "승인 문항", "일반 문항·쪽지시험 보관함", R.drawable.ic_workspace_review, Color.rgb(57, 161, 122)) { showApprovedItemBankDialog() },
             WorkCardItem("model", "모델 관리", "Gemma 4 E2B 상태·설치·라이선스", R.drawable.ic_workspace_model, Color.rgb(151, 112, 230)) {
                 startActivity(Intent(this@MainActivity, ModelManagerActivity::class.java))
             },
@@ -546,8 +547,10 @@ class MainActivity : AppCompatActivity() {
         val questions = store.questions()
         val notes = store.notes()
         val quickQuizzes = store.quickQuizzes()
+        // 승인 수는 일반 문항뿐 아니라 쪽지시험 안에서 교사가 개별 승인한 문항까지 합산한다.
+        val approvedQuickQuestionCount = quickQuizzes.sumOf { quiz -> quiz.questionReviewStatuses.count { it == "승인" } }
         workspaceSummary.text = "등록 자료 ${sources.size}건 · 문항 ${questions.size}건 · 메모 ${notes.size}건 · 쪽지시험 ${quickQuizzes.size}건\n" +
-            "승인 ${questions.count { it.reviewStatus == "승인" }}건\n" +
+            "승인 ${questions.count { it.reviewStatus == "승인" } + approvedQuickQuestionCount}건\n" +
             "자료·문항은 앱 전용 저장소에 보관되고 자동 백업하지 않습니다."
     }
 
@@ -844,6 +847,30 @@ class MainActivity : AppCompatActivity() {
             message = "자료와 문항을 대조하고, 최종 판단은 교사가 확인합니다.",
             content = ScrollView(this).apply { addView(container) },
         )
+    }
+
+    /** 일반 문항과 세트 안에서 개별 승인한 쪽지시험 문항을 한 보관함에 모아, 원래 검수 화면으로 다시 이동할 수 있게 한다. */
+    private fun showApprovedItemBankDialog() {
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 4, 0, 0) }
+        val approvedQuestions = store.questions().filter { it.reviewStatus == "승인" }.sortedByDescending { it.createdAt }
+        val approvedQuickItems = store.quickQuizzes().flatMap { quiz ->
+            quiz.content.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
+                .mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } == "승인") Triple(quiz, index, block) else null }
+        }
+        container.addView(text("일반 문항 ${approvedQuestions.size}개 · 쪽지시험 ${approvedQuickItems.size}개", 14f, Color.rgb(188, 209, 193)).apply { setPadding(4, 4, 4, 12) })
+        if (approvedQuestions.isNotEmpty()) {
+            container.addView(text("일반 승인 문항", 16f, Color.WHITE).apply { setPadding(4, 8, 4, 6) })
+            approvedQuestions.forEach { question -> container.addView(studioButton(question.title).apply { setOnClickListener { showQuestionDetailDialog(question) } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 }) }
+        }
+        if (approvedQuickItems.isNotEmpty()) {
+            container.addView(text("승인 쪽지시험 문항", 16f, Color.WHITE).apply { setPadding(4, 14, 4, 6) })
+            approvedQuickItems.forEach { (quiz, index, block) ->
+                val preview = block.replace(Regex("(?m)^문항\\s*[:：]\\s*"), "").lineSequence().firstOrNull().orEmpty()
+                container.addView(studioButton("${quiz.topic} · ${index + 1}번\n${preview.take(90)}").apply { isAllCaps = false; setOnClickListener { startActivity(Intent(this@MainActivity, QuickQuizActivity::class.java)); status.text = "쪽지시험 관리에서 승인 문항을 확인할 수 있습니다." } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
+            }
+        }
+        if (approvedQuestions.isEmpty() && approvedQuickItems.isEmpty()) container.addView(text("아직 승인 문항이 없습니다. 검수함 또는 쪽지시험에서 교사가 문항을 승인하면 이곳에 모입니다.", 15f, Color.rgb(192, 207, 193)).apply { setPadding(4, 8, 4, 8) })
+        showStudioDialog(title = "승인 문항 보관함", message = "일반 문항과 개별 승인 쪽지시험 문항을 구분해 보여 줍니다. 실제 시험 사용 전에는 정답·범위·자료를 다시 확인하세요.", content = ScrollView(this).apply { addView(container) })
     }
 
     private fun showQuestionDetailDialog(question: LocalQuestion) {
