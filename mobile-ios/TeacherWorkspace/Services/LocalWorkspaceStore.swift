@@ -28,6 +28,14 @@ final class LocalWorkspaceStore: ObservableObject {
         persist()
     }
 
+    /// 배점은 해당 쪽지시험의 한 문항에만 저장하며, 범위·소수 자릿수는 화면과 저장소 양쪽에서 확인한다.
+    func updateQuickQuizPoints(setID: UUID, questionIndex: Int, points: Double) {
+        guard points >= 0, points <= 100, (points * 10).rounded() == points * 10,
+              let setIndex = quickQuizzes.firstIndex(where: { $0.id == setID }), quickQuizzes[setIndex].questions.indices.contains(questionIndex) else { return }
+        quickQuizzes[setIndex].questions[questionIndex].points = points
+        persist()
+    }
+
     func deleteQuickQuiz(_ id: UUID) { quickQuizzes.removeAll { $0.id == id }; persist() }
 
     var dashboard: WorkspaceDashboardStats {

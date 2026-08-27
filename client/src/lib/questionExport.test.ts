@@ -40,4 +40,17 @@ describe("question document export", () => {
     expect(document.write).toHaveBeenCalledWith(expect.stringContaining("자료의 평균은 9이다."));
     expect(print).toHaveBeenCalledOnce();
   });
+
+  it("prints a teacher-selected point value without gray question metadata", () => {
+    const print = vi.fn();
+    const document = { write: vi.fn(), close: vi.fn() };
+    const popup = { document, focus: vi.fn(), print };
+    vi.stubGlobal("window", { open: vi.fn(() => popup), setTimeout: (callback: () => void) => { callback(); return 0; } });
+
+    expect(openQuestionPrintView([sampleQuestion], "question-paper", undefined, { includePoints: true })).toBe(true);
+    const html = document.write.mock.calls[0][0] as string;
+    expect(html).toContain("［3점］");
+    expect(html).not.toContain("난이도 중");
+    expect(html).not.toContain("자료 분석형 ·");
+  });
 });

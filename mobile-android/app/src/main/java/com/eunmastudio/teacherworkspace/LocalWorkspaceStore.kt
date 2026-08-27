@@ -87,6 +87,7 @@ data class LocalQuickQuiz(
     val promptVersion: String,
     val reviewStatus: String = "검수 대기",
     val questionReviewStatuses: List<String> = emptyList(),
+    val questionPoints: List<Double?> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
 )
@@ -129,6 +130,11 @@ class LocalWorkspaceStore(context: Context) {
     /** 누락된 이전 세트도 승인으로 오인하지 않도록 문항별 상태를 모두 검수 대기로 읽는다. */
     private fun normalizedQuickQuizQuestionStatuses(values: List<String>, questionCount: Int): List<String> = List(questionCount.coerceAtLeast(1)) { index ->
         normalizedQuickQuizReviewStatus(values.getOrElse(index) { "검수 대기" })
+    }
+
+    /** 기존 쪽지시험의 배점 누락은 0점으로 추정하지 않고, 교사가 아직 정하지 않은 null로 보관한다. */
+    private fun normalizedQuickQuizQuestionPoints(values: List<Double?>, questionCount: Int): List<Double?> = List(questionCount.coerceAtLeast(1)) { index ->
+        values.getOrNull(index)?.takeIf { point -> point in 0.0..100.0 && kotlin.math.round(point * 10.0) == point * 10.0 }
     }
 
     /** 세트 상태는 문항별 결과 안내용 요약이다. 학생용 공유 권한은 각 문항의 승인 여부만 사용한다. */
@@ -214,6 +220,7 @@ class LocalWorkspaceStore(context: Context) {
                 promptVersion = item.getString("promptVersion"),
                 reviewStatus = normalizedQuickQuizReviewStatus(item.optString("reviewStatus", "검수 대기")),
                 questionReviewStatuses = normalizedQuickQuizQuestionStatuses(item.optJSONArray("questionReviewStatuses")?.toStringList() ?: emptyList(), item.getInt("questionCount")),
+                questionPoints = normalizedQuickQuizQuestionPoints(item.optJSONArray("questionPoints")?.let { points -> List(points.length()) { index -> if (points.isNull(index)) null else points.optDouble(index).takeIf { it in 0.0..100.0 && kotlin.math.round(it * 10.0) == it * 10.0 } } } ?: emptyList(), item.getInt("questionCount")),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
             )
@@ -275,7 +282,7 @@ class LocalWorkspaceStore(context: Context) {
 
     /** 생성 결과를 문항별 ‘검수 대기’부터 시작하도록 정리해 승인 전 사용을 막는다. */
     fun saveQuickQuiz(quiz: LocalQuickQuiz) {
-        val normalized = quiz.copy(questionReviewStatuses = normalizedQuickQuizQuestionStatuses(quiz.questionReviewStatuses, quiz.questionCount)).let { item -> item.copy(reviewStatus = quickQuizReviewSummary(item)) }
+        val normalized = quiz.copy(questionReviewStatuses = normalizedQuickQuizQuestionStatuses(quiz.questionReviewStatuses, quiz.questionCount), questionPoints = normalizedQuickQuizQuestionPoints(quiz.questionPoints, quiz.questionCount)).let { item -> item.copy(reviewStatus = quickQuizReviewSummary(item)) }
         check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == normalized.id } + normalized)) { "쪽지시험을 이 기기에 저장하지 못했습니다." }
     }
 
@@ -294,6 +301,18 @@ class LocalWorkspaceStore(context: Context) {
                 quiz.copy(questionReviewStatuses = states, updatedAt = System.currentTimeMillis()).let { item -> item.copy(reviewStatus = quickQuizReviewSummary(item)) }
             }
         })) { "쪽지시험 문항 검수 상태를 저장하지 못했습니다." }
+    }
+
+    /** 교사만 문항별 배점을 바꾸며, 상태 배열과 다른 문항의 배점은 그대로 둔다. */
+    fun updateQuickQuizQuestionPoints(quizId: String, questionIndex: Int, points: Double) {
+        require(points in 0.0..100.0 && kotlin.math.round(points * 10.0) == points * 10.0) { "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요." }
+        check(writeQuickQuizzes(quickQuizzes().map { quiz ->
+            if (quiz.id != quizId || questionIndex !in 0 until quiz.questionCount.coerceAtLeast(1)) quiz else {
+                val values = normalizedQuickQuizQuestionPoints(quiz.questionPoints, quiz.questionCount).toMutableList()
+                values[questionIndex] = points
+                quiz.copy(questionPoints = values, updatedAt = System.currentTimeMillis())
+            }
+        })) { "쪽지시험 문항 배점을 저장하지 못했습니다." }
     }
 
     fun deleteQuickQuiz(quizId: String) {
@@ -481,7 +500,7 @@ class LocalWorkspaceStore(context: Context) {
             array.put(JSONObject().apply {
                 put("id", item.id); put("subject", item.subject); put("unit", item.unit); put("topic", item.topic)
                 put("difficulty", item.difficulty); put("questionFormat", normalizedQuickQuizFormat(item.questionFormat)); put("questionCount", item.questionCount); put("content", item.content)
-                put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus); put("questionReviewStatuses", JSONArray(normalizedQuickQuizQuestionStatuses(item.questionReviewStatuses, item.questionCount)))
+                put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus); put("questionReviewStatuses", JSONArray(normalizedQuickQuizQuestionStatuses(item.questionReviewStatuses, item.questionCount))); put("questionPoints", JSONArray(normalizedQuickQuizQuestionPoints(item.questionPoints, item.questionCount)))
                 put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
             })
         }

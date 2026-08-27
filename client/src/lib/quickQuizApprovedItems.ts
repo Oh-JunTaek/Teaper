@@ -1,6 +1,6 @@
 import type { ExportQuestion } from "./questionExport";
 
-export type QuickQuizQuestion = { questionText: string; choices?: string[]; answer: string; explanation: string; concept?: string };
+export type QuickQuizQuestion = { questionText: string; choices?: string[]; answer: string; explanation: string; concept?: string; points?: number };
 export type QuickQuizForApprovedBank = { id: number; subject: string; unit: string; topic: string; difficulty: string; questionFormat: string; createdAt: Date | string; questions: QuickQuizQuestion[]; questionReviewStates?: Array<string | null> | null };
 
 export type QuickQuizApprovedBankItem = {
@@ -34,8 +34,8 @@ export function approvedQuickQuizBankItems(quizzes: QuickQuizForApprovedBank[]):
         explanation: question.explanation,
         intent: question.concept || `${quiz.topic} 개념 확인`,
         difficulty: quiz.difficulty,
-        points: 1,
-        questionType: quiz.questionFormat === "multiple_choice" ? "객관식 4지선다" : quiz.questionFormat === "short_answer" ? "주관식" : "O/X",
+        points: question.points ?? 0,
+        questionType: quiz.questionFormat === "multiple_choice" ? "객관식" : quiz.questionFormat === "short_answer" ? "주관식" : "O/X",
       },
     }];
   }));

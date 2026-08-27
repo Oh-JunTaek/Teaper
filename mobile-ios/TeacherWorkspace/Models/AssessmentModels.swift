@@ -25,6 +25,8 @@ struct QuickQuizQuestion: Codable, Identifiable, Equatable {
     var answer: String
     var explanation: String
     var concept: String
+    /// 배점은 교사가 검수 후 정하며, nil은 아직 학생용 출력에 표기하지 않는다는 뜻이다.
+    var points: Double? = nil
 }
 
 struct QuickQuizSet: Codable, Identifiable, Equatable {

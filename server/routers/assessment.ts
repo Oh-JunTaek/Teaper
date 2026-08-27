@@ -54,6 +54,7 @@ import {
   setReferenceQuestionSelection,
   updateMaterialExtraction,
   updateAiProviderVerification,
+  updateQuickQuizQuestionPoints,
   updateTeacherNote,
   updateTeacherSchedule,
   updateReferenceQuestion,
@@ -77,6 +78,8 @@ import { hasPlusPlan, membershipPlanSummary } from "../services/membershipPlan";
 const materialTypes = ["curriculum", "textbook", "guideline", "teaching", "other"] as const;
 const statuses = ["pending_review", "approved", "revised", "rejected", "validation_hold"] as const;
 const base64File = z.string().min(8).max(14_000_000);
+// 교사 입력 배점은 0~100점과 소수 첫째 자리까지만 허용해 출력 형식을 안정적으로 유지한다.
+const teacherPoints = z.number().min(0).max(100).refine(value => Math.round(value * 10) === value * 10, "배점은 소수 첫째 자리까지 입력해 주세요.");
 
 /** 업로드 전에 허용 파일 형식과 필수 파일명을 확인해 자료 처리 범위를 PDF·이미지로 제한한다. */
 function ensureFile(input: { base64: string; fileName: string; mimeType: string }) {
@@ -321,6 +324,12 @@ export const assessmentRouter = router({
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험 문항을 찾을 수 없습니다." });
       return { success: true, ...updated };
     }),
+    // 문항별 배점은 생성 난이도와 별개로 교사가 최종 검수 중 확정한다.
+    updateQuestionPoints: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), points: teacherPoints })).mutation(async ({ ctx, input }) => {
+      const questions = await updateQuickQuizQuestionPoints({ ...input, ownerId: ctx.user.id });
+      if (!questions) throw new TRPCError({ code: "NOT_FOUND", message: "배점을 정할 쪽지시험 문항을 찾을 수 없습니다." });
+      return { success: true, questions };
+    }),
   }),
 
   references: router({
@@ -442,7 +451,7 @@ export const assessmentRouter = router({
     }),
     review: protectedProcedure.input(z.object({
       id: z.number().int().positive(), action: z.enum(["approved", "revised", "rejected"]), reason: z.string().min(2).max(2000),
-      questionText: z.string().min(10).optional(), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1).optional(), explanation: z.string().min(2).optional(), intent: z.string().min(2).optional(),
+      questionText: z.string().min(10).optional(), choices: z.array(z.string().min(1)).min(2).max(8).optional(), answer: z.string().min(1).optional(), explanation: z.string().min(2).optional(), intent: z.string().min(2).optional(), points: teacherPoints.optional(),
     })).mutation(async ({ ctx, input }) => {
       const detail = await getGeneratedQuestionDetail(input.id, ctx.user.id, ctx.user.role === "admin");
       if (!detail || !canAccessGeneratedQuestion({ viewerId: ctx.user.id, viewerRole: ctx.user.role, creatorId: detail.question.creatorId })) throw new TRPCError({ code: "NOT_FOUND", message: "문항을 찾을 수 없습니다." });

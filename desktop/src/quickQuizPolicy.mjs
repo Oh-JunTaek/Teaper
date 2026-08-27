@@ -1,7 +1,7 @@
 export const QUICK_QUIZ_PROMPT_VERSION = "quick-quiz-local-v2";
 
 /** 세 플랫폼 공통 저장값을 교사가 읽을 수 있는 문항 형식 이름으로 바꾼다. */
-export const quickQuizFormatLabel = value => ({ multiple_choice: "객관식 4지선다", short_answer: "주관식", ox: "O/X" }[value] || "객관식 4지선다");
+export const quickQuizFormatLabel = value => ({ multiple_choice: "객관식", short_answer: "주관식", ox: "O/X" }[value] || "객관식");
 export const normalizeQuickQuizFormat = value => ["multiple_choice", "short_answer", "ox"].includes(value) ? value : "multiple_choice";
 
 const normalize = value => String(value || "").toLowerCase().replace(/[\s_-]/g, "");
@@ -24,7 +24,7 @@ export function localQuickQuizPrompt(input) {
     ? "문항 형식은 주관식입니다. 보기는 반드시 ‘보기: 없음’으로 쓰고, 학생이 짧은 용어·수식·숫자로 답할 수 있는 문항만 작성하십시오."
     : questionFormat === "ox"
       ? "문항 형식은 O/X입니다. 짧은 진술 하나를 제시하고 ‘보기: O / X’로 쓰며, 정답은 O 또는 X 하나만 작성하십시오."
-      : "문항 형식은 객관식 4지선다입니다. 서로 다른 보기 4개를 한 줄씩 ‘① 내용’ 형태로 정확히 쓰고, 숫자만 쓰지 마십시오. 정답은 반드시 ‘①번’·‘②번’·‘③번’·‘④번’ 중 하나로 작성하십시오.";
+      : "문항 형식은 객관식입니다. 서로 다른 보기 4개를 한 줄씩 ‘① 내용’ 형태로 정확히 쓰고, 숫자만 쓰지 마십시오. 정답은 반드시 ‘①번’·‘②번’·‘③번’·‘④번’ 중 하나로 작성하십시오.";
   const base = `당신은 교사의 쪽지시험 출제를 보조합니다. 최종 사용 전 교사가 반드시 정답과 해설을 검수합니다.
 과목: ${input.subject}
 단원: ${input.unit}

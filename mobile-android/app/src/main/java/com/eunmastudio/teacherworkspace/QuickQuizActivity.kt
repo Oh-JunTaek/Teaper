@@ -8,6 +8,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -20,6 +21,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.lifecycleScope
 import com.eunmastudio.teacherworkspace.ai.GemmaModel
 import com.eunmastudio.teacherworkspace.ai.LiteRtLmRunner
@@ -27,6 +29,7 @@ import com.eunmastudio.teacherworkspace.ai.ModelDownloadManager
 import com.eunmastudio.teacherworkspace.ai.ModelSelection
 import com.eunmastudio.teacherworkspace.ai.PromptDisclosurePolicy
 import com.eunmastudio.teacherworkspace.ai.QuickQuizPromptContract
+import com.eunmastudio.teacherworkspace.export.QuickQuizPdfExporter
 import kotlinx.coroutines.launch
 
 /** Gemma E2B/E4B로 한 개념을 빠르게 확인하는 짧은 쪽지시험을 생성·검수한다. */
@@ -136,7 +139,7 @@ class QuickQuizActivity : AppCompatActivity() {
             val latest = pending.maxByOrNull { it.createdAt }
             list.addView(TextView(this).apply { text = if (latest == null) "현재 검수 대기 쪽지시험 문항이 없습니다." else "검수 대기 ${pending.size}세트 · $pendingQuestions문항\n가장 최근 미검수: ${latest.topic} · ${quickQuizCreatedAtLabel(latest.createdAt)}"; textSize = 13f; setTextColor(if (latest == null) Color.rgb(169, 215, 190) else Color.rgb(241, 202, 126)); setPadding(dp(8), dp(10), dp(8), dp(12)); background = surface(Color.rgb(28, 48, 40), dp(14)) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
         }
-        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("학생용 PDF").apply { setOnClickListener { exportStudentPdf(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
     /** 승인한 문항에서만 정답·해설·개념을 뺀 학생용 공유 텍스트를 만든다. */
@@ -156,6 +159,19 @@ class QuickQuizActivity : AppCompatActivity() {
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
     }
 
+    /** PDF 만들기 전 교사가 배점 표시 여부를 선택하고, 승인한 문항·보기만 안전하게 공유한다. */
+    private fun exportStudentPdf(quiz: LocalQuickQuiz) {
+        if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용 PDF에 넣을 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
+        val includePoints = CheckBox(this).apply { text = "배점 표기" }
+        AlertDialog.Builder(this).setTitle("학생용 PDF").setView(includePoints).setNegativeButton("취소", null).setPositiveButton("PDF 만들기") { _, _ ->
+            val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
+            val approved = quickQuizBlocks(quiz.content).mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } == "승인") marker.find(block)?.let { block.substring(0, it.range.first).trim() } else null }
+            if (approved.isEmpty()) { status.text = "학생용으로 분리할 문항을 찾지 못했습니다."; return@setPositiveButton }
+            val file = QuickQuizPdfExporter(this).export(quiz, approved, includePoints.isChecked); val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "학생용 쪽지시험 PDF 공유"))
+        }.show()
+    }
+
     /** 정답·해설을 읽은 교사가 각 문항을 독립적으로 승인·수정 필요·반려한다. */
     private fun showQuizDetail(quiz: LocalQuickQuiz) {
         val density = resources.displayMetrics.density
@@ -167,7 +183,14 @@ class QuickQuizActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(localDp(12), localDp(12), localDp(12), localDp(10)); background = surface(Color.rgb(238, 247, 242), localDp(14)) }
             val current = quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" }
             item.addView(TextView(this).apply { text = "${index + 1}번 · $current"; textSize = 14f; setTextColor(Color.rgb(21, 133, 107)); setTypeface(typeface, android.graphics.Typeface.BOLD) })
+            item.addView(TextView(this).apply { text = quiz.questionPoints.getOrNull(index)?.let { "배점: ${it}점" } ?: "배점: 미지정"; textSize = 13f; setTextColor(Color.rgb(78, 105, 92)); setPadding(0, localDp(3), 0, 0) })
             item.addView(TextView(this).apply { text = readableQuickQuizText(block); textSize = 14f; setTextColor(Color.rgb(29, 47, 42)); setPadding(0, localDp(6), 0, localDp(8)) })
+            item.addView(LinearLayout(this).apply {
+                addView(button("2점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 2.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f))
+                addView(button("3점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 3.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f).apply { leftMargin = localDp(6) })
+                addView(button("4점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 4.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f).apply { leftMargin = localDp(6) })
+                addView(button("직접 입력").apply { setOnClickListener { showPointInput(quiz, index, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1.4f).apply { leftMargin = localDp(6) })
+            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = localDp(7) })
             val actions = LinearLayout(this).apply {
                 addView(button("승인").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "승인", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f))
                 addView(button("수정 필요").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "수정 필요", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f).apply { leftMargin = localDp(6) })
@@ -187,6 +210,22 @@ class QuickQuizActivity : AppCompatActivity() {
         dialog?.dismiss()
         val updated = store.quickQuizzes().firstOrNull { it.id == quizId }
         if (updated != null) showQuizDetail(updated)
+    }
+
+    /** 배점은 문항별로만 갱신하고, 소수 첫째 자리까지의 교사 입력을 확인한 뒤 상세 창을 다시 연다. */
+    private fun updateQuestionPointsAndReopen(quizId: String, questionIndex: Int, points: Double, dialog: AlertDialog?) {
+        store.updateQuickQuizQuestionPoints(quizId, questionIndex, points)
+        refreshList()
+        dialog?.dismiss()
+        store.quickQuizzes().firstOrNull { it.id == quizId }?.let(::showQuizDetail)
+    }
+
+    private fun showPointInput(quiz: LocalQuickQuiz, questionIndex: Int, reviewDialog: AlertDialog?) {
+        val input = field("0~100, 소수 첫째 자리까지", quiz.questionPoints.getOrNull(questionIndex)?.toString() ?: "")
+        AlertDialog.Builder(this).setTitle("${questionIndex + 1}번 문항 배점").setView(input).setNegativeButton("취소", null).setPositiveButton("저장") { _, _ ->
+            val points = input.text.toString().toDoubleOrNull()
+            if (points == null || points !in 0.0..100.0 || kotlin.math.round(points * 10.0) != points * 10.0) { status.text = "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요." } else updateQuestionPointsAndReopen(quiz.id, questionIndex, points, reviewDialog)
+        }.show()
     }
 
     /** 생성 결과에서 각 문항 시작을 찾아 문항별 상태 배열의 순서와 연결한다. */

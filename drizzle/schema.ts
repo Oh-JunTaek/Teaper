@@ -1,4 +1,5 @@
 import {
+  double,
   index,
   int,
   json,
@@ -109,7 +110,7 @@ export const referenceQuestions = mysqlTable(
     unit: varchar("unit", { length: 120 }).notNull(),
     questionType: varchar("questionType", { length: 80 }).notNull(),
     difficulty: varchar("difficulty", { length: 30 }).notNull(),
-    points: int("points").notNull(),
+    points: double("points").notNull(),
     year: varchar("year", { length: 20 }).notNull(),
     source: varchar("source", { length: 160 }).notNull(),
     questionNumber: varchar("questionNumber", { length: 60 }),
@@ -140,7 +141,7 @@ export const generationRequests = mysqlTable("generation_requests", {
   unit: varchar("unit", { length: 120 }).notNull(),
   difficulty: varchar("difficulty", { length: 30 }).notNull(),
   questionType: varchar("questionType", { length: 80 }).notNull(),
-  points: int("points").notNull(),
+  points: double("points").notNull(),
   questionCount: int("questionCount").notNull(),
   additionalRequirements: text("additionalRequirements"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
@@ -228,7 +229,8 @@ export const quickQuizSets = mysqlTable(
     // 기존 세트는 객관식 4지선다로 읽어, 새 형식 도입 뒤에도 학생용 출력 흐름을 유지한다.
     questionFormat: mysqlEnum("questionFormat", ["multiple_choice", "short_answer", "ox"]).default("multiple_choice").notNull(),
     questionCount: int("questionCount").notNull(),
-    questions: json("questions").$type<Array<{ questionText: string; choices: string[]; answer: string; explanation: string; concept: string }>>().notNull(),
+    // 배점은 교사가 검수 중 직접 정하며, 값이 없으면 학생용 시험지에 표시하지 않는다.
+    questions: json("questions").$type<Array<{ questionText: string; choices: string[]; answer: string; explanation: string; concept: string; points?: number }>>().notNull(),
     // 인덱스별 상태는 questions와 같은 순서를 사용한다. 기존 세트의 null은 모두 검수 대기로 해석한다.
     questionReviewStates: json("questionReviewStates").$type<Array<"pending_review" | "approved" | "revised" | "rejected">>(),
     providerType: varchar("providerType", { length: 40 }).notNull(),
@@ -255,7 +257,7 @@ export const generatedQuestions = mysqlTable(
     explanation: text("explanation").notNull(),
     intent: text("intent").notNull(),
     difficulty: varchar("difficulty", { length: 30 }).notNull(),
-    points: int("points").notNull(),
+    points: double("points").notNull(),
     questionType: varchar("questionType", { length: 80 }).notNull(),
     usedConcepts: json("usedConcepts").$type<string[]>(),
     validationReport: json("validationReport"),

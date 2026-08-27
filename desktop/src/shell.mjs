@@ -231,7 +231,7 @@ function registerHandlers() {
     if (isPotentialPromptDisclosure(generated.response)) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
     const now = new Date().toISOString(); const id = randomUUID();
     // 한 세트의 문항도 각각 검수할 수 있도록 모두 독립 검수 대기 상태로 저장한다.
-    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionFormat, questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", questionReviewStates: Array.from({ length: questionCount }, () => "pending_review"), createdAt: now, updatedAt: now });
+    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionFormat, questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", questionReviewStates: Array.from({ length: questionCount }, () => "pending_review"), questionPoints: Array.from({ length: questionCount }, () => null), createdAt: now, updatedAt: now });
     store.audit({ id: randomUUID(), action: "local_quick_quiz_generate", payload: { questionCount, questionFormat, model: generated.model }, createdAt: now });
     return { id, response: generated.response, model: generated.model };
   });
@@ -239,6 +239,8 @@ function registerHandlers() {
   ipcMain.handle("local:review-quick-quiz", (_event, input) => { const status = ["approved", "revised", "rejected"].includes(input.status) ? input.status : "revised"; store.reviewQuickQuiz({ id: String(input.id), status, updatedAt: new Date().toISOString() }); return { success: true }; });
   // 세트가 아닌 선택한 한 문항만 검수하고, 화면에 새 세트 요약 상태를 돌려준다.
   ipcMain.handle("local:review-quick-quiz-question", (_event, input) => { const status = ["approved", "revised", "rejected"].includes(input.status) ? input.status : "revised"; const updated = store.reviewQuickQuizQuestion({ id: String(input.id), questionIndex: Number(input.questionIndex), status, updatedAt: new Date().toISOString() }); if (!updated) throw new Error("검수할 쪽지시험 문항을 찾을 수 없습니다."); return { success: true, ...updated }; });
+  // 배점은 난이도와 별개로 교사가 최종 확정하며 0~100점·소수 첫째 자리만 허용한다.
+  ipcMain.handle("local:update-quick-quiz-question-points", (_event, input = {}) => { const points = Number(input.points); if (!Number.isFinite(points) || points < 0 || points > 100 || Math.round(points * 10) !== points * 10) throw new Error("배점은 0~100점, 소수 첫째 자리까지 입력해 주세요."); const updated = store.updateQuickQuizQuestionPoints({ id: String(input.id), questionIndex: Number(input.questionIndex), points, updatedAt: new Date().toISOString() }); if (!updated) throw new Error("배점을 정할 쪽지시험 문항을 찾을 수 없습니다."); return { success: true, points: updated }; });
   ipcMain.handle("local:delete-quick-quiz", (_event, id) => { store.deleteQuickQuizSet(String(id)); return { success: true }; });
   // 교사용 파일은 세트의 모든 문항과 정답·해설을 보존하되 문항별 승인 여부를 함께 안내한다.
   ipcMain.handle("local:export-quick-quiz", async () => {
@@ -259,7 +261,7 @@ function registerHandlers() {
     if (input.kind === "csv") { const result = await saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-answer") { const result = await saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
-    if (input.kind === "print-question") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
+    if (input.kind === "print-question") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     if (input.kind === "print-answer") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     throw new Error("지원하지 않는 내보내기 형식입니다.");
   });

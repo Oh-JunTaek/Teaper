@@ -12,5 +12,5 @@ object QuickQuizFormPolicy {
 
     fun subjectIndex(value: String?): Int = subjects.indexOf(value).takeIf { it >= 0 } ?: subjects.indexOf("화학 I")
     fun difficultyLabel(rate: Int): String = "목표 정답률 $rate% · ${when { rate <= 30 -> "어려움"; rate <= 60 -> "보통"; else -> "쉬움" }}"
-    fun questionFormatLabel(value: String): String = when (value) { "short_answer" -> "주관식"; "ox" -> "O/X"; else -> "객관식 (4지선다)" }
+    fun questionFormatLabel(value: String): String = when (value) { "short_answer" -> "주관식"; "ox" -> "O/X"; else -> "객관식" }
 }

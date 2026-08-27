@@ -49,10 +49,12 @@ try {
   store.saveSchedule({ id: "schedule-1", title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", status: "completed", note: "고사장 확인", createdAt: now, updatedAt: now });
   assert.equal(store.listSchedules()[0].status, "completed");
   // 쪽지시험은 문항별 검수 상태를 따로 저장하며, 세트 요약은 그 결과로 계산한다.
-  store.saveQuickQuizSet({ id: "qq-1", subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 2, rawOutput: "문항: 공유 결합의 정의는?\n보기: O / X\n정답: O\n해설: 전자쌍을 공유한다.\n개념: 공유 결합\n\n문항: 이온 결합도 전자쌍을 공유하는 결합이다.\n보기: O / X\n정답: X\n해설: 전자를 주고받는다.\n개념: 이온 결합", model: "gemma-local", promptVersion: "quick-quiz-local-v2", status: "pending_review", questionReviewStates: ["pending_review", "pending_review"], createdAt: now, updatedAt: now });
+  store.saveQuickQuizSet({ id: "qq-1", subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 2, rawOutput: "문항: 공유 결합의 정의는?\n보기: O / X\n정답: O\n해설: 전자쌍을 공유한다.\n개념: 공유 결합\n\n문항: 이온 결합도 전자쌍을 공유하는 결합이다.\n보기: O / X\n정답: X\n해설: 전자를 주고받는다.\n개념: 이온 결합", model: "gemma-local", promptVersion: "quick-quiz-local-v2", status: "pending_review", questionReviewStates: ["pending_review", "pending_review"], questionPoints: [2, null], createdAt: now, updatedAt: now });
   assert.equal(store.listQuickQuizSets().length, 1);
   assert.equal(store.listQuickQuizSets()[0].question_format, "ox");
   assert.deepEqual(store.listQuickQuizSets()[0].questionReviewStates, ["pending_review", "pending_review"]);
+  assert.deepEqual(store.listQuickQuizSets()[0].questionPoints, [2, null]);
+  assert.deepEqual(store.updateQuickQuizQuestionPoints({ id: "qq-1", questionIndex: 1, points: 3.5, updatedAt: now }), [2, 3.5]);
   assert.deepEqual(store.reviewQuickQuizQuestion({ id: "qq-1", questionIndex: 0, status: "approved", updatedAt: now }), { states: ["approved", "pending_review"], status: "pending_review" });
   assert.deepEqual(store.reviewQuickQuizQuestion({ id: "qq-1", questionIndex: 1, status: "rejected", updatedAt: now }), { states: ["approved", "rejected"], status: "revised" });
   assert.equal(store.listQuickQuizSetsWithApprovedQuestions().length, 1);
@@ -103,6 +105,7 @@ try {
   assert.equal(store.listSchedules().length, 1);
   assert.equal(store.listSchedules()[0].status, "completed");
   assert.deepEqual(store.listQuickQuizSets()[0].questionReviewStates, ["approved", "rejected"]);
+  assert.deepEqual(store.listQuickQuizSets()[0].questionPoints, [2, 3.5]);
   assert.equal(store.listQuickQuizSetsWithApprovedQuestions().length, 1);
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");
@@ -110,6 +113,10 @@ try {
   const printHtml = exportQuestionsPrintHtml(store.listApproved(), "answer-sheet");
   assert.match(printHtml, /정답 및 해설지/);
   assert.match(printHtml, /해설/);
+  const questionPrintWithPoints = exportQuestionsPrintHtml(store.listApproved(), "question-paper", { includePoints: true });
+  assert.match(questionPrintWithPoints, /［3점］/);
+  assert.doesNotMatch(questionPrintWithPoints, /난이도/);
+  assert.doesNotMatch(exportQuestionsPrintHtml(store.listApproved(), "question-paper"), /［3점］/);
   store.close();
   const bridge = await createLocalBridge();
   const bad = await fetch(`http://127.0.0.1:${bridge.port}/health`);

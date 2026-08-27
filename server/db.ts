@@ -154,6 +154,7 @@ export async function reviewQuickQuizSet(id: number, ownerId: number, status: "a
 }
 
 type QuickQuizReviewState = "pending_review" | "approved" | "revised" | "rejected";
+type QuickQuizQuestion = { questionText: string; choices: string[]; answer: string; explanation: string; concept: string; points?: number };
 
 type QuickQuizDashboardRow = {
   questions: Array<unknown>;
@@ -189,6 +190,17 @@ export async function reviewQuickQuizQuestion(input: { id: number; ownerId: numb
   const status = summarizeQuickQuizReview(states);
   const result = await db.update(quickQuizSets).set({ questionReviewStates: states, status, reviewedAt: status === "pending_review" ? null : new Date(), updatedAt: new Date() }).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt)));
   return Number(result[0].affectedRows) > 0 ? { states, status } : undefined;
+}
+
+/** 쪽지시험 배점은 교사가 직접 정한 값만 문항 배열에 저장하며, 다른 문항·세트에는 영향을 주지 않는다. */
+export async function updateQuickQuizQuestionPoints(input: { id: number; ownerId: number; questionIndex: number; points: number }) {
+  const db = await requireDb();
+  const quiz = (await db.select().from(quickQuizSets).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt))).limit(1))[0];
+  if (!quiz || input.questionIndex < 0 || input.questionIndex >= quiz.questions.length) return undefined;
+  const questions = quiz.questions.map(question => ({ ...question })) as QuickQuizQuestion[];
+  questions[input.questionIndex] = { ...questions[input.questionIndex], points: input.points };
+  const result = await db.update(quickQuizSets).set({ questions, updatedAt: new Date() }).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt)));
+  return Number(result[0].affectedRows) > 0 ? questions : undefined;
 }
 
 export async function recordManagedAiUsage(entry: ManagedAiUsageEntry) {
@@ -507,6 +519,7 @@ export async function reviewGeneratedQuestion(input: {
   answer?: string;
   explanation?: string;
   intent?: string;
+  points?: number;
 }) {
   const db = await requireDb();
   const before = (await db.select().from(generatedQuestions).where(eq(generatedQuestions.id, input.id)).limit(1))[0];
@@ -522,6 +535,7 @@ export async function reviewGeneratedQuestion(input: {
     ...(input.answer !== undefined ? { answer: input.answer } : {}),
     ...(input.explanation !== undefined ? { explanation: input.explanation } : {}),
     ...(input.intent !== undefined ? { intent: input.intent } : {}),
+    ...(input.points !== undefined ? { points: input.points } : {}),
   };
   await db.update(generatedQuestions).set(update).where(eq(generatedQuestions.id, input.id));
   await db.insert(reviewEvents).values({

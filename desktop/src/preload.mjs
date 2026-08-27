@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("teacherLocal", {
   listQuickQuizzes: () => ipcRenderer.invoke("local:list-quick-quizzes"),
   reviewQuickQuiz: input => ipcRenderer.invoke("local:review-quick-quiz", input),
   reviewQuickQuizQuestion: input => ipcRenderer.invoke("local:review-quick-quiz-question", input),
+  updateQuickQuizQuestionPoints: input => ipcRenderer.invoke("local:update-quick-quiz-question-points", input),
   deleteQuickQuiz: id => ipcRenderer.invoke("local:delete-quick-quiz", id),
   exportQuickQuiz: () => ipcRenderer.invoke("local:export-quick-quiz"),
   exportStudentQuickQuiz: () => ipcRenderer.invoke("local:export-quick-quiz-student"),
