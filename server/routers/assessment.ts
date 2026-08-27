@@ -44,6 +44,7 @@ import {
   recordManagedAiUsage,
   replaceMaterialChunks,
   reviewGeneratedQuestion,
+  reviewQuickQuizQuestion,
   reviewQuickQuizSet,
   reviewOfficialSourceChange,
   saveUserAiPreferences,
@@ -295,7 +296,8 @@ export const assessmentRouter = router({
         if (provider.kind === "managed") await requireManagedAiQuota(ctx.user);
         const generated = await generateQuickQuiz({ ...input, topic: input.topic.trim(), customInstructions: preferences?.customInstructions }, provider);
         if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: "success", model: generated.model, durationMs: Date.now() - startedAt }));
-        const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), difficulty: input.difficulty, questionFormat: input.questionFormat, questionCount: generated.questions.length, questions: generated.questions, providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
+        // 새 세트의 모든 문항은 독립 검수 대기부터 시작한다. 한 문항의 처리 결과가 다른 문항에 영향을 주지 않는다.
+        const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), difficulty: input.difficulty, questionFormat: input.questionFormat, questionCount: generated.questions.length, questions: generated.questions, questionReviewStates: generated.questions.map(() => "pending_review"), providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
         if (provider.kind === "managed") void recordManagedAiMonthlySuccess(ctx.user.id);
         return { id, questions: generated.questions, model: generated.model };
       } catch (error) {
@@ -312,6 +314,12 @@ export const assessmentRouter = router({
       const updated = await reviewQuickQuizSet(input.id, ctx.user.id, input.status);
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험을 찾을 수 없습니다." });
       return { success: true };
+    }),
+    // 세트가 아닌 지정 문항만 검수한다. 소유자와 문항 번호를 함께 확인해 다른 세트에는 접근할 수 없다.
+    reviewQuestion: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), status: z.enum(["approved", "revised", "rejected"]) })).mutation(async ({ ctx, input }) => {
+      const updated = await reviewQuickQuizQuestion({ ...input, ownerId: ctx.user.id });
+      if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험 문항을 찾을 수 없습니다." });
+      return { success: true, ...updated };
     }),
   }),
 

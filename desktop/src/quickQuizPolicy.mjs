@@ -38,15 +38,17 @@ export function localQuickQuizPrompt(input) {
 }
 
 /**
- * 승인 세트의 표준 구분자를 기준으로 학생용 본문만 남긴다.
+ * 승인 문항의 표준 구분자를 기준으로 학생용 본문만 남긴다.
  * 정답·해설·개념 표기가 없으면 안전하게 학생용 파일을 만들지 않는다.
  */
-export function studentQuickQuizText(rawOutput) {
+export function studentQuickQuizText(rawOutput, approvedQuestionIndexes = null) {
   const blocks = String(rawOutput || "")
     .split(/(?=^\s*문항\s*[:：])/m)
     .map(block => block.trim())
     .filter(block => /^문항\s*[:：]/m.test(block));
-  const studentBlocks = blocks.map(block => {
+  const allowedIndexes = approvedQuestionIndexes == null ? blocks.map((_block, index) => index) : approvedQuestionIndexes.filter(index => Number.isInteger(index) && index >= 0 && index < blocks.length);
+  if (!allowedIndexes.length) throw new Error("학생용으로 내보낼 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요.");
+  const studentBlocks = allowedIndexes.map(index => blocks[index]).map(block => {
     const marker = /^\s*(?:정답|해설|개념)\s*[:：]/m.exec(block);
     return (marker ? block.slice(0, marker.index) : block).trim();
   }).filter(Boolean);

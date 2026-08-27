@@ -6,6 +6,24 @@ import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, Paragraph, Tab
 import { LOCAL_OFFICIAL_DOCUMENTS, documentsForScope } from "./officialCatalog.mjs";
 
 function databasePath() { return process.env.LOCAL_DATA_DB_PATH || join(process.env.LOCAL_APP_DATA_DIR || join(homedir(), ".teacher-assessment-assistant"), "teacher-assessment.sqlite"); }
+
+const QUICK_QUIZ_REVIEW_STATES = ["pending_review", "approved", "revised", "rejected"];
+// 이전 세트의 누락된 문항별 상태는 승인으로 간주하지 않아 교사 재검수를 보장한다.
+function normalizeQuickQuizQuestionStates(value, questionCount) {
+  const count = Math.max(1, Number(questionCount) || 1);
+  let states = [];
+  try { states = Array.isArray(value) ? value : JSON.parse(value || "[]"); } catch { states = []; }
+  return Array.from({ length: count }, (_unused, index) => QUICK_QUIZ_REVIEW_STATES.includes(states[index]) ? states[index] : "pending_review");
+}
+
+// 세트 상태는 목록 안내용 요약이며, 학생용 출력 권한은 개별 문항의 approved만 사용한다.
+function summarizeQuickQuizReview(states) {
+  if (states.some(status => status === "pending_review")) return "pending_review";
+  if (states.every(status => status === "approved")) return "approved";
+  if (states.every(status => status === "rejected")) return "rejected";
+  return "revised";
+}
+
 export async function openLocalStore() {
   const path = databasePath();
   await mkdir(join(path, ".."), { recursive: true, mode: 0o700 });
@@ -24,13 +42,15 @@ export async function openLocalStore() {
     CREATE TABLE IF NOT EXISTS generation_reference_questions (request_id TEXT NOT NULL, reference_question_id TEXT NOT NULL, reference_json TEXT NOT NULL, PRIMARY KEY (request_id, reference_question_id));
     CREATE TABLE IF NOT EXISTS review_events (id TEXT PRIMARY KEY, question_id TEXT NOT NULL, action TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS teacher_notes (id TEXT PRIMARY KEY, title TEXT NOT NULL, content TEXT NOT NULL, is_pinned INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
-    CREATE TABLE IF NOT EXISTS quick_quiz_sets (id TEXT PRIMARY KEY, subject TEXT NOT NULL, unit TEXT NOT NULL, topic TEXT NOT NULL, difficulty TEXT NOT NULL, question_format TEXT NOT NULL DEFAULT 'multiple_choice', question_count INTEGER NOT NULL, raw_output TEXT NOT NULL, model TEXT NOT NULL, prompt_version TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS quick_quiz_sets (id TEXT PRIMARY KEY, subject TEXT NOT NULL, unit TEXT NOT NULL, topic TEXT NOT NULL, difficulty TEXT NOT NULL, question_format TEXT NOT NULL DEFAULT 'multiple_choice', question_count INTEGER NOT NULL, raw_output TEXT NOT NULL, model TEXT NOT NULL, prompt_version TEXT NOT NULL, status TEXT NOT NULL, question_review_states TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS chat_threads (id TEXT PRIMARY KEY, title TEXT NOT NULL, is_pinned INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS chat_messages (id TEXT PRIMARY KEY, thread_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, model TEXT, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS teacher_schedules (id TEXT PRIMARY KEY, title TEXT NOT NULL, schedule_date TEXT NOT NULL, schedule_time TEXT, event_type TEXT NOT NULL, status TEXT NOT NULL, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, action TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL);`);
   // 기존 beta 데이터베이스에도 기본 객관식 형식을 넣어 새 선택값과 안전하게 호환한다.
   try { db.exec("ALTER TABLE quick_quiz_sets ADD COLUMN question_format TEXT NOT NULL DEFAULT 'multiple_choice'"); } catch (error) { if (!String(error?.message || error).includes("duplicate column name")) throw error; }
+  // 기존 세트에는 null을 남긴다. 읽을 때 모든 문항을 검수 대기로 해석해 승인 오인을 막는다.
+  try { db.exec("ALTER TABLE quick_quiz_sets ADD COLUMN question_review_states TEXT"); } catch (error) { if (!String(error?.message || error).includes("duplicate column name")) throw error; }
   const cacheOfficialDocument = db.prepare("INSERT INTO official_documents VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(catalog_key) DO UPDATE SET title = excluded.title, subject = excluded.subject, unit = excluded.unit, applicable_year = excluded.applicable_year, document_type = excluded.document_type, official_url = excluded.official_url, issue_number = excluded.issue_number, rights_status = excluded.rights_status, summary = excluded.summary, cached_at = excluded.cached_at");
   const cachedAt = new Date().toISOString();
   for (const document of LOCAL_OFFICIAL_DOCUMENTS) cacheOfficialDocument.run(document.catalogKey, document.title, document.subject, document.unit, document.applicableYear, document.documentType, document.officialUrl, document.issueNumber, document.rightsStatus, document.summary, cachedAt);
@@ -64,11 +84,17 @@ export async function openLocalStore() {
     saveSchedule(item) { return db.prepare("INSERT INTO teacher_schedules VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET title = excluded.title, schedule_date = excluded.schedule_date, schedule_time = excluded.schedule_time, event_type = excluded.event_type, status = excluded.status, note = excluded.note, updated_at = excluded.updated_at").run(item.id, item.title, item.scheduleDate, item.scheduleTime || null, item.eventType, item.status, item.note || null, item.createdAt, item.updatedAt); },
     listSchedules() { return db.prepare("SELECT * FROM teacher_schedules ORDER BY schedule_date ASC, schedule_time ASC, updated_at DESC").all(); },
     deleteSchedule(id) { return db.prepare("DELETE FROM teacher_schedules WHERE id = ?").run(id); },
-    saveQuickQuizSet(quiz) { db.prepare("INSERT INTO quick_quiz_sets (id, subject, unit, topic, difficulty, question_format, question_count, raw_output, model, prompt_version, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(quiz.id, quiz.subject, quiz.unit, quiz.topic, quiz.difficulty, quiz.questionFormat || "multiple_choice", quiz.questionCount, quiz.rawOutput, quiz.model, quiz.promptVersion, quiz.status, quiz.createdAt, quiz.updatedAt); },
-    listQuickQuizSets() { return db.prepare("SELECT *, COALESCE(question_format, 'multiple_choice') AS question_format FROM quick_quiz_sets ORDER BY updated_at DESC").all(); },
-    reviewQuickQuiz(input) { return db.prepare("UPDATE quick_quiz_sets SET status = ?, updated_at = ? WHERE id = ?").run(input.status, input.updatedAt, input.id); },
+    // 새 쪽지시험은 문항 수만큼 독립된 검수 대기 상태를 먼저 저장한다.
+    saveQuickQuizSet(quiz) { const states = normalizeQuickQuizQuestionStates(quiz.questionReviewStates, quiz.questionCount); db.prepare("INSERT INTO quick_quiz_sets (id, subject, unit, topic, difficulty, question_format, question_count, raw_output, model, prompt_version, status, question_review_states, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").run(quiz.id, quiz.subject, quiz.unit, quiz.topic, quiz.difficulty, quiz.questionFormat || "multiple_choice", quiz.questionCount, quiz.rawOutput, quiz.model, quiz.promptVersion, summarizeQuickQuizReview(states), JSON.stringify(states), quiz.createdAt, quiz.updatedAt); },
+    listQuickQuizSets() { return db.prepare("SELECT *, COALESCE(question_format, 'multiple_choice') AS question_format FROM quick_quiz_sets ORDER BY updated_at DESC").all().map(quiz => { const states = normalizeQuickQuizQuestionStates(quiz.question_review_states, quiz.question_count); return { ...quiz, question_review_states: JSON.stringify(states), questionReviewStates: states, status: summarizeQuickQuizReview(states) }; }); },
+    // 과거 세트 단위 IPC도 남기되, 요청 상태를 모든 문항에 명시적으로 적용해 데이터 형식을 일관되게 유지한다.
+    reviewQuickQuiz(input) { const row = db.prepare("SELECT question_count FROM quick_quiz_sets WHERE id = ?").get(input.id); if (!row) return undefined; const states = Array.from({ length: Math.max(1, Number(row.question_count) || 1) }, () => QUICK_QUIZ_REVIEW_STATES.includes(input.status) ? input.status : "revised"); return db.prepare("UPDATE quick_quiz_sets SET status = ?, question_review_states = ?, updated_at = ? WHERE id = ?").run(summarizeQuickQuizReview(states), JSON.stringify(states), input.updatedAt, input.id); },
+    // 한 문항의 상태만 바꾸고 세트 요약을 재계산한다. 상태 배열은 SQLite에 JSON 문자열로 보관한다.
+    reviewQuickQuizQuestion(input) { const row = db.prepare("SELECT question_count, question_review_states FROM quick_quiz_sets WHERE id = ?").get(input.id); if (!row || input.questionIndex < 0 || input.questionIndex >= Number(row.question_count)) return undefined; const states = normalizeQuickQuizQuestionStates(row.question_review_states, row.question_count); states[input.questionIndex] = QUICK_QUIZ_REVIEW_STATES.includes(input.status) && input.status !== "pending_review" ? input.status : "revised"; const status = summarizeQuickQuizReview(states); db.prepare("UPDATE quick_quiz_sets SET status = ?, question_review_states = ?, updated_at = ? WHERE id = ?").run(status, JSON.stringify(states), input.updatedAt, input.id); return { states, status }; },
     deleteQuickQuizSet(id) { return db.prepare("DELETE FROM quick_quiz_sets WHERE id = ?").run(id); },
-    listApprovedQuickQuizSets() { return db.prepare("SELECT *, COALESCE(question_format, 'multiple_choice') AS question_format FROM quick_quiz_sets WHERE status = 'approved' ORDER BY updated_at DESC").all(); },
+    // 일부만 승인된 세트도 학생용 출력 후보가 된다. 실제 문항 필터링은 호출부에서 상태 배열로 처리한다.
+    listQuickQuizSetsWithApprovedQuestions() { return this.listQuickQuizSets().filter(quiz => quiz.questionReviewStates.includes("approved")); },
+    listApprovedQuickQuizSets() { return this.listQuickQuizSetsWithApprovedQuestions().filter(quiz => quiz.status === "approved"); },
     saveChatThread(thread) { db.prepare("INSERT INTO chat_threads VALUES (?, ?, ?, ?, ?)").run(thread.id, thread.title, thread.isPinned ? 1 : 0, thread.createdAt, thread.updatedAt); },
     getChatThread(id) { return db.prepare("SELECT * FROM chat_threads WHERE id = ?").get(id); },
     listChatThreads() { return db.prepare("SELECT t.*, (SELECT COUNT(*) FROM chat_messages m WHERE m.thread_id = t.id) AS message_count FROM chat_threads t ORDER BY t.is_pinned DESC, t.updated_at DESC").all(); },
@@ -82,21 +108,21 @@ export async function openLocalStore() {
     listApproved() { return this.listQuestions("approved"); },
     createBackupSnapshot() {
       const tables = ["reference_materials", "material_chunks", "reference_questions", "official_documents", "official_document_selections", "local_settings", "generation_requests", "generated_questions", "generated_question_sources", "generation_official_documents", "generation_reference_questions", "review_events", "teacher_notes", "teacher_schedules", "quick_quiz_sets", "chat_threads", "chat_messages", "audit_events"];
-      return { schemaVersion: 5, exportedAt: new Date().toISOString(), tables: Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()])) };
+      return { schemaVersion: 6, exportedAt: new Date().toISOString(), tables: Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM ${table}`).all()])) };
     },
     restoreBackupSnapshot(snapshot) {
       const required = ["reference_materials", "material_chunks", "reference_questions", "official_documents", "official_document_selections", "local_settings", "generation_requests", "generated_questions", "generated_question_sources", "generation_official_documents", "generation_reference_questions", "review_events", "teacher_notes", "teacher_schedules", "quick_quiz_sets", "chat_threads", "chat_messages", "audit_events"];
-      if (!snapshot || ![1, 2, 3, 4, 5].includes(snapshot.schemaVersion) || !snapshot.tables) throw new Error("지원하지 않거나 손상된 백업 내용입니다.");
+      if (!snapshot || ![1, 2, 3, 4, 5, 6].includes(snapshot.schemaVersion) || !snapshot.tables) throw new Error("지원하지 않거나 손상된 백업 내용입니다.");
       const tables = { ...snapshot.tables, teacher_notes: snapshot.tables.teacher_notes || [], teacher_schedules: snapshot.tables.teacher_schedules || [], quick_quiz_sets: snapshot.tables.quick_quiz_sets || [], chat_threads: snapshot.tables.chat_threads || [], chat_messages: snapshot.tables.chat_messages || [] };
       if (required.some(table => !Array.isArray(tables[table]))) throw new Error("지원하지 않거나 손상된 백업 내용입니다.");
       const columns = {
-        reference_materials: ["id", "title", "subject", "unit", "material_type", "file_path", "content_sha256", "created_at"], material_chunks: ["id", "material_id", "chunk_index", "content", "embedding_json", "created_at"], reference_questions: ["id", "subject", "unit", "source", "question_number", "question_text", "intent", "created_at"], official_documents: ["catalog_key", "title", "subject", "unit", "applicable_year", "document_type", "official_url", "issue_number", "rights_status", "summary", "cached_at"], official_document_selections: ["catalog_key", "use_for_generation", "selected_at"], local_settings: ["setting_key", "setting_value", "updated_at"], generation_requests: ["id", "provider_type", "provider_model", "external_transfer_consent_at", "payload_json", "created_at"], generated_questions: ["id", "request_id", "status", "question_json", "validation_json", "created_at"], generated_question_sources: ["id", "question_id", "source_type", "source_id", "excerpt", "created_at"], generation_official_documents: ["request_id", "document_id", "document_json"], generation_reference_questions: ["request_id", "reference_question_id", "reference_json"], review_events: ["id", "question_id", "action", "reason", "created_at"], teacher_notes: ["id", "title", "content", "is_pinned", "created_at", "updated_at"], teacher_schedules: ["id", "title", "schedule_date", "schedule_time", "event_type", "status", "note", "created_at", "updated_at"], quick_quiz_sets: ["id", "subject", "unit", "topic", "difficulty", "question_format", "question_count", "raw_output", "model", "prompt_version", "status", "created_at", "updated_at"], chat_threads: ["id", "title", "is_pinned", "created_at", "updated_at"], chat_messages: ["id", "thread_id", "role", "content", "model", "created_at"], audit_events: ["id", "action", "payload_json", "created_at"] };
+        reference_materials: ["id", "title", "subject", "unit", "material_type", "file_path", "content_sha256", "created_at"], material_chunks: ["id", "material_id", "chunk_index", "content", "embedding_json", "created_at"], reference_questions: ["id", "subject", "unit", "source", "question_number", "question_text", "intent", "created_at"], official_documents: ["catalog_key", "title", "subject", "unit", "applicable_year", "document_type", "official_url", "issue_number", "rights_status", "summary", "cached_at"], official_document_selections: ["catalog_key", "use_for_generation", "selected_at"], local_settings: ["setting_key", "setting_value", "updated_at"], generation_requests: ["id", "provider_type", "provider_model", "external_transfer_consent_at", "payload_json", "created_at"], generated_questions: ["id", "request_id", "status", "question_json", "validation_json", "created_at"], generated_question_sources: ["id", "question_id", "source_type", "source_id", "excerpt", "created_at"], generation_official_documents: ["request_id", "document_id", "document_json"], generation_reference_questions: ["request_id", "reference_question_id", "reference_json"], review_events: ["id", "question_id", "action", "reason", "created_at"], teacher_notes: ["id", "title", "content", "is_pinned", "created_at", "updated_at"], teacher_schedules: ["id", "title", "schedule_date", "schedule_time", "event_type", "status", "note", "created_at", "updated_at"], quick_quiz_sets: ["id", "subject", "unit", "topic", "difficulty", "question_format", "question_count", "raw_output", "model", "prompt_version", "status", "question_review_states", "created_at", "updated_at"], chat_threads: ["id", "title", "is_pinned", "created_at", "updated_at"], chat_messages: ["id", "thread_id", "role", "content", "model", "created_at"], audit_events: ["id", "action", "payload_json", "created_at"] };
       db.exec("BEGIN");
       try {
         for (const table of [...required].reverse()) db.exec(`DELETE FROM ${table}`);
         for (const table of required) {
           const fields = columns[table]; const insert = db.prepare(`INSERT INTO ${table} (${fields.join(", ")}) VALUES (${fields.map(() => "?").join(", ")})`);
-          for (const row of tables[table]) insert.run(...fields.map(field => row[field] ?? (field === "question_format" ? "multiple_choice" : null)));
+          for (const row of tables[table]) insert.run(...fields.map(field => row[field] ?? (field === "question_format" ? "multiple_choice" : field === "question_review_states" ? JSON.stringify(normalizeQuickQuizQuestionStates(null, row.question_count)) : null)));
         }
         db.exec("COMMIT");
       } catch (error) { db.exec("ROLLBACK"); throw error; }

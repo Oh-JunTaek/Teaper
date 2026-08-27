@@ -48,11 +48,15 @@ try {
   assert.equal(store.listSchedules()[0].title, "화학 I 중간고사");
   store.saveSchedule({ id: "schedule-1", title: "화학 I 중간고사", scheduleDate: "2026-10-15", scheduleTime: "09:00", eventType: "exam", status: "completed", note: "고사장 확인", createdAt: now, updatedAt: now });
   assert.equal(store.listSchedules()[0].status, "completed");
-  store.saveQuickQuizSet({ id: "qq-1", subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 2, rawOutput: "문항: 공유 결합의 정의는?\n정답: 전자쌍을 공유하는 결합", model: "gemma-local", promptVersion: "quick-quiz-local-v2", status: "pending_review", createdAt: now, updatedAt: now });
+  // 쪽지시험은 문항별 검수 상태를 따로 저장하며, 세트 요약은 그 결과로 계산한다.
+  store.saveQuickQuizSet({ id: "qq-1", subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 2, rawOutput: "문항: 공유 결합의 정의는?\n보기: O / X\n정답: O\n해설: 전자쌍을 공유한다.\n개념: 공유 결합\n\n문항: 이온 결합도 전자쌍을 공유하는 결합이다.\n보기: O / X\n정답: X\n해설: 전자를 주고받는다.\n개념: 이온 결합", model: "gemma-local", promptVersion: "quick-quiz-local-v2", status: "pending_review", questionReviewStates: ["pending_review", "pending_review"], createdAt: now, updatedAt: now });
   assert.equal(store.listQuickQuizSets().length, 1);
   assert.equal(store.listQuickQuizSets()[0].question_format, "ox");
-  store.reviewQuickQuiz({ id: "qq-1", status: "approved", updatedAt: now });
-  assert.equal(store.listApprovedQuickQuizSets().length, 1);
+  assert.deepEqual(store.listQuickQuizSets()[0].questionReviewStates, ["pending_review", "pending_review"]);
+  assert.deepEqual(store.reviewQuickQuizQuestion({ id: "qq-1", questionIndex: 0, status: "approved", updatedAt: now }), { states: ["approved", "pending_review"], status: "pending_review" });
+  assert.deepEqual(store.reviewQuickQuizQuestion({ id: "qq-1", questionIndex: 1, status: "rejected", updatedAt: now }), { states: ["approved", "rejected"], status: "revised" });
+  assert.equal(store.listQuickQuizSetsWithApprovedQuestions().length, 1);
+  assert.equal(store.listApprovedQuickQuizSets().length, 0);
   store.saveChatThread({ id: "chat-1", title: "공유 결합 정리", isPinned: false, createdAt: now, updatedAt: now });
   store.saveChatMessage({ id: "msg-1", threadId: "chat-1", role: "user", content: "공유 결합을 설명해 줘", createdAt: now });
   store.saveChatMessage({ id: "msg-2", threadId: "chat-1", role: "assistant", content: "전자쌍을 공유하는 결합입니다.", model: "local-model", createdAt: now });
@@ -69,8 +73,9 @@ try {
   assert.match(localQuickQuizPrompt({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "multiple_choice", questionCount: 2, teacherInstructions: "용어를 간단히" }), /보기 4개/);
   assert.match(localQuickQuizPrompt({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "short_answer", questionCount: 2, teacherInstructions: "용어를 간단히" }), /주관식/);
   assert.match(localQuickQuizPrompt({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 2, teacherInstructions: "용어를 간단히" }), /O\/X/);
-  const studentQuickQuiz = studentQuickQuizText("문항: 공유 결합의 정의로 옳은 것은?\n보기: ① 전자쌍을 공유한다 ② 이온을 주고받는다\n정답: ①\n해설: 전자쌍을 공유한다.\n개념: 공유 결합");
+  const studentQuickQuiz = studentQuickQuizText("문항: 공유 결합의 정의로 옳은 것은?\n보기: ① 전자쌍을 공유한다 ② 이온을 주고받는다\n정답: ①\n해설: 전자쌍을 공유한다.\n개념: 공유 결합\n\n문항: 이온 결합의 정의로 옳은 것은?\n보기: ① 전자쌍을 공유한다 ② 전자를 주고받는다\n정답: ②\n해설: 전자를 주고받는다.\n개념: 이온 결합", [0]);
   assert.match(studentQuickQuiz, /공유 결합의 정의/);
+  assert.doesNotMatch(studentQuickQuiz, /이온 결합의 정의/);
   assert.doesNotMatch(studentQuickQuiz, /정답|해설|개념/);
   const presented = extractGenerationPresentation("요청하신 문항을 만듭니다.\n\n### 문항\n물 분자($\\text{H}_2\\text{O}$)의 구조는?\n\n### 정답\n굽은형\n\n[시각자료]\n```json\n{\"kind\":\"table\",\"title\":\"비교\",\"columns\":[\"항목\"],\"rows\":[[\"물\"]]}\n```\n[/시각자료]");
   assert.match(presented.text, /^### 문항/);
@@ -97,7 +102,8 @@ try {
   assert.equal(store.listNotes().length, 1);
   assert.equal(store.listSchedules().length, 1);
   assert.equal(store.listSchedules()[0].status, "completed");
-  assert.equal(store.listApprovedQuickQuizSets().length, 1);
+  assert.deepEqual(store.listQuickQuizSets()[0].questionReviewStates, ["approved", "rejected"]);
+  assert.equal(store.listQuickQuizSetsWithApprovedQuestions().length, 1);
   const docx = await exportQuestionsDocx(store.listApproved(), "answer-sheet");
   assert.equal(docx.subarray(0, 2).toString(), "PK");
   assert.ok(docx.length > 500);

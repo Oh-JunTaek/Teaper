@@ -123,35 +123,68 @@ class QuickQuizActivity : AppCompatActivity() {
         refreshList()
     }
 
-    /** 앱 전용 저장소의 세트를 최신순으로 다시 그리고, 각 세트의 검수 상태를 함께 보여 준다. */
+    /** 앱 전용 저장소의 세트를 최신순으로 다시 그리고, 문항별 검수 결과를 요약해 보여 준다. */
     private fun refreshList() {
         if (!::list.isInitialized) return
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         list.removeAllViews()
         if (store.quickQuizzes().isEmpty()) list.addView(TextView(this).apply { text = "아직 만든 쪽지시험이 없습니다."; setTextColor(Color.rgb(181, 200, 185)); setPadding(dp(4), dp(12), dp(4), dp(12)) })
-        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
-    /** 승인 세트에서 문항·보기만 남겨 학생용 공유 텍스트를 만들고, 형식이 다르면 공유를 중단한다. */
+    /** 승인한 문항에서만 정답·해설·개념을 뺀 학생용 공유 텍스트를 만든다. */
     private fun studentShareText(quiz: LocalQuickQuiz): String? {
-        val blocks = quiz.content.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
+        val blocks = quickQuizBlocks(quiz.content)
         val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
-        val questions = blocks.mapNotNull { block -> marker.find(block)?.let { block.substring(0, it.range.first).trim() } }.filter { it.isNotBlank() }
+        val questions = blocks.mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } != "승인") null else marker.find(block)?.let { block.substring(0, it.range.first).trim() } }.filter { it.isNotBlank() }
         if (questions.isEmpty()) return null
         return questions.mapIndexed { index, question -> "${index + 1}번\n${readableQuickQuizText(question.replace(Regex("(?m)^문항\\s*[:：]\\s*"), ""))}" }.joinToString("\n\n")
     }
 
-    /** 교사가 승인한 뒤에만 정답·해설을 뺀 텍스트를 Android 공유 시트로 전달한다. */
+    /** 부분 승인 세트도 승인 문항이 하나 이상이면 학생용 공유 시트로 전달한다. */
     private fun shareStudentQuiz(quiz: LocalQuickQuiz) {
-        if (quiz.reviewStatus != "승인") { status.text = "교사가 승인한 쪽지시험만 학생용으로 공유할 수 있습니다."; return }
+        if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용으로 공유할 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
         val studentText = studentShareText(quiz)
         if (studentText == null) { status.text = "학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용을 확인해 주세요."; return }
         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
     }
 
-    /** 정답·해설을 읽은 교사가 승인·수정 필요·반려 중 하나를 선택해 세트 상태를 기록한다. */
-    private fun showQuizDetail(quiz: LocalQuickQuiz) { AlertDialog.Builder(this).setTitle("${quiz.topic} · ${quiz.reviewStatus}").setMessage(readableQuickQuizText(quiz.content)).setNegativeButton("반려") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "반려"); refreshList() }.setNeutralButton("수정 필요") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "수정 필요"); refreshList() }.setPositiveButton("교사 검수 후 승인") { _, _ -> store.updateQuickQuizReviewStatus(quiz.id, "승인"); refreshList(); status.text = "승인으로 표시했습니다. 실제 사용 전 다시 확인해 주세요." }.show() }
+    /** 정답·해설을 읽은 교사가 각 문항을 독립적으로 승인·수정 필요·반려한다. */
+    private fun showQuizDetail(quiz: LocalQuickQuiz) {
+        val density = resources.displayMetrics.density
+        fun localDp(value: Int) = (value * density).toInt()
+        var reviewDialog: AlertDialog? = null
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(localDp(18), localDp(8), localDp(18), localDp(18)) }
+        content.addView(TextView(this).apply { text = "${quiz.topic} · ${store.quickQuizReviewSummary(quiz)}"; textSize = 18f; setTextColor(Color.rgb(24, 50, 72)); setTypeface(typeface, android.graphics.Typeface.BOLD); setPadding(0, 0, 0, localDp(8)) })
+        quickQuizBlocks(quiz.content).forEachIndexed { index, block ->
+            val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(localDp(12), localDp(12), localDp(12), localDp(10)); background = surface(Color.rgb(238, 247, 242), localDp(14)) }
+            val current = quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" }
+            item.addView(TextView(this).apply { text = "${index + 1}번 · $current"; textSize = 14f; setTextColor(Color.rgb(21, 133, 107)); setTypeface(typeface, android.graphics.Typeface.BOLD) })
+            item.addView(TextView(this).apply { text = readableQuickQuizText(block); textSize = 14f; setTextColor(Color.rgb(29, 47, 42)); setPadding(0, localDp(6), 0, localDp(8)) })
+            val actions = LinearLayout(this).apply {
+                addView(button("승인").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "승인", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f))
+                addView(button("수정 필요").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "수정 필요", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f).apply { leftMargin = localDp(6) })
+                addView(button("반려").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "반려", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f).apply { leftMargin = localDp(6) })
+            }
+            item.addView(actions)
+            content.addView(item, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = localDp(10) })
+        }
+        reviewDialog = AlertDialog.Builder(this).setView(ScrollView(this).apply { addView(content) }).setNegativeButton("닫기", null).create()
+        reviewDialog?.show()
+    }
+
+    /** 한 문항의 상태만 바꾸고 최신 저장값으로 상세 창을 다시 열어 즉시 결과를 확인하게 한다. */
+    private fun updateQuestionReviewAndReopen(quizId: String, questionIndex: Int, review: String, dialog: AlertDialog?) {
+        store.updateQuickQuizQuestionReviewStatus(quizId, questionIndex, review)
+        refreshList()
+        dialog?.dismiss()
+        val updated = store.quickQuizzes().firstOrNull { it.id == quizId }
+        if (updated != null) showQuizDetail(updated)
+    }
+
+    /** 생성 결과에서 각 문항 시작을 찾아 문항별 상태 배열의 순서와 연결한다. */
+    private fun quickQuizBlocks(value: String): List<String> = value.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
     /** 이전 세트의 ‘③ 6’ 같은 숫자 보기를 ‘선택 ③: 6’으로 읽어 선택 번호와 값의 혼동을 막는다. */
     private fun readableQuickQuizText(value: String): String = value.replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*(?:선택\\s*)?\\2\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(정답\\s*[:：]\\s*)선택\\s*([①②③④])\\s*$"), "$1$2번")
     private fun fieldLabel(label: String) = TextView(this).apply { text = label; textSize = 13.5f; setTextColor(Color.rgb(194, 211, 195)); setPadding(dp(4), dp(2), dp(4), dp(5)) }

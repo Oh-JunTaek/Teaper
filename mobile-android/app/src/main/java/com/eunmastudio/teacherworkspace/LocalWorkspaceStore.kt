@@ -86,6 +86,7 @@ data class LocalQuickQuiz(
     val model: String,
     val promptVersion: String,
     val reviewStatus: String = "검수 대기",
+    val questionReviewStatuses: List<String> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = createdAt,
 )
@@ -123,6 +124,22 @@ class LocalWorkspaceStore(context: Context) {
     private fun normalizedQuickQuizReviewStatus(value: String): String = when (value.trim()) {
         "승인", "수정 필요", "반려", "검수 대기" -> value.trim()
         else -> "검수 대기"
+    }
+
+    /** 누락된 이전 세트도 승인으로 오인하지 않도록 문항별 상태를 모두 검수 대기로 읽는다. */
+    private fun normalizedQuickQuizQuestionStatuses(values: List<String>, questionCount: Int): List<String> = List(questionCount.coerceAtLeast(1)) { index ->
+        normalizedQuickQuizReviewStatus(values.getOrElse(index) { "검수 대기" })
+    }
+
+    /** 세트 상태는 문항별 결과 안내용 요약이다. 학생용 공유 권한은 각 문항의 승인 여부만 사용한다. */
+    fun quickQuizReviewSummary(quiz: LocalQuickQuiz): String {
+        val statuses = normalizedQuickQuizQuestionStatuses(quiz.questionReviewStatuses, quiz.questionCount)
+        return when {
+            statuses.any { it == "검수 대기" } -> "검수 대기"
+            statuses.all { it == "승인" } -> "승인"
+            statuses.all { it == "반려" } -> "반려"
+            else -> "수정 필요"
+        }
     }
 
     /** 이전 세트는 객관식 기본값으로 읽어 새 3가지 형식 도입 뒤에도 학생용 공유를 유지한다. */
@@ -196,6 +213,7 @@ class LocalWorkspaceStore(context: Context) {
                 model = item.getString("model"),
                 promptVersion = item.getString("promptVersion"),
                 reviewStatus = normalizedQuickQuizReviewStatus(item.optString("reviewStatus", "검수 대기")),
+                questionReviewStatuses = normalizedQuickQuizQuestionStatuses(item.optJSONArray("questionReviewStatuses")?.toStringList() ?: emptyList(), item.getInt("questionCount")),
                 createdAt = item.getLong("createdAt"),
                 updatedAt = item.getLong("updatedAt"),
             )
@@ -255,16 +273,27 @@ class LocalWorkspaceStore(context: Context) {
         check(writeSchedules(schedules().filterNot { it.id == scheduleId })) { "일정을 이 기기에서 삭제하지 못했습니다." }
     }
 
-    /** 생성 결과를 항상 ‘검수 대기’부터 시작하도록 정리해 승인 전 사용을 막는다. */
+    /** 생성 결과를 문항별 ‘검수 대기’부터 시작하도록 정리해 승인 전 사용을 막는다. */
     fun saveQuickQuiz(quiz: LocalQuickQuiz) {
-        val normalized = quiz.copy(reviewStatus = normalizedQuickQuizReviewStatus(quiz.reviewStatus))
+        val normalized = quiz.copy(questionReviewStatuses = normalizedQuickQuizQuestionStatuses(quiz.questionReviewStatuses, quiz.questionCount)).let { item -> item.copy(reviewStatus = quickQuizReviewSummary(item)) }
         check(writeQuickQuizzes(quickQuizzes().filterNot { it.id == normalized.id } + normalized)) { "쪽지시험을 이 기기에 저장하지 못했습니다." }
     }
 
-    /** 승인·수정 필요·반려 외의 상태값은 검수 대기로 되돌려 세트 상태를 안전하게 보관한다. */
+    /** 이전 세트 단위 호출도 모든 문항에 상태를 명시적으로 적용해 데이터 형식을 유지한다. */
     fun updateQuickQuizReviewStatus(quizId: String, status: String) {
         val normalized = normalizedQuickQuizReviewStatus(status)
-        check(writeQuickQuizzes(quickQuizzes().map { if (it.id == quizId) it.copy(reviewStatus = normalized, updatedAt = System.currentTimeMillis()) else it })) { "쪽지시험 검수 상태를 저장하지 못했습니다." }
+        check(writeQuickQuizzes(quickQuizzes().map { if (it.id == quizId) it.copy(questionReviewStatuses = List(it.questionCount.coerceAtLeast(1)) { normalized }, reviewStatus = normalized, updatedAt = System.currentTimeMillis()) else it })) { "쪽지시험 검수 상태를 저장하지 못했습니다." }
+    }
+
+    /** 선택한 한 문항만 검수한 뒤 세트 요약 상태를 다시 계산한다. */
+    fun updateQuickQuizQuestionReviewStatus(quizId: String, questionIndex: Int, status: String) {
+        check(writeQuickQuizzes(quickQuizzes().map { quiz ->
+            if (quiz.id != quizId || questionIndex !in 0 until quiz.questionCount.coerceAtLeast(1)) quiz else {
+                val states = normalizedQuickQuizQuestionStatuses(quiz.questionReviewStatuses, quiz.questionCount).toMutableList()
+                states[questionIndex] = normalizedQuickQuizReviewStatus(status)
+                quiz.copy(questionReviewStatuses = states, updatedAt = System.currentTimeMillis()).let { item -> item.copy(reviewStatus = quickQuizReviewSummary(item)) }
+            }
+        })) { "쪽지시험 문항 검수 상태를 저장하지 못했습니다." }
     }
 
     fun deleteQuickQuiz(quizId: String) {
@@ -452,7 +481,7 @@ class LocalWorkspaceStore(context: Context) {
             array.put(JSONObject().apply {
                 put("id", item.id); put("subject", item.subject); put("unit", item.unit); put("topic", item.topic)
                 put("difficulty", item.difficulty); put("questionFormat", normalizedQuickQuizFormat(item.questionFormat)); put("questionCount", item.questionCount); put("content", item.content)
-                put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus)
+                put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus); put("questionReviewStatuses", JSONArray(normalizedQuickQuizQuestionStatuses(item.questionReviewStatuses, item.questionCount)))
                 put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
             })
         }

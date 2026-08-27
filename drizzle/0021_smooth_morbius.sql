@@ -1,0 +1,1 @@
+ALTER TABLE `quick_quiz_sets` ADD `questionReviewStates` json;

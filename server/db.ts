@@ -146,11 +146,33 @@ export async function deleteQuickQuizSet(id: number, ownerId: number) {
   return Number(result[0].affectedRows) > 0;
 }
 
-// 쪽지시험은 일반 문항 검수함과 분리해 세트 단위로 검수 상태만 기록한다.
+// 이전 화면과의 호환을 위해 세트 상태도 유지하되, 문항별 상태를 우선 기준으로 요약한다.
 export async function reviewQuickQuizSet(id: number, ownerId: number, status: "approved" | "revised" | "rejected") {
   const db = await requireDb();
   const result = await db.update(quickQuizSets).set({ status, reviewedAt: new Date() }).where(and(eq(quickQuizSets.id, id), eq(quickQuizSets.ownerId, ownerId), isNull(quickQuizSets.deletedAt)));
   return Number(result[0].affectedRows) > 0;
+}
+
+type QuickQuizReviewState = "pending_review" | "approved" | "revised" | "rejected";
+
+/** 문항별 상태를 읽기 쉬운 세트 상태로 요약한다. 검수 대기 문항이 하나라도 있으면 세트도 대기다. */
+function summarizeQuickQuizReview(states: QuickQuizReviewState[]): QuickQuizReviewState {
+  if (states.some(state => state === "pending_review")) return "pending_review";
+  if (states.every(state => state === "approved")) return "approved";
+  if (states.every(state => state === "rejected")) return "rejected";
+  return "revised";
+}
+
+/** 같은 교사가 만든 세트 안에서만 한 문항의 검수 결과를 변경하고 세트 요약을 함께 갱신한다. */
+export async function reviewQuickQuizQuestion(input: { id: number; ownerId: number; questionIndex: number; status: Exclude<QuickQuizReviewState, "pending_review"> }) {
+  const db = await requireDb();
+  const quiz = (await db.select().from(quickQuizSets).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt))).limit(1))[0];
+  if (!quiz || input.questionIndex < 0 || input.questionIndex >= quiz.questions.length) return undefined;
+  const states: QuickQuizReviewState[] = Array.from({ length: quiz.questions.length }, (_, index) => quiz.questionReviewStates?.[index] ?? "pending_review");
+  states[input.questionIndex] = input.status;
+  const status = summarizeQuickQuizReview(states);
+  const result = await db.update(quickQuizSets).set({ questionReviewStates: states, status, reviewedAt: status === "pending_review" ? null : new Date(), updatedAt: new Date() }).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt)));
+  return Number(result[0].affectedRows) > 0 ? { states, status } : undefined;
 }
 
 export async function recordManagedAiUsage(entry: ManagedAiUsageEntry) {

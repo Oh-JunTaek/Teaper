@@ -12,6 +12,7 @@ const db = vi.hoisted(() => ({
   deleteMaterialForUser: vi.fn().mockResolvedValue(true),
   deleteTeacherSchedule: vi.fn().mockResolvedValue(true),
   listTeacherSchedules: vi.fn().mockResolvedValue([]),
+  reviewQuickQuizQuestion: vi.fn().mockResolvedValue({ states: ["approved", "pending_review"], status: "pending_review" }),
   reviewQuickQuizSet: vi.fn().mockResolvedValue(true),
   dashboardStats: vi.fn(),
   getAiProviderSettingForUser: vi.fn().mockResolvedValue({ id: 55, userId: 42, providerType: "ollama", label: "내 PC의 Ollama", baseUrl: "http://127.0.0.1:11434", model: "qwen3:8b", encryptedApiKey: null, allowExternalTransfer: 0, externalTransferConsentAt: null, enabled: 1 }),
@@ -33,7 +34,7 @@ const db = vi.hoisted(() => ({
 
 vi.mock("../db", () => ({
   ...db,
-  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createQuickQuizSet: db.createQuickQuizSet, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), createTeacherSchedule: db.createTeacherSchedule, deleteMaterialForUser: db.deleteMaterialForUser, deleteTeacherSchedule: db.deleteTeacherSchedule, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listQuickQuizSets: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listTeacherSchedules: db.listTeacherSchedules, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewQuickQuizSet: db.reviewQuickQuizSet, reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion, updateTeacherSchedule: db.updateTeacherSchedule,
+  createAiProviderSetting: db.createAiProviderSetting, createMaterial: db.createMaterial, createQuickQuizSet: db.createQuickQuizSet, createReferenceQuestion: vi.fn(), createOfficialSource: vi.fn(), createTeacherSchedule: db.createTeacherSchedule, deleteMaterialForUser: db.deleteMaterialForUser, deleteTeacherSchedule: db.deleteTeacherSchedule, ensureOfficialCatalog: vi.fn(), getAiProviderSettingForUser: db.getAiProviderSettingForUser, getGeneratedQuestionDetail: vi.fn(), getManagedAiMonthlySuccessCount: db.getManagedAiMonthlySuccessCount, getManagedAiUsageReport: vi.fn(), getMaterial: vi.fn(), getSelectedOfficialDocumentsForGeneration: db.getSelectedOfficialDocumentsForGeneration, getSelectedReferenceQuestionsForGeneration: db.getSelectedReferenceQuestionsForGeneration, getUserAiPreferences: db.getUserAiPreferences, listAiProviderSettings: vi.fn(), listGeneratedQuestions: db.listGeneratedQuestions, listMaterials: vi.fn(), listOfficialDocuments: vi.fn(), listOfficialDocumentsForUser: vi.fn(), listOfficialSourceChanges: vi.fn(), listOfficialSources: vi.fn(), listPrototypeSamplesForUser: vi.fn(), listQuickQuizSets: vi.fn(), listReferenceQuestions: db.listReferenceQuestions, listTeacherSchedules: db.listTeacherSchedules, listWorkspaceUsers: vi.fn(), recordManagedAiMonthlySuccess: db.recordManagedAiMonthlySuccess, recordManagedAiUsage: db.recordManagedAiUsage, replaceMaterialChunks: vi.fn(), reviewGeneratedQuestion: vi.fn(), reviewQuickQuizQuestion: db.reviewQuickQuizQuestion, reviewQuickQuizSet: db.reviewQuickQuizSet, reviewOfficialSourceChange: vi.fn(), saveUserAiPreferences: db.saveUserAiPreferences, setReferenceQuestionSelection: vi.fn(), setOfficialDocumentSelection: vi.fn(), setWorkspaceUserPlan: vi.fn(), setWorkspaceUserRole: vi.fn(), updateAiProviderVerification: vi.fn(), updateMaterialExtraction: vi.fn(), updateReferenceQuestion: db.updateReferenceQuestion, updateTeacherSchedule: db.updateTeacherSchedule,
 }));
 
 vi.mock("../services/assessmentAi", () => ({
@@ -77,11 +78,23 @@ describe("generation request evidence integration", () => {
     expect(db.reviewQuickQuizSet).toHaveBeenCalledWith(501, 42, "approved");
   });
 
+  it("stores one quick-quiz question review with its owner and returns the derived set status", async () => {
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.quickQuiz.reviewQuestion({ id: 501, questionIndex: 0, status: "approved" })).resolves.toEqual({ success: true, states: ["approved", "pending_review"], status: "pending_review" });
+    expect(db.reviewQuickQuizQuestion).toHaveBeenCalledWith({ id: 501, ownerId: 42, questionIndex: 0, status: "approved" });
+  });
+
+  it("does not accept an unavailable quick-quiz question index", async () => {
+    db.reviewQuickQuizQuestion.mockResolvedValueOnce(undefined);
+    const caller = assessmentRouter.createCaller(context());
+    await expect(caller.quickQuiz.reviewQuestion({ id: 501, questionIndex: 9, status: "rejected" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
   it("stores the selected quick-quiz format with the current teacher only", async () => {
     const caller = assessmentRouter.createCaller(context());
     await expect(caller.quickQuiz.create({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 1 })).resolves.toMatchObject({ id: 811 });
     expect(generateQuickQuiz).toHaveBeenCalledWith(expect.objectContaining({ questionFormat: "ox", topic: "공유 결합" }), expect.anything());
-    expect(db.createQuickQuizSet).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 42, questionFormat: "ox" }));
+    expect(db.createQuickQuizSet).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 42, questionFormat: "ox", questionReviewStates: ["pending_review"] }));
   });
 
   it("stores schedule dates only in the current teacher's workspace", async () => {

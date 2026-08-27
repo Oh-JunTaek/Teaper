@@ -229,6 +229,8 @@ export const quickQuizSets = mysqlTable(
     questionFormat: mysqlEnum("questionFormat", ["multiple_choice", "short_answer", "ox"]).default("multiple_choice").notNull(),
     questionCount: int("questionCount").notNull(),
     questions: json("questions").$type<Array<{ questionText: string; choices: string[]; answer: string; explanation: string; concept: string }>>().notNull(),
+    // 인덱스별 상태는 questions와 같은 순서를 사용한다. 기존 세트의 null은 모두 검수 대기로 해석한다.
+    questionReviewStates: json("questionReviewStates").$type<Array<"pending_review" | "approved" | "revised" | "rejected">>(),
     providerType: varchar("providerType", { length: 40 }).notNull(),
     providerModel: varchar("providerModel", { length: 160 }).notNull(),
     promptVersion: varchar("promptVersion", { length: 80 }).notNull(),
