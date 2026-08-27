@@ -155,6 +155,22 @@ export async function reviewQuickQuizSet(id: number, ownerId: number, status: "a
 
 type QuickQuizReviewState = "pending_review" | "approved" | "revised" | "rejected";
 
+type QuickQuizDashboardRow = {
+  questions: Array<unknown>;
+  questionReviewStates: Array<QuickQuizReviewState> | null;
+};
+
+/** 대시보드는 기존 세트의 null 상태를 모두 검수 대기로 처리해 승인·완료 수를 과대 표시하지 않는다. */
+export function quickQuizDashboardQuestionCounts(rows: QuickQuizDashboardRow[]) {
+  return rows.reduce((counts, row) => {
+    const states = Array.from({ length: row.questions.length }, (_, index) => row.questionReviewStates?.[index] ?? "pending_review");
+    counts.pendingReview += states.filter(state => state === "pending_review").length;
+    counts.approved += states.filter(state => state === "approved").length;
+    counts.reviewed += states.filter(state => state !== "pending_review").length;
+    return counts;
+  }, { pendingReview: 0, approved: 0, reviewed: 0 });
+}
+
 /** 문항별 상태를 읽기 쉬운 세트 상태로 요약한다. 검수 대기 문항이 하나라도 있으면 세트도 대기다. */
 function summarizeQuickQuizReview(states: QuickQuizReviewState[]): QuickQuizReviewState {
   if (states.some(state => state === "pending_review")) return "pending_review";
@@ -538,8 +554,10 @@ export async function dashboardStats(ownerId?: number, includeAll = false) {
   const [noteCount] = await db.select({ value: count() }).from(teacherNotes).where(noteScope);
   const [scheduleCount] = await db.select({ value: count() }).from(teacherSchedules).where(scheduleScope);
   const [quickQuizCount] = await db.select({ value: count() }).from(quickQuizSets).where(quickQuizScope);
+  const quickQuizRows = await db.select({ questions: quickQuizSets.questions, questionReviewStates: quickQuizSets.questionReviewStates }).from(quickQuizSets).where(quickQuizScope);
+  const quickQuizQuestionCounts = quickQuizDashboardQuestionCounts(quickQuizRows);
   const [officialDocumentCount] = await db.select({ value: count() }).from(officialDocuments).where(eq(officialDocuments.catalogStatus, "published"));
-  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value), approvedCount: Number(approvedCount.value), questionCount: Number(questionCount.value), noteCount: Number(noteCount.value), scheduleCount: Number(scheduleCount.value), quickQuizCount: Number(quickQuizCount.value), officialDocumentCount: Number(officialDocumentCount.value) };
+  return { materialCount: Number(materialCount.value), referenceCount: Number(referenceCount.value), reviewCount: Number(reviewCount.value) + quickQuizQuestionCounts.pendingReview, approvedCount: Number(approvedCount.value) + quickQuizQuestionCounts.approved, questionCount: Number(questionCount.value), noteCount: Number(noteCount.value), scheduleCount: Number(scheduleCount.value), quickQuizCount: Number(quickQuizCount.value), quickQuizReviewCount: quickQuizQuestionCounts.pendingReview, quickQuizApprovedCount: quickQuizQuestionCounts.approved, quickQuizReviewedCount: quickQuizQuestionCounts.reviewed, officialDocumentCount: Number(officialDocumentCount.value) };
 }
 
 export async function listWorkspaceUsers() {

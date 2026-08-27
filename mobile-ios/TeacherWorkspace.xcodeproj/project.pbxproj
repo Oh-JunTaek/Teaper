@@ -1,0 +1,72 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+		A00000000000000000000001 /* TeacherWorkspace.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; path = TeacherWorkspace.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000002 /* TeacherWorkspaceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = TeacherWorkspaceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A00000000000000000000010 /* TeacherWorkspaceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherWorkspaceApp.swift; sourceTree = "<group>"; };
+		A00000000000000000000011 /* AssessmentModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AssessmentModels.swift; sourceTree = "<group>"; };
+		A00000000000000000000012 /* LocalWorkspaceStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalWorkspaceStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000013 /* LiteRTGemmaRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiteRTGemmaRunner.swift; sourceTree = "<group>"; };
+		A00000000000000000000014 /* QuickQuizGenerator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickQuizGenerator.swift; sourceTree = "<group>"; };
+		A00000000000000000000015 /* ModelFileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelFileStore.swift; sourceTree = "<group>"; };
+		A00000000000000000000016 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A00000000000000000000017 /* QuickQuizView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickQuizView.swift; sourceTree = "<group>"; };
+		A00000000000000000000018 /* ApprovedItemBankView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApprovedItemBankView.swift; sourceTree = "<group>"; };
+		A00000000000000000000019 /* ModelManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelManagerView.swift; sourceTree = "<group>"; };
+		A00000000000000000000021 /* StudentShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudentShareSheet.swift; sourceTree = "<group>"; };
+		A00000000000000000000020 /* TeacherWorkspaceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TeacherWorkspaceTests.swift; sourceTree = "<group>"; };
+
+		A00000000000000000000100 /* TeacherWorkspaceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000010 /* TeacherWorkspaceApp.swift */; };
+		A00000000000000000000101 /* AssessmentModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000011 /* AssessmentModels.swift */; };
+		A00000000000000000000102 /* LocalWorkspaceStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000012 /* LocalWorkspaceStore.swift */; };
+		A00000000000000000000103 /* LiteRTGemmaRunner.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000013 /* LiteRTGemmaRunner.swift */; };
+		A00000000000000000000104 /* QuickQuizGenerator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000014 /* QuickQuizGenerator.swift */; };
+		A00000000000000000000105 /* ModelFileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000015 /* ModelFileStore.swift */; };
+		A00000000000000000000106 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000016 /* ContentView.swift */; };
+		A00000000000000000000107 /* QuickQuizView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000017 /* QuickQuizView.swift */; };
+		A00000000000000000000108 /* ApprovedItemBankView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000018 /* ApprovedItemBankView.swift */; };
+		A00000000000000000000109 /* ModelManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000019 /* ModelManagerView.swift */; };
+		A00000000000000000000112 /* StudentShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000021 /* StudentShareSheet.swift */; };
+		A00000000000000000000110 /* TeacherWorkspaceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000020 /* TeacherWorkspaceTests.swift */; };
+		A00000000000000000000111 /* LiteRTLM in Frameworks */ = {isa = PBXBuildFile; productRef = A00000000000000000000200 /* LiteRTLM */; };
+
+		A00000000000000000000300 = {isa = PBXGroup; children = (A00000000000000000000301 /* TeacherWorkspace */, A00000000000000000000306 /* TeacherWorkspaceTests */, A00000000000000000000307 /* Products */); sourceTree = "<group>"; };
+		A00000000000000000000301 /* TeacherWorkspace */ = {isa = PBXGroup; children = (A00000000000000000000302 /* App */, A00000000000000000000303 /* Models */, A00000000000000000000304 /* Services */, A00000000000000000000305 /* Views */); path = TeacherWorkspace; sourceTree = "<group>"; };
+		A00000000000000000000302 /* App */ = {isa = PBXGroup; children = (A00000000000000000000010 /* TeacherWorkspaceApp.swift */); path = App; sourceTree = "<group>"; };
+		A00000000000000000000303 /* Models */ = {isa = PBXGroup; children = (A00000000000000000000011 /* AssessmentModels.swift */); path = Models; sourceTree = "<group>"; };
+		A00000000000000000000304 /* Services */ = {isa = PBXGroup; children = (A00000000000000000000012 /* LocalWorkspaceStore.swift */, A00000000000000000000013 /* LiteRTGemmaRunner.swift */, A00000000000000000000014 /* QuickQuizGenerator.swift */, A00000000000000000000015 /* ModelFileStore.swift */); path = Services; sourceTree = "<group>"; };
+		A00000000000000000000305 /* Views */ = {isa = PBXGroup; children = (A00000000000000000000016 /* ContentView.swift */, A00000000000000000000017 /* QuickQuizView.swift */, A00000000000000000000018 /* ApprovedItemBankView.swift */, A00000000000000000000019 /* ModelManagerView.swift */, A00000000000000000000021 /* StudentShareSheet.swift */); path = Views; sourceTree = "<group>"; };
+		A00000000000000000000306 /* TeacherWorkspaceTests */ = {isa = PBXGroup; children = (A00000000000000000000020 /* TeacherWorkspaceTests.swift */); path = TeacherWorkspaceTests; sourceTree = "<group>"; };
+		A00000000000000000000307 /* Products */ = {isa = PBXGroup; children = (A00000000000000000000001 /* TeacherWorkspace.app */, A00000000000000000000002 /* TeacherWorkspaceTests.xctest */); name = Products; sourceTree = "<group>"; };
+
+		A00000000000000000000400 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000100 /* TeacherWorkspaceApp.swift in Sources */, A00000000000000000000101 /* AssessmentModels.swift in Sources */, A00000000000000000000102 /* LocalWorkspaceStore.swift in Sources */, A00000000000000000000103 /* LiteRTGemmaRunner.swift in Sources */, A00000000000000000000104 /* QuickQuizGenerator.swift in Sources */, A00000000000000000000105 /* ModelFileStore.swift in Sources */, A00000000000000000000106 /* ContentView.swift in Sources */, A00000000000000000000107 /* QuickQuizView.swift in Sources */, A00000000000000000000108 /* ApprovedItemBankView.swift in Sources */, A00000000000000000000109 /* ModelManagerView.swift in Sources */, A00000000000000000000112 /* StudentShareSheet.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000401 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000111 /* LiteRTLM in Frameworks */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000402 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000403 /* Test Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000110 /* TeacherWorkspaceTests.swift in Sources */); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000404 /* Test Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		A00000000000000000000405 /* Test Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+
+		A00000000000000000000500 /* TeacherWorkspace */ = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000600; buildPhases = (A00000000000000000000400 /* Sources */, A00000000000000000000401 /* Frameworks */, A00000000000000000000402 /* Resources */); buildRules = (); dependencies = (); name = TeacherWorkspace; packageProductDependencies = (A00000000000000000000200 /* LiteRTLM */); productName = TeacherWorkspace; productReference = A00000000000000000000001 /* TeacherWorkspace.app */; productType = "com.apple.product-type.application"; };
+		A00000000000000000000501 /* TeacherWorkspaceTests */ = {isa = PBXNativeTarget; buildConfigurationList = A00000000000000000000601; buildPhases = (A00000000000000000000403 /* Test Sources */, A00000000000000000000404 /* Test Frameworks */, A00000000000000000000405 /* Test Resources */); buildRules = (); dependencies = (); name = TeacherWorkspaceTests; productName = TeacherWorkspaceTests; productReference = A00000000000000000000002 /* TeacherWorkspaceTests.xctest */; productType = "com.apple.product-type.bundle.unit-test"; };
+
+		A00000000000000000000200 /* LiteRTLM */ = {isa = XCSwiftPackageProductDependency; package = A00000000000000000000201 /* LiteRT-LM */; productName = LiteRTLM; };
+		A00000000000000000000201 /* LiteRT-LM */ = {isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/google-ai-edge/LiteRT-LM"; requirement = { kind = upToNextMajorVersion; minimumVersion = 0.16.0; }; };
+
+		A00000000000000000000610 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = 교사도우미; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.eunmastudio.teacherworkspace; SDKROOT = iphoneos; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Debug; };
+		A00000000000000000000611 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CLANG_ENABLE_MODULES = YES; CURRENT_PROJECT_VERSION = 1; DEVELOPMENT_TEAM = ""; GENERATE_INFOPLIST_FILE = YES; INFOPLIST_KEY_CFBundleDisplayName = 교사도우미; IPHONEOS_DEPLOYMENT_TARGET = 16.0; MARKETING_VERSION = 0.1.0; PRODUCT_BUNDLE_IDENTIFIER = com.eunmastudio.teacherworkspace; SDKROOT = iphoneos; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O"; SWIFT_VERSION = 5.9; TARGETED_DEVICE_FAMILY = "1,2"; }; name = Release; };
+		A00000000000000000000600 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000610 /* Debug */, A00000000000000000000611 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A00000000000000000000612 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { BUNDLE_LOADER = "$(TEST_HOST)"; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; PRODUCT_BUNDLE_IDENTIFIER = com.eunmastudio.teacherworkspace.tests; SWIFT_VERSION = 5.9; TEST_HOST = ""; }; name = Debug; };
+		A00000000000000000000613 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { BUNDLE_LOADER = "$(TEST_HOST)"; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 16.0; PRODUCT_BUNDLE_IDENTIFIER = com.eunmastudio.teacherworkspace.tests; SWIFT_VERSION = 5.9; TEST_HOST = ""; }; name = Release; };
+		A00000000000000000000601 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000612 /* Debug */, A00000000000000000000613 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		A00000000000000000000620 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = { CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; IPHONEOS_DEPLOYMENT_TARGET = 16.0; }; name = Debug; };
+		A00000000000000000000621 /* Release */ = {isa = XCBuildConfiguration; buildSettings = { CLANG_CXX_LANGUAGE_STANDARD = "gnu++20"; IPHONEOS_DEPLOYMENT_TARGET = 16.0; }; name = Release; };
+		A00000000000000000000622 = {isa = XCConfigurationList; buildConfigurations = (A00000000000000000000620 /* Debug */, A00000000000000000000621 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+
+		A00000000000000000000700 /* Project object */ = {isa = PBXProject; attributes = { BuildIndependentTargetsInParallel = 1; LastSwiftUpdateCheck = 1600; }; buildConfigurationList = A00000000000000000000622; compatibilityVersion = "Xcode 14.0"; developmentRegion = ko; hasScannedForEncodings = 0; knownRegions = (ko, en, Base); mainGroup = A00000000000000000000300; packageReferences = (A00000000000000000000201 /* LiteRT-LM */); productRefGroup = A00000000000000000000307 /* Products */; projectDirPath = ""; projectRoot = ""; targets = (A00000000000000000000500 /* TeacherWorkspace */, A00000000000000000000501 /* TeacherWorkspaceTests */); };
+	};
+	rootObject = A00000000000000000000700 /* Project object */;
+}

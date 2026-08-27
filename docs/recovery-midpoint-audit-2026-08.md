@@ -12,9 +12,10 @@
 |---|---|---|
 | 작업 기준점 | 웹 프로젝트는 `origin/main`의 `ea88c09`에서 복구됨 | 정상 |
 | GitHub 연결 | 복구 뒤 누락된 `github` 원격을 `Oh-JunTaek/Teaper`로 다시 등록하고 `main`과 차이 `0 / 0`을 확인 | 정상 |
-| 웹 자동 검증 | TypeScript 검사 및 Vitest 83개 통과 | 정상 |
+| 웹 자동 검증 | TypeScript 검사 및 Vitest 86개 통과 | 정상 |
 | Windows 자동 검증 | local-only Node 테스트 5개 및 JavaScript 구문 검사 통과 | 정상 |
-| Android 자동 검증 | 문항별 검수 코드는 반영했으나 복구된 샌드박스에 Android SDK가 없어 Gradle 컴파일을 시작하지 못함 | 환경 보류 |
+| Android 자동 검증 | 문항별 검수·대시보드 합산 코드는 반영했으나 복구된 샌드박스에 Android SDK가 없어 Gradle 컴파일을 시작하지 못함 | 환경 보류 |
+| iOS 자동 검증 | SwiftUI/XCTest 기반을 추가했으나 Linux 환경에 Xcode·iPhone Simulator가 없어 빌드·테스트를 시작하지 못함 | 환경 보류 |
 
 Android의 검증 보류는 코드 오류 판정이 아니다. Gradle이 요구하는 `ANDROID_HOME` 또는 `sdk.dir` 경로가 현재 복구 환경에 없으므로, SDK가 있는 CI 또는 실제 Android 개발 환경에서 다시 실행해야 한다.
 

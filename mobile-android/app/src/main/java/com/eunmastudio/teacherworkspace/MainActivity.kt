@@ -547,10 +547,11 @@ class MainActivity : AppCompatActivity() {
         val questions = store.questions()
         val notes = store.notes()
         val quickQuizzes = store.quickQuizzes()
-        // 승인 수는 일반 문항뿐 아니라 쪽지시험 안에서 교사가 개별 승인한 문항까지 합산한다.
+        // 대시보드는 쪽지시험 세트가 아니라 문항별 상태를 합산해 실제 검수 대기·승인량을 보여 준다.
+        val pendingQuickQuestionCount = quickQuizzes.sumOf { quiz -> quiz.questionReviewStatuses.count { it == "검수 대기" } }
         val approvedQuickQuestionCount = quickQuizzes.sumOf { quiz -> quiz.questionReviewStatuses.count { it == "승인" } }
         workspaceSummary.text = "등록 자료 ${sources.size}건 · 문항 ${questions.size}건 · 메모 ${notes.size}건 · 쪽지시험 ${quickQuizzes.size}건\n" +
-            "승인 ${questions.count { it.reviewStatus == "승인" } + approvedQuickQuestionCount}건\n" +
+            "쪽지시험 검수 대기 ${pendingQuickQuestionCount}문항 · 승인 ${questions.count { it.reviewStatus == "승인" } + approvedQuickQuestionCount}건\n" +
             "자료·문항은 앱 전용 저장소에 보관되고 자동 백업하지 않습니다."
     }
 
