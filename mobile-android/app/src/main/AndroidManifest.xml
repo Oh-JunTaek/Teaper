@@ -12,6 +12,8 @@
         android:usesCleartextTraffic="false"
         android:supportsRtl="true"
         android:theme="@style/Theme.TeacherWorkspace">
+        <!-- 서명 빌드의 Gradle 속성으로만 정하는 출력 플랜 값입니다. 기본 빌드는 워터마크를 표시합니다. -->
+        <meta-data android:name="com.eunmastudio.teacherworkspace.OUTPUT_PLAN" android:value="${eunmaOutputPlan}" />
         <!-- GPU 라이브러리가 없는 기기에서도 CPU 모드로 계속 실행한다. -->
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />

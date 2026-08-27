@@ -53,4 +53,16 @@ describe("question document export", () => {
     expect(html).not.toContain("난이도 중");
     expect(html).not.toContain("자료 분석형 ·");
   });
+
+  it("adds the EunmaStudio mark only to a basic-plan student question paper", () => {
+    const document = { write: vi.fn(), close: vi.fn() };
+    const popup = { document, focus: vi.fn(), print: vi.fn() };
+    vi.stubGlobal("window", { open: vi.fn(() => popup), setTimeout: (callback: () => void) => { callback(); return 0; } });
+
+    openQuestionPrintView([sampleQuestion], "question-paper", undefined, { watermark: true });
+    expect(document.write.mock.calls[0][0]).toContain("student-watermark");
+    document.write.mockClear();
+    openQuestionPrintView([sampleQuestion], "answer-sheet", undefined, { watermark: true });
+    expect(document.write.mock.calls[0][0]).not.toContain("<div class=\"student-watermark\"");
+  });
 });

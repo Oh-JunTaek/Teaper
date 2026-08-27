@@ -163,11 +163,12 @@ class QuickQuizActivity : AppCompatActivity() {
     private fun exportStudentPdf(quiz: LocalQuickQuiz) {
         if (quiz.questionReviewStatuses.none { it == "승인" }) { status.text = "학생용 PDF에 넣을 승인 문항이 없습니다. 문항별 검수에서 먼저 승인해 주세요."; return }
         val includePoints = CheckBox(this).apply { text = "배점 표기" }
-        AlertDialog.Builder(this).setTitle("학생용 PDF").setView(includePoints).setNegativeButton("취소", null).setPositiveButton("PDF 만들기") { _, _ ->
+        val options = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(includePoints); if (OutputPlanPolicy.shouldShowStudentWatermark(this@QuickQuizActivity)) addView(TextView(this@QuickQuizActivity).apply { text = "오른쪽 아래 여백에 EunmaStudio 표기가 들어갑니다."; textSize = 12f; setTextColor(Color.rgb(119, 137, 125)); setPadding(dp(4), dp(4), dp(4), 0) }) }
+        AlertDialog.Builder(this).setTitle("학생용 PDF").setView(options).setNegativeButton("취소", null).setPositiveButton("PDF 만들기") { _, _ ->
             val marker = Regex("(?m)^\\s*(정답|해설|개념)\\s*[:：]")
             val approved = quickQuizBlocks(quiz.content).mapIndexedNotNull { index, block -> if (quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" } == "승인") marker.find(block)?.let { block.substring(0, it.range.first).trim() } else null }
             if (approved.isEmpty()) { status.text = "학생용으로 분리할 문항을 찾지 못했습니다."; return@setPositiveButton }
-            val file = QuickQuizPdfExporter(this).export(quiz, approved, includePoints.isChecked); val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val file = QuickQuizPdfExporter(this).export(quiz, approved, includePoints.isChecked, OutputPlanPolicy.shouldShowStudentWatermark(this)); val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "application/pdf"; putExtra(Intent.EXTRA_STREAM, uri); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION) }, "학생용 쪽지시험 PDF 공유"))
         }.show()
     }

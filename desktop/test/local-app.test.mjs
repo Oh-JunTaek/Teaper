@@ -117,6 +117,9 @@ try {
   assert.match(questionPrintWithPoints, /［3점］/);
   assert.doesNotMatch(questionPrintWithPoints, /난이도/);
   assert.doesNotMatch(exportQuestionsPrintHtml(store.listApproved(), "question-paper"), /［3점］/);
+  const basicStudentPrint = exportQuestionsPrintHtml(store.listApproved(), "question-paper", { watermark: true });
+  assert.match(basicStudentPrint, /student-watermark/);
+  assert.doesNotMatch(exportQuestionsPrintHtml(store.listApproved(), "answer-sheet", { watermark: true }), /<div class="student-watermark"/);
   store.close();
   const bridge = await createLocalBridge();
   const bad = await fetch(`http://127.0.0.1:${bridge.port}/health`);

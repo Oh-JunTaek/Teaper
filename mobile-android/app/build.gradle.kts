@@ -15,6 +15,8 @@ android {
         targetSdk = 36
         versionCode = 26
         versionName = "0.1.0-alpha.26"
+        // 결제를 연결하기 전에는 서명 배포 과정에서만 플랜을 정한다. 기본값은 basic이며 -PeunmaOutputPlan=plus로 플러스 배포본을 만든다.
+        manifestPlaceholders["eunmaOutputPlan"] = providers.gradleProperty("eunmaOutputPlan").orElse("basic").get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

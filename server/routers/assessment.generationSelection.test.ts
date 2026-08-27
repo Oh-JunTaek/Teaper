@@ -61,7 +61,7 @@ describe("generation request evidence integration", () => {
   it("keeps the basic plan out of workbook export while returning the plan summary", async () => {
     const caller = assessmentRouter.createCaller(context());
     await expect(caller.questions.workbookExport()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false, managedAi: { successCount: 0, monthlySuccessLimit: 3, remainingSuccessCount: 3 } });
+    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "basic", canUseWorkbookExport: false, canRemoveStudentWatermark: false, managedAi: { successCount: 0, monthlySuccessLimit: 3, remainingSuccessCount: 3 } });
   });
 
   it("returns the current teacher's expanded personal workspace counts", async () => {
@@ -119,7 +119,7 @@ describe("generation request evidence integration", () => {
     const caller = assessmentRouter.createCaller(plusContext);
 
     await expect(caller.questions.workbookExport()).resolves.toHaveLength(1);
-    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "plus", canUseWorkbookExport: true });
+    await expect(caller.plan.me()).resolves.toMatchObject({ plan: "plus", canUseWorkbookExport: true, canRemoveStudentWatermark: true });
   });
 
   it("soft-deletes only a material owned by the current teacher", async () => {

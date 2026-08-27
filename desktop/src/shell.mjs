@@ -261,7 +261,8 @@ function registerHandlers() {
     if (input.kind === "csv") { const result = await saveExportFile("승인-문항-목록.csv", `\ufeff${exportQuestionsCsv(questions)}`); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-question") { const result = await saveExportFile("문항-시험지.docx", await exportQuestionsDocx(questions, "question-paper")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
     if (input.kind === "docx-answer") { const result = await saveExportFile("문항-정답-해설지.docx", await exportQuestionsDocx(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, result.saved ? "saved" : "cancelled"); return result; }
-    if (input.kind === "print-question") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
+    // 로컬 플랜은 서명 배포 환경 변수만 신뢰한다. 기본은 워터마크 표시, plus 서명 빌드만 제거한다.
+    if (input.kind === "print-question") { const plan = process.env.EUNMASTUDIO_LOCAL_PLAN === "plus" ? "plus" : "basic"; const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "question-paper", { includePoints: input.includePoints === true, watermark: plan !== "plus" })); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     if (input.kind === "print-answer") { const result = await showPrintPreview(exportQuestionsPrintHtml(questions, "answer-sheet")); recordExportAudit(input.kind, questions.length, "preview_opened"); return result; }
     throw new Error("지원하지 않는 내보내기 형식입니다.");
   });

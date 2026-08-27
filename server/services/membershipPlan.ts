@@ -25,6 +25,8 @@ export function membershipPlanSummary(user: Pick<User, "role" | "membershipPlan"
     plan,
     label: membershipPlanLabels[plan],
     canUseWorkbookExport: plan === "plus",
+    // 학생용 시험지의 EunmaStudio 표기는 교사 플러스에서만 제거할 수 있다.
+    canRemoveStudentWatermark: plan === "plus",
     managedAi: {
       usageMonth: usageMonth || null,
       successCount: Math.max(0, managedAiSuccessCount),

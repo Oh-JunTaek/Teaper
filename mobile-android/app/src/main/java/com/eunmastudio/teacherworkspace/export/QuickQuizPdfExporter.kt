@@ -9,7 +9,7 @@ import java.io.FileOutputStream
 
 /** 승인한 쪽지시험 문항만 앱 캐시에 PDF로 만들며, 답·해설·개념·난이도는 절대 넣지 않는다. */
 class QuickQuizPdfExporter(private val context: Context) {
-    fun export(quiz: LocalQuickQuiz, approvedBlocks: List<String>, includePoints: Boolean): File {
+    fun export(quiz: LocalQuickQuiz, approvedBlocks: List<String>, includePoints: Boolean, includeWatermark: Boolean): File {
         val file = File(context.cacheDir, "exports/approved-quick-quiz.pdf").apply { parentFile?.mkdirs() }
         val document = PdfDocument(); val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
         val margin = 48f; val width = 595; val height = 842; var pageNumber = 1
@@ -23,10 +23,10 @@ class QuickQuizPdfExporter(private val context: Context) {
             }
         }
         lines.flatMap { wrap(it, paint, width - margin * 2) }.forEach { line ->
-            if (y > height - margin) { document.finishPage(page); pageNumber += 1; page = document.startPage(PdfDocument.PageInfo.Builder(width, height, pageNumber).create()); canvas = page.canvas; y = margin }
+            if (y > height - margin) { drawWatermark(canvas, width, height, includeWatermark); document.finishPage(page); pageNumber += 1; page = document.startPage(PdfDocument.PageInfo.Builder(width, height, pageNumber).create()); canvas = page.canvas; y = margin }
             canvas.drawText(line, margin, y, paint); y += 20f
         }
-        document.finishPage(page); FileOutputStream(file).use(document::writeTo); document.close(); return file
+        drawWatermark(canvas, width, height, includeWatermark); document.finishPage(page); FileOutputStream(file).use(document::writeTo); document.close(); return file
     }
 
     private fun wrap(text: String, paint: Paint, width: Float): List<String> {
@@ -34,5 +34,13 @@ class QuickQuizPdfExporter(private val context: Context) {
         var remaining = text.trim(); val lines = mutableListOf<String>()
         while (remaining.isNotEmpty()) { val count = paint.breakText(remaining, true, width, null); val split = if (count == remaining.length) count else remaining.lastIndexOf(' ', count).takeIf { it > 0 } ?: count; lines += remaining.take(split).trimEnd(); remaining = remaining.drop(split).trimStart() }
         return lines
+    }
+
+    /** 기본 플랜의 학생용 PDF 하단 여백에만 작게 표시해 문항·배점·답안 공간을 가리지 않는다. */
+    private fun drawWatermark(canvas: android.graphics.Canvas, width: Int, height: Int, includeWatermark: Boolean) {
+        if (!includeWatermark) return
+        val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 8f; color = android.graphics.Color.rgb(148, 163, 184) }
+        val text = "EunmaStudio"
+        canvas.drawText(text, width - 48f - markPaint.measureText(text), height - 20f, markPaint)
     }
 }
