@@ -1,0 +1,1 @@
+ALTER TABLE `quick_quiz_sets` ADD `questionFormat` enum('multiple_choice','short_answer','ox') DEFAULT 'multiple_choice' NOT NULL;

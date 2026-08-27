@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cosineSimilarity, createTextEmbedding, needsVisionFallback, splitIntoChunks } from "./assessmentAi";
+import { cosineSimilarity, createTextEmbedding, needsVisionFallback, normalizeQuickQuizQuestions, splitIntoChunks } from "./assessmentAi";
 
 describe("assessmentAi retrieval helpers", () => {
   it("creates stable normalized vectors for the same educational text", () => {
@@ -31,5 +31,13 @@ describe("assessmentAi retrieval helpers", () => {
   it("uses visual reading only when a PDF has too little selectable text", () => {
     expect(needsVisionFallback("선택 가능한 PDF 텍스트 ".repeat(20))).toBe(false);
     expect(needsVisionFallback("스캔본")).toBe(true);
+  });
+
+  it("keeps the selected quick-quiz format consistent before storage", () => {
+    const base = { questionText: "공유 결합의 정의는?", answer: "1", explanation: "전자쌍을 공유합니다.", concept: "공유 결합" };
+    expect(normalizeQuickQuizQuestions([{ ...base, choices: ["전자쌍 공유", "양성자 이동", "중성자 방출", "빛 흡수"] }], "multiple_choice", 1)[0].choices).toHaveLength(4);
+    expect(normalizeQuickQuizQuestions([{ ...base, choices: [], answer: "전자쌍 공유" }], "short_answer", 1)[0].choices).toEqual([]);
+    expect(normalizeQuickQuizQuestions([{ ...base, questionText: "공유 결합은 전자쌍을 공유한다.", choices: [], answer: "○" }], "ox", 1)[0]).toMatchObject({ choices: ["O", "X"], answer: "O" });
+    expect(() => normalizeQuickQuizQuestions([{ ...base, choices: ["하나"] }], "multiple_choice", 1)).toThrow(/보기 4개/);
   });
 });

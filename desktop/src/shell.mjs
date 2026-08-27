@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { createLocalBridge } from "./bridge.mjs";
 import { openBackup, sealBackup } from "./backup.mjs";
 import { exportQuestionsCsv, exportQuestionsDocx, exportQuestionsPrintHtml, openLocalStore } from "./store.mjs";
-import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, QUICK_QUIZ_PROMPT_VERSION, studentQuickQuizText } from "./quickQuizPolicy.mjs";
+import { isPotentialPromptDisclosure, isPromptDisclosureRequest, localQuickQuizPrompt, normalizeQuickQuizFormat, QUICK_QUIZ_PROMPT_VERSION, studentQuickQuizText } from "./quickQuizPolicy.mjs";
 import { boundedChatHistory, chatTitleFromMessage, localChatPrompt } from "./chatPolicy.mjs";
 import { DEFAULT_LOCAL_MODEL_SETTINGS, generationOptions, normalizeLocalModelSettings, supportsThinking } from "./localModelSettings.mjs";
 import { LOCAL_WINDOW_WEB_PREFERENCES, externalNavigationMessage, isAllowedLocalPage } from "./shellSecurity.mjs";
@@ -224,14 +224,14 @@ function registerHandlers() {
   });
   // 간결한 쪽지시험은 한 개념만 확인하고, 검수 대기 상태로 분리 저장한다.
   ipcMain.handle("local:generate-quick-quiz", async (_event, input) => {
-    const topic = String(input.topic || "").trim().slice(0, 160); const questionCount = Math.max(1, Math.min(10, Number(input.questionCount || 3)));
+    const topic = String(input.topic || "").trim().slice(0, 160); const questionCount = Math.max(1, Math.min(10, Number(input.questionCount || 3))); const questionFormat = normalizeQuickQuizFormat(input.questionFormat);
     if (!topic) throw new Error("확인할 개념 또는 정의를 입력해 주세요.");
     if (isPromptDisclosureRequest(`${input.subject || ""}\n${input.unit || ""}\n${topic}`)) throw new Error("내부 설정·지시문은 공개하거나 생성 요청에 사용할 수 없습니다. 확인할 학습 개념을 입력해 주세요.");
     const generated = await bridgeRequest("/generate", { method: "POST", body: JSON.stringify({ model: input.model, prompt: localQuickQuizPrompt({ ...input, topic, questionCount, teacherInstructions: store.getSetting("teacher_instructions").trim().slice(0, 600) }), runtime: input.runtime || "ollama", options: { temperature: 0.15, maxTokens: Math.min(1800, 280 * questionCount) } }) });
     if (isPotentialPromptDisclosure(generated.response)) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
     const now = new Date().toISOString(); const id = randomUUID();
-    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", createdAt: now, updatedAt: now });
-    store.audit({ id: randomUUID(), action: "local_quick_quiz_generate", payload: { questionCount, model: generated.model }, createdAt: now });
+    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionFormat, questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", createdAt: now, updatedAt: now });
+    store.audit({ id: randomUUID(), action: "local_quick_quiz_generate", payload: { questionCount, questionFormat, model: generated.model }, createdAt: now });
     return { id, response: generated.response, model: generated.model };
   });
   ipcMain.handle("local:list-quick-quizzes", () => store.listQuickQuizSets());

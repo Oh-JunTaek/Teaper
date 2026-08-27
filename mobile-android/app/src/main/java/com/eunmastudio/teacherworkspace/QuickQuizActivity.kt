@@ -72,6 +72,9 @@ class QuickQuizActivity : AppCompatActivity() {
         content.addView(fieldLabel("확인할 개념·정의"))
         val topic = field("예: 공유 결합의 정의", "")
         content.addView(topic, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        content.addView(fieldLabel("문항 형식"))
+        val questionFormat = select(QuickQuizFormPolicy.questionFormats.map(QuickQuizFormPolicy::questionFormatLabel))
+        content.addView(questionFormat, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { bottomMargin = dp(10) })
         content.addView(fieldLabel("목표 정답률"))
         val rateLabels = QuickQuizFormPolicy.targetCorrectRates.map(QuickQuizFormPolicy::difficultyLabel)
         val difficulty = select(rateLabels).apply { setSelection(QuickQuizFormPolicy.targetCorrectRates.indexOf(60)) }
@@ -86,12 +89,13 @@ class QuickQuizActivity : AppCompatActivity() {
             if (blocked != null) { status.text = blocked; return@setOnClickListener }
             if (term.isBlank()) { status.text = "확인할 개념 또는 정의를 입력해 주세요."; return@setOnClickListener }
             val subjectValue = QuickQuizFormPolicy.subjects[subject.selectedItemPosition]
+            val questionFormatValue = QuickQuizFormPolicy.questionFormats[questionFormat.selectedItemPosition]
             val rate = QuickQuizFormPolicy.targetCorrectRates[difficulty.selectedItemPosition]
             val countValue = QuickQuizFormPolicy.questionCounts[count.selectedItemPosition]
             generate.isEnabled = false
             lifecycleScope.launch { try {
                 store.saveQuickQuizLastSubject(subjectValue)
-                if (ensureModelReady()) createQuiz(subjectValue, unit.text.toString().trim(), term, QuickQuizFormPolicy.difficultyLabel(rate), countValue)
+                if (ensureModelReady()) createQuiz(subjectValue, unit.text.toString().trim(), term, QuickQuizFormPolicy.difficultyLabel(rate), questionFormatValue, countValue)
             } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 생성에 실패했습니다." } finally { generate.isEnabled = true } }
         } }
         content.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(18) })
@@ -109,12 +113,12 @@ class QuickQuizActivity : AppCompatActivity() {
     }
 
     /** 스트리밍 토큰은 화면에 노출하지 않고, LiteRT-LM 생성이 끝난 한 번의 결과만 검수 목록에 추가한다. */
-    private suspend fun createQuiz(subject: String, unit: String, topic: String, difficulty: String, count: Int) {
+    private suspend fun createQuiz(subject: String, unit: String, topic: String, difficulty: String, questionFormat: String, count: Int) {
         status.text = "쪽지시험을 생성하고 있습니다. 완료되면 검수 목록에 표시합니다."
-        val response = runner.generateFinal(QuickQuizPromptContract.generationPrompt(subject, unit, topic, difficulty, count, store.teacherInstructions())).trim()
+        val response = runner.generateFinal(QuickQuizPromptContract.generationPrompt(subject, unit, topic, difficulty, questionFormat, count, store.teacherInstructions())).trim()
         if (response.isBlank()) throw IllegalStateException("모델이 빈 쪽지시험을 반환했습니다. 다시 시도해 주세요.")
         val safe = if (PromptDisclosurePolicy.isPotentialDisclosure(response)) PromptDisclosurePolicy.SAFE_REPLY else response
-        store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, difficulty = difficulty.ifBlank { "낮음" }, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
+        store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, difficulty = difficulty.ifBlank { "낮음" }, questionFormat = questionFormat, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
         status.text = "쪽지시험을 검수 목록에 저장했습니다. 정답과 해설을 확인해 주세요."
         refreshList()
     }
@@ -126,7 +130,7 @@ class QuickQuizActivity : AppCompatActivity() {
         fun dp(value: Int) = (value * density).toInt()
         list.removeAllViews()
         if (store.quickQuizzes().isEmpty()) list.addView(TextView(this).apply { text = "아직 만든 쪽지시험이 없습니다."; setTextColor(Color.rgb(181, 200, 185)); setPadding(dp(4), dp(12), dp(4), dp(12)) })
-        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = quiz.content; textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); addView(TextView(this@QuickQuizActivity).apply { text = "[${quiz.reviewStatus}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · ${quiz.model}"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = quiz.content; textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("내용·검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
     /** 승인 세트에서 문항·보기만 남겨 학생용 공유 텍스트를 만들고, 형식이 다르면 공유를 중단한다. */
@@ -143,7 +147,7 @@ class QuickQuizActivity : AppCompatActivity() {
         if (quiz.reviewStatus != "승인") { status.text = "교사가 승인한 쪽지시험만 학생용으로 공유할 수 있습니다."; return }
         val studentText = studentShareText(quiz)
         if (studentText == null) { status.text = "학생용으로 분리할 문항 형식을 찾지 못했습니다. 교사용 내용을 확인해 주세요."; return }
-        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
+        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply { type = "text/plain"; putExtra(Intent.EXTRA_SUBJECT, "${quiz.subject} · 쪽지시험"); putExtra(Intent.EXTRA_TEXT, "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)}\n이름: ____________________    날짜: __________\n\n$studentText") }, "학생용 쪽지시험 공유"))
     }
 
     /** 정답·해설을 읽은 교사가 승인·수정 필요·반려 중 하나를 선택해 세트 상태를 기록한다. */

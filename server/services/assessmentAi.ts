@@ -1,7 +1,7 @@
 import { invokeLLM, listLLMModels } from "../_core/llm";
 import { PDFParse } from "pdf-parse";
 import type { ResolvedProvider } from "./aiProviders";
-import { appendTeacherInstructions, buildGenerationSystemPrompt, buildQuickQuizSystemPrompt, buildValidationSystemPrompt, isPotentialPromptDisclosure, PROMPT_CONTRACT_VERSION, QUICK_QUIZ_PROMPT_VERSION, type ProviderKind } from "./assessmentPrompt";
+import { appendTeacherInstructions, buildGenerationSystemPrompt, buildQuickQuizSystemPrompt, buildValidationSystemPrompt, isPotentialPromptDisclosure, PROMPT_CONTRACT_VERSION, QUICK_QUIZ_PROMPT_VERSION, type ProviderKind, type QuickQuizFormat } from "./assessmentPrompt";
 import type { CalculationSpec } from "./mathVerification";
 
 export const PROMPT_VERSION = PROMPT_CONTRACT_VERSION;
@@ -196,23 +196,45 @@ const draftSchema = { type: "json_schema", json_schema: { name: "question_draft"
 
 const quickQuizSchema = { type: "json_schema", json_schema: { name: "quick_quiz", strict: true, schema: { type: "object", properties: { questions: { type: "array", items: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, concept: { type: "string" } }, required: ["questionText", "choices", "answer", "explanation", "concept"], additionalProperties: false } } }, required: ["questions"], additionalProperties: false } } };
 
-export async function generateQuickQuiz(input: { subject: string; unit: string; topic: string; difficulty: string; questionCount: number; customInstructions?: string }, provider?: ResolvedProvider) {
-  const model = await selectModel("generation", provider);
-  if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [
-    { role: "system", content: appendTeacherInstructions(buildQuickQuizSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) },
-    { role: "user", content: `쪽지시험 생성 요청\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 확인할 개념: ${input.topic}\n- 난이도: ${input.difficulty}\n- 문항 수: ${input.questionCount}\n\n학생이 짧은 시간 안에 풀 수 있는 새로운 개념 확인 문항만 ${input.questionCount}개 생성하십시오.` },
-  ], responseFormat: quickQuizSchema });
-  const parsed = JSON.parse(contentOf(response)) as { questions: QuickQuizQuestion[] };
-  if (parsed.questions.some(question => isPotentialPromptDisclosure(`${question.questionText}\n${question.answer}\n${question.explanation}\n${question.concept}`))) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
-  const questions = parsed.questions.slice(0, input.questionCount).map(question => ({
+const quickQuizFormatLabel: Record<QuickQuizFormat, string> = { multiple_choice: "객관식 4지선다", short_answer: "주관식", ox: "O/X" };
+
+/** AI 응답이 선택한 형식과 다르면 검수함에 넣지 않아 교사가 형식이 섞인 세트를 쓰지 않게 한다. */
+export function normalizeQuickQuizQuestions(rawQuestions: QuickQuizQuestion[], format: QuickQuizFormat, count: number): QuickQuizQuestion[] {
+  const questions = rawQuestions.slice(0, count).map(question => ({
     questionText: question.questionText.trim().slice(0, 220),
-    choices: question.choices.slice(0, 4).map(choice => choice.trim().slice(0, 90)),
+    choices: question.choices.slice(0, 4).map(choice => choice.trim().slice(0, 90)).filter(Boolean),
     answer: question.answer.trim().slice(0, 120),
     explanation: question.explanation.trim().slice(0, 260),
     concept: question.concept.trim().slice(0, 100),
   }));
-  if (questions.length !== input.questionCount || questions.some(question => !question.questionText || !question.answer || !question.explanation)) throw new Error("쪽지시험 형식이 완전하지 않습니다. 다시 시도해 주세요.");
+  if (questions.length !== count || questions.some(question => !question.questionText || !question.answer || !question.explanation)) throw new Error("쪽지시험 형식이 완전하지 않습니다. 다시 시도해 주세요.");
+  for (const question of questions) {
+    if (format === "multiple_choice") {
+      const answerIndex = question.answer.replace(/번$/, "");
+      const uniqueChoices = new Set(question.choices.map(choice => choice.toLowerCase()));
+      if (question.choices.length !== 4 || uniqueChoices.size !== 4 || !(["1", "2", "3", "4", "①", "②", "③", "④"].includes(answerIndex) || question.choices.includes(question.answer))) throw new Error("객관식은 서로 다른 보기 4개와 정답을 모두 확인할 수 있어야 합니다. 다시 시도해 주세요.");
+    }
+    if (format === "short_answer" && question.choices.length !== 0) throw new Error("주관식에는 보기를 넣지 않습니다. 다시 시도해 주세요.");
+    if (format === "ox") {
+      const normalizedAnswer = question.answer.replace(/[○o]/gi, "O").replace(/[×x]/gi, "X").trim();
+      if (normalizedAnswer !== "O" && normalizedAnswer !== "X") throw new Error("O/X 문항의 정답은 O 또는 X여야 합니다. 다시 시도해 주세요.");
+      question.choices = ["O", "X"];
+      question.answer = normalizedAnswer;
+    }
+  }
+  return questions;
+}
+
+export async function generateQuickQuiz(input: { subject: string; unit: string; topic: string; difficulty: string; questionCount: number; questionFormat: QuickQuizFormat; customInstructions?: string }, provider?: ResolvedProvider) {
+  const model = await selectModel("generation", provider);
+  if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
+  const response = await invokeForProvider({ provider, model, messages: [
+    { role: "system", content: appendTeacherInstructions(buildQuickQuizSystemPrompt((provider?.kind || "managed") as ProviderKind, input.questionFormat), input.customInstructions) },
+    { role: "user", content: `쪽지시험 생성 요청\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 확인할 개념: ${input.topic}\n- 난이도: ${input.difficulty}\n- 문항 형식: ${quickQuizFormatLabel[input.questionFormat]}\n- 문항 수: ${input.questionCount}\n\n학생이 짧은 시간 안에 풀 수 있는 새로운 개념 확인 문항만 ${input.questionCount}개 생성하십시오.` },
+  ], responseFormat: quickQuizSchema });
+  const parsed = JSON.parse(contentOf(response)) as { questions: QuickQuizQuestion[] };
+  if (parsed.questions.some(question => isPotentialPromptDisclosure(`${question.questionText}\n${question.answer}\n${question.explanation}\n${question.concept}`))) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
+  const questions = normalizeQuickQuizQuestions(parsed.questions, input.questionFormat, input.questionCount);
   return { questions, model, promptVersion: QUICK_QUIZ_PROMPT_VERSION };
 }
 

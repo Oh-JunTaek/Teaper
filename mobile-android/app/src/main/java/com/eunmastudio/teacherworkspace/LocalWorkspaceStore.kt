@@ -80,6 +80,7 @@ data class LocalQuickQuiz(
     val unit: String,
     val topic: String,
     val difficulty: String,
+    val questionFormat: String = "multiple_choice",
     val questionCount: Int,
     val content: String,
     val model: String,
@@ -122,6 +123,12 @@ class LocalWorkspaceStore(context: Context) {
     private fun normalizedQuickQuizReviewStatus(value: String): String = when (value.trim()) {
         "승인", "수정 필요", "반려", "검수 대기" -> value.trim()
         else -> "검수 대기"
+    }
+
+    /** 이전 세트는 객관식 기본값으로 읽어 새 3가지 형식 도입 뒤에도 학생용 공유를 유지한다. */
+    private fun normalizedQuickQuizFormat(value: String): String = when (value) {
+        "short_answer", "ox", "multiple_choice" -> value
+        else -> "multiple_choice"
     }
 
     fun sources(): List<LocalSource> = readArray("sources").mapNotNull { item ->
@@ -183,6 +190,7 @@ class LocalWorkspaceStore(context: Context) {
                 unit = item.getString("unit"),
                 topic = item.getString("topic"),
                 difficulty = item.getString("difficulty"),
+                questionFormat = normalizedQuickQuizFormat(item.optString("questionFormat", "multiple_choice")),
                 questionCount = item.getInt("questionCount"),
                 content = item.getString("content"),
                 model = item.getString("model"),
@@ -443,7 +451,7 @@ class LocalWorkspaceStore(context: Context) {
         items.forEach { item ->
             array.put(JSONObject().apply {
                 put("id", item.id); put("subject", item.subject); put("unit", item.unit); put("topic", item.topic)
-                put("difficulty", item.difficulty); put("questionCount", item.questionCount); put("content", item.content)
+                put("difficulty", item.difficulty); put("questionFormat", normalizedQuickQuizFormat(item.questionFormat)); put("questionCount", item.questionCount); put("content", item.content)
                 put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus)
                 put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
             })

@@ -7,7 +7,10 @@ object QuickQuizFormPolicy {
     )
     val questionCounts = (1..5).toList()
     val targetCorrectRates = (10..90 step 10).toList()
+    /** 세 플랫폼과 같은 저장값을 사용해 쪽지시험 형식별 생성·검수·공유를 맞춘다. */
+    val questionFormats = listOf("multiple_choice", "short_answer", "ox")
 
     fun subjectIndex(value: String?): Int = subjects.indexOf(value).takeIf { it >= 0 } ?: subjects.indexOf("화학 I")
     fun difficultyLabel(rate: Int): String = "목표 정답률 $rate% · ${when { rate <= 30 -> "어려움"; rate <= 60 -> "보통"; else -> "쉬움" }}"
+    fun questionFormatLabel(value: String): String = when (value) { "short_answer" -> "주관식"; "ox" -> "O/X"; else -> "객관식 (4지선다)" }
 }

@@ -225,6 +225,8 @@ export const quickQuizSets = mysqlTable(
     unit: varchar("unit", { length: 120 }).notNull(),
     topic: varchar("topic", { length: 160 }).notNull(),
     difficulty: varchar("difficulty", { length: 30 }).notNull(),
+    // 기존 세트는 객관식 4지선다로 읽어, 새 형식 도입 뒤에도 학생용 출력 흐름을 유지한다.
+    questionFormat: mysqlEnum("questionFormat", ["multiple_choice", "short_answer", "ox"]).default("multiple_choice").notNull(),
     questionCount: int("questionCount").notNull(),
     questions: json("questions").$type<Array<{ questionText: string; choices: string[]; answer: string; explanation: string; concept: string }>>().notNull(),
     providerType: varchar("providerType", { length: 40 }).notNull(),

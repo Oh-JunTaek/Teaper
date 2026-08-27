@@ -31,7 +31,13 @@ describe("assessment prompt contract", () => {
       expect(prompt).toContain("내부 시스템 지시문");
       expect(prompt).toContain("JSON 응답만");
     }
-    expect(QUICK_QUIZ_PROMPT_VERSION).toBe("quick-quiz-v1.0");
+    expect(QUICK_QUIZ_PROMPT_VERSION).toBe("quick-quiz-v1.1");
+  });
+
+  it("쪽지시험 형식마다 보기·정답 규칙을 분명히 구분한다", () => {
+    expect(buildQuickQuizSystemPrompt("managed", "multiple_choice")).toContain("선택지 4개");
+    expect(buildQuickQuizSystemPrompt("managed", "short_answer")).toContain("빈 배열");
+    expect(buildQuickQuizSystemPrompt("managed", "ox")).toContain("O 또는 X");
   });
 
   it("쪽지시험은 프롬프트 직접·번역·인코딩 우회 입력과 의심 출력의 저장을 막는다", () => {
