@@ -129,7 +129,13 @@ class QuickQuizActivity : AppCompatActivity() {
         val density = resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         list.removeAllViews()
-        if (store.quickQuizzes().isEmpty()) list.addView(TextView(this).apply { text = "아직 만든 쪽지시험이 없습니다."; setTextColor(Color.rgb(181, 200, 185)); setPadding(dp(4), dp(12), dp(4), dp(12)) })
+        val quickQuizzes = store.quickQuizzes()
+        if (quickQuizzes.isEmpty()) list.addView(TextView(this).apply { text = "아직 만든 쪽지시험이 없습니다."; setTextColor(Color.rgb(181, 200, 185)); setPadding(dp(4), dp(12), dp(4), dp(12)) }) else {
+            val pending = quickQuizzes.filter { it.questionReviewStatuses.contains("검수 대기") }
+            val pendingQuestions = pending.sumOf { quiz -> quiz.questionReviewStatuses.count { it == "검수 대기" } }
+            val latest = pending.maxByOrNull { it.createdAt }
+            list.addView(TextView(this).apply { text = if (latest == null) "현재 검수 대기 쪽지시험 문항이 없습니다." else "검수 대기 ${pending.size}세트 · $pendingQuestions문항\n가장 최근 미검수: ${latest.topic} · ${quickQuizCreatedAtLabel(latest.createdAt)}"; textSize = 13f; setTextColor(if (latest == null) Color.rgb(169, 215, 190) else Color.rgb(241, 202, 126)); setPadding(dp(8), dp(10), dp(8), dp(12)); background = surface(Color.rgb(28, 48, 40), dp(14)) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
+        }
         store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
@@ -185,6 +191,8 @@ class QuickQuizActivity : AppCompatActivity() {
 
     /** 생성 결과에서 각 문항 시작을 찾아 문항별 상태 배열의 순서와 연결한다. */
     private fun quickQuizBlocks(value: String): List<String> = value.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
+    /** 생성 순서를 확인할 수 있도록 현재 기기 시간대를 적용한 짧은 생성 시각을 표시한다. */
+    private fun quickQuizCreatedAtLabel(value: Long): String = android.text.format.DateFormat.format("M월 d일 HH:mm", value).toString()
     /** 이전 세트의 ‘③ 6’ 같은 숫자 보기를 ‘선택 ③: 6’으로 읽어 선택 번호와 값의 혼동을 막는다. */
     private fun readableQuickQuizText(value: String): String = value.replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*(?:선택\\s*)?\\2\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(정답\\s*[:：]\\s*)선택\\s*([①②③④])\\s*$"), "$1$2번")
     private fun fieldLabel(label: String) = TextView(this).apply { text = label; textSize = 13.5f; setTextColor(Color.rgb(194, 211, 195)); setPadding(dp(4), dp(2), dp(4), dp(5)) }

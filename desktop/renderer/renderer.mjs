@@ -163,6 +163,31 @@ renderSchedule = async () => { const schedules = await api.listSchedules(); retu
 const baseBindActions = bindActions;
 bindActions = async () => { await baseBindActions(); document.querySelector("#schedule-month-prev")?.addEventListener("click", () => { const next = new Date(`${scheduleCalendarMonth}-01T12:00:00`); next.setMonth(next.getMonth() - 1); scheduleCalendarMonth = next.toISOString().slice(0, 7); render(); }); document.querySelector("#schedule-month-next")?.addEventListener("click", () => { const next = new Date(`${scheduleCalendarMonth}-01T12:00:00`); next.setMonth(next.getMonth() + 1); scheduleCalendarMonth = next.toISOString().slice(0, 7); render(); }); document.querySelector("#schedule-holiday-visible")?.addEventListener("change", event => { scheduleHolidayVisible = event.currentTarget.checked; render(); }); document.querySelectorAll(".schedule-date-pick").forEach(node => node.addEventListener("click", async () => { const date = node.dataset.date; const entries = (await api.listSchedules()).filter(item => item.schedule_date === date); const holiday = scheduleHolidayVisible ? desktopKoreanHolidays[date] : ""; const detail = `${date}${holiday ? ` · ${holiday}` : ""}\n${entries.length ? entries.map(item => `• ${item.title}`).join("\n") : "등록한 일정이 없습니다."}`; if (window.confirm(`${detail}\n\n이 날짜에 새 일정을 추가할까요?`)) { document.querySelector("#schedule-id").value = ""; document.querySelector("#schedule-date").value = date; document.querySelector("#schedule-title").focus(); flash(`${date} 일정 입력을 준비했습니다.`); } })); };
 
+// 쪽지시험 목록에서도 검수 대기 세트·문항 수와 최신 생성 시각을 먼저 드러내 이전 세트를 잊지 않게 한다.
+function localQuickQuizCreatedAt(value) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "생성 시각 확인 필요" : date.toLocaleString("ko-KR", { dateStyle: "medium", timeStyle: "short" }); }
+function localQuickQuizPendingOverview(quizzes) { const pending = quizzes.filter(quiz => (quiz.questionReviewStates || []).includes("pending_review")); const latest = [...pending].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime())[0]; return { setCount: pending.length, questionCount: pending.reduce((total, quiz) => total + (quiz.questionReviewStates || []).filter(status => status === "pending_review").length, 0), latest }; }
+const baseQuickQuizRender = renderQuickQuiz;
+renderQuickQuiz = async () => { const quizzes = await api.listQuickQuizzes(); const overview = localQuickQuizPendingOverview(quizzes); const notice = overview.questionCount ? `<section class="notice warning" style="margin:10px 0"><strong>검수 대기 ${overview.setCount}세트 · ${overview.questionCount}문항</strong><br />가장 최근 미검수 세트: ${escapeHtml(overview.latest.topic)} · ${escapeHtml(localQuickQuizCreatedAt(overview.latest.created_at))}<br />아래 목록에서 문항별 검수를 이어가세요.</section>` : `<section class="notice" style="margin:10px 0">현재 검수 대기 쪽지시험 문항이 없습니다.</section>`; return (await baseQuickQuizRender()).replace("<article class=\"panel\"><h2>쪽지시험 검수·내보내기</h2>", `<article class="panel"><h2>쪽지시험 검수·내보내기</h2>${notice}`); };
+
+// 전체 세트가 한 화면에 있더라도 최신 미검수 세트는 바로 찾고, 각 세트의 생성 순서도 확인할 수 있게 한다.
+const pendingTimestampQuickQuizRender = renderQuickQuiz;
+renderQuickQuiz = async () => {
+  const quizzes = await api.listQuickQuizzes();
+  const overview = localQuickQuizPendingOverview(quizzes);
+  let html = await pendingTimestampQuickQuizRender();
+  quizzes.forEach(quiz => {
+    const head = `<h3>${escapeHtml(quiz.topic)} · ${escapeHtml(quiz.difficulty)}</h3>`;
+    html = html.replace(head, `<h3 id="quick-quiz-${quiz.id}">${escapeHtml(quiz.topic)} · ${escapeHtml(quiz.difficulty)}</h3><span class="notice">생성 ${escapeHtml(localQuickQuizCreatedAt(quiz.created_at))}</span>`);
+  });
+  if (overview.latest) html = html.replace("아래 목록에서 문항별 검수를 이어가세요.", `아래 목록에서 문항별 검수를 이어가세요. <button class="small-button" id="open-latest-pending-quick-quiz" data-id="${overview.latest.id}">최근 미검수 세트로 이동</button>`);
+  return html;
+};
+const pendingTimestampQuickQuizBind = bindActions;
+bindActions = async () => {
+  await pendingTimestampQuickQuizBind();
+  document.querySelector("#open-latest-pending-quick-quiz")?.addEventListener("click", event => document.querySelector(`#quick-quiz-${event.currentTarget.dataset.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
+};
+
 async function render() { const titles = { home: "오늘의 출제 업무", chat: "AI 채팅", materials: "참고 자료", references: "기출문제", official: "공식 자료", generate: "일반 문항", quickquiz: "간단한 문제", notes: "메모장", schedule: "시험일·일정", review: "검수함", approved: "승인 문항", general: "일반 설정", settings: "AI 설정", profile: "내 정보·작업 현황" }; pageTitle.textContent = titles[currentPage]; const renderer = { home: renderHome, chat: renderChat, materials: renderMaterials, references: renderReferences, official: renderOfficialDocuments, generate: renderFriendlyGenerate, quickquiz: renderQuickQuiz, notes: renderNotes, schedule: renderSchedule, review: renderReview, approved: renderApproved, general: renderGeneralSettings, settings: renderFriendlySettings, profile: renderProfile }[currentPage]; pageContent.innerHTML = await renderer(); applyTeacherFriendlyTerms(); await bindActions(); if (currentPage === "chat") { scrollChatToBottom(); void warmChatModelFromSelection(); } }
 
 await refreshStatus();
