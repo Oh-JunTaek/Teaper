@@ -196,16 +196,14 @@ class QuickQuizActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(localDp(12), localDp(12), localDp(12), localDp(10)); background = surface(Color.rgb(238, 247, 242), localDp(14)) }
             val current = quiz.questionReviewStatuses.getOrElse(index) { "검수 대기" }
             item.addView(TextView(this).apply { text = "${index + 1}번 · $current"; textSize = 14f; setTextColor(Color.rgb(21, 133, 107)); setTypeface(typeface, android.graphics.Typeface.BOLD) })
-            item.addView(TextView(this).apply { text = quiz.questionPoints.getOrNull(index)?.let { "배점: ${it}점" } ?: "배점: 미지정"; textSize = 13f; setTextColor(Color.rgb(78, 105, 92)); setPadding(0, localDp(3), 0, 0) })
             item.addView(TextView(this).apply { text = readableQuickQuizText(block); textSize = 14f; setTextColor(Color.rgb(29, 47, 42)); setPadding(0, localDp(6), 0, localDp(8)) })
-            item.addView(LinearLayout(this).apply {
-                addView(button("2점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 2.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f))
-                addView(button("3점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 3.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f).apply { leftMargin = localDp(6) })
-                addView(button("4점").apply { setOnClickListener { updateQuestionPointsAndReopen(quiz.id, index, 4.0, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1f).apply { leftMargin = localDp(6) })
-                addView(button("직접 입력").apply { setOnClickListener { showPointInput(quiz, index, reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(36), 1.4f).apply { leftMargin = localDp(6) })
-            }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = localDp(7) })
+            // 해설을 확인한 뒤에만 배점을 부여하도록 입력칸을 검수 내용 아래에 둔다.
+            val pointInput = field("미입력 시 미표기", quiz.questionPoints.getOrNull(index)?.toString() ?: "").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL }
+            item.addView(TextView(this).apply { text = "배점 부여"; textSize = 13.5f; setTextColor(Color.rgb(35, 74, 60)); setTypeface(typeface, android.graphics.Typeface.BOLD); setPadding(0, localDp(4), 0, localDp(4)) })
+            item.addView(pointInput, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, localDp(44)).apply { bottomMargin = localDp(7) })
+            if (current == "승인") item.addView(button("배점 변경 저장").apply { setOnClickListener { savePointAndReopen(quiz.id, index, pointInput.text.toString(), reviewDialog) } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, localDp(36)).apply { bottomMargin = localDp(7) })
             val actions = LinearLayout(this).apply {
-                addView(button("승인").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "승인", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f))
+                addView(button("승인").apply { setOnClickListener { approveQuestionAndReopen(quiz.id, index, pointInput.text.toString(), reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f))
                 addView(button("수정 필요").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "수정 필요", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f).apply { leftMargin = localDp(6) })
                 addView(button("반려").apply { setOnClickListener { updateQuestionReviewAndReopen(quiz.id, index, "반려", reviewDialog) } }, LinearLayout.LayoutParams(0, localDp(38), 1f).apply { leftMargin = localDp(6) })
             }
@@ -231,6 +229,26 @@ class QuickQuizActivity : AppCompatActivity() {
         refreshList()
         dialog?.dismiss()
         store.quickQuizzes().firstOrNull { it.id == quizId }?.let(::showQuizDetail)
+    }
+
+    /** 승인 시 적은 배점과 문항 상태를 같은 흐름에서 저장해 학생용 출력에 빠지는 일을 막는다. */
+    private fun approveQuestionAndReopen(quizId: String, questionIndex: Int, rawPoints: String, dialog: AlertDialog?) {
+        val trimmed = rawPoints.trim()
+        val points = if (trimmed.isBlank()) null else trimmed.toDoubleOrNull()
+        if (points != null && (points !in 0.0..100.0 || kotlin.math.round(points * 10.0) != points * 10.0)) { status.text = "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요."; return }
+        if (trimmed.isNotBlank() && points == null) { status.text = "배점은 숫자로 입력해 주세요."; return }
+        store.updateQuickQuizQuestionPoints(quizId, questionIndex, points)
+        updateQuestionReviewAndReopen(quizId, questionIndex, "승인", dialog)
+    }
+
+    /** 승인한 문항의 배점을 고치거나 비워 학생용 문서에서 미표기로 되돌린다. */
+    private fun savePointAndReopen(quizId: String, questionIndex: Int, rawPoints: String, dialog: AlertDialog?) {
+        val trimmed = rawPoints.trim()
+        val points = if (trimmed.isBlank()) null else trimmed.toDoubleOrNull()
+        if (points != null && (points !in 0.0..100.0 || kotlin.math.round(points * 10.0) != points * 10.0)) { status.text = "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요."; return }
+        if (trimmed.isNotBlank() && points == null) { status.text = "배점은 숫자로 입력해 주세요."; return }
+        store.updateQuickQuizQuestionPoints(quizId, questionIndex, points)
+        refreshList(); dialog?.dismiss(); store.quickQuizzes().firstOrNull { it.id == quizId }?.let(::showQuizDetail)
     }
 
     private fun showPointInput(quiz: LocalQuickQuiz, questionIndex: Int, reviewDialog: AlertDialog?) {

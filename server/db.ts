@@ -192,13 +192,19 @@ export async function reviewQuickQuizQuestion(input: { id: number; ownerId: numb
   return Number(result[0].affectedRows) > 0 ? { states, status } : undefined;
 }
 
-/** 쪽지시험 배점은 교사가 직접 정한 값만 문항 배열에 저장하며, 다른 문항·세트에는 영향을 주지 않는다. */
-export async function updateQuickQuizQuestionPoints(input: { id: number; ownerId: number; questionIndex: number; points: number }) {
+/** 쪽지시험 배점은 교사가 직접 정한 값만 문항 배열에 저장하며, 비우면 학생용 미표기 상태로 되돌린다. */
+export async function updateQuickQuizQuestionPoints(input: { id: number; ownerId: number; questionIndex: number; points: number | null }) {
   const db = await requireDb();
   const quiz = (await db.select().from(quickQuizSets).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt))).limit(1))[0];
   if (!quiz || input.questionIndex < 0 || input.questionIndex >= quiz.questions.length) return undefined;
   const questions = quiz.questions.map(question => ({ ...question })) as QuickQuizQuestion[];
-  questions[input.questionIndex] = { ...questions[input.questionIndex], points: input.points };
+  const currentQuestion = questions[input.questionIndex];
+  if (input.points === null) {
+    const { points: _removedPoint, ...questionWithoutPoints } = currentQuestion;
+    questions[input.questionIndex] = questionWithoutPoints;
+  } else {
+    questions[input.questionIndex] = { ...currentQuestion, points: input.points };
+  }
   const result = await db.update(quickQuizSets).set({ questions, updatedAt: new Date() }).where(and(eq(quickQuizSets.id, input.id), eq(quickQuizSets.ownerId, input.ownerId), isNull(quickQuizSets.deletedAt)));
   return Number(result[0].affectedRows) > 0 ? questions : undefined;
 }

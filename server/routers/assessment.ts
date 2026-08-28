@@ -319,14 +319,18 @@ export const assessmentRouter = router({
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험을 찾을 수 없습니다." });
       return { success: true };
     }),
-    // 세트가 아닌 지정 문항만 검수한다. 소유자와 문항 번호를 함께 확인해 다른 세트에는 접근할 수 없다.
-    reviewQuestion: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), status: z.enum(["approved", "revised", "rejected"]) })).mutation(async ({ ctx, input }) => {
+    // 승인 시 교사가 적은 배점도 같은 요청에 보관해, 검수 완료보다 배점 저장이 늦어지는 일을 막는다.
+    reviewQuestion: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), status: z.enum(["approved", "revised", "rejected"]), points: teacherPoints.optional() })).mutation(async ({ ctx, input }) => {
+      if (input.status === "approved" && input.points !== undefined) {
+        const questions = await updateQuickQuizQuestionPoints({ ...input, ownerId: ctx.user.id, points: input.points });
+        if (!questions) throw new TRPCError({ code: "NOT_FOUND", message: "배점을 정할 쪽지시험 문항을 찾을 수 없습니다." });
+      }
       const updated = await reviewQuickQuizQuestion({ ...input, ownerId: ctx.user.id });
       if (!updated) throw new TRPCError({ code: "NOT_FOUND", message: "검수할 쪽지시험 문항을 찾을 수 없습니다." });
       return { success: true, ...updated };
     }),
     // 문항별 배점은 생성 난이도와 별개로 교사가 최종 검수 중 확정한다.
-    updateQuestionPoints: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), points: teacherPoints })).mutation(async ({ ctx, input }) => {
+    updateQuestionPoints: protectedProcedure.input(z.object({ id: z.number().int().positive(), questionIndex: z.number().int().min(0).max(9), points: teacherPoints.nullable() })).mutation(async ({ ctx, input }) => {
       const questions = await updateQuickQuizQuestionPoints({ ...input, ownerId: ctx.user.id });
       if (!questions) throw new TRPCError({ code: "NOT_FOUND", message: "배점을 정할 쪽지시험 문항을 찾을 수 없습니다." });
       return { success: true, questions };

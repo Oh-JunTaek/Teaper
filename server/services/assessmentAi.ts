@@ -128,17 +128,29 @@ async function selectModel(kind: "vision" | "generation" | "validation", provide
   return preferred.find(id => data.some(model => model.id === id)) ?? data[0]?.id;
 }
 
-function contentOf(response: any) {
+export function contentOf(response: any) {
   const value = response.choices?.[0]?.message?.content;
-  if (typeof value !== "string") throw new Error("AI 응답에 텍스트가 없습니다.");
-  return value.replace(/^```json\s*/i, "").replace(/\s*```$/, "").trim();
+  if (typeof value !== "string") {
+    const finishReason = typeof response.choices?.[0]?.finish_reason === "string" ? response.choices[0].finish_reason : "unknown";
+    throw new Error(finishReason === "length" ? "AI 도움 기능이 문항 형식을 완성하기 전에 응답 길이가 끝났습니다. 잠시 후 다시 시도해 주세요." : "AI 도움 기능이 문항 형식을 완성하지 못했습니다. 잠시 후 다시 시도해 주세요.");
+  }
+  const withoutFence = value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  // 일부 모델이 JSON 앞뒤에 한 줄 설명을 덧붙여도 객체 부분만 안정적으로 읽고, 원문은 로그에 남기지 않는다.
+  const objectStart = withoutFence.indexOf("{");
+  const objectEnd = withoutFence.lastIndexOf("}");
+  return objectStart >= 0 && objectEnd > objectStart ? withoutFence.slice(objectStart, objectEnd + 1) : withoutFence;
 }
 
 type ProviderMessage = { role: "system" | "user"; content: string };
 
-async function invokeForProvider(input: { provider?: ResolvedProvider; model?: string; messages: ProviderMessage[]; responseFormat: Record<string, unknown> }) {
+async function invokeForProvider(input: { provider?: ResolvedProvider; model?: string; messages: ProviderMessage[]; responseFormat: Record<string, unknown>; outputTokenLimit?: number }) {
   const provider = input.provider;
-  if (!provider || provider.kind === "managed") return invokeLLM({ model: input.model, messages: input.messages, response_format: input.responseFormat as any });
+  if (!provider || provider.kind === "managed") {
+    const outputTokenLimit = input.outputTokenLimit;
+    // GPT-5 계열은 긴 구조화 문항을 만들 때 추론 뒤 보이는 JSON이 비지 않도록 전용 제한값을 사용한다.
+    const managedTokenLimit = input.model?.startsWith("gpt-5") ? { maxCompletionTokens: outputTokenLimit, reasoning: { effort: "low" } } : { maxTokens: outputTokenLimit };
+    return invokeLLM({ model: input.model, messages: input.messages, response_format: input.responseFormat as any, ...(typeof outputTokenLimit === "number" ? managedTokenLimit : {}) });
+  }
   if (provider.kind === "ollama") {
     const response = await fetch(`${provider.baseUrl}/api/chat`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: provider.model, messages: input.messages, stream: false, format: (input.responseFormat as any).json_schema?.schema ?? "json" }), signal: AbortSignal.timeout(90_000) });
     if (!response.ok) throw new Error(`로컬 Ollama 호출 실패 (${response.status})`);
@@ -192,7 +204,11 @@ export async function extractDocumentText(input: { signedUrl: string; mimeType: 
   return { ...data, model, extractionMethod: input.mimeType === "application/pdf" ? "vision_pdf" : "vision_image" } as { title: string; plainText: string; headings: string[]; keywords: string[]; cautions: string[]; model: string; extractionMethod: "vision_pdf" | "vision_image" };
 }
 
-const draftSchema = { type: "json_schema", json_schema: { name: "question_draft", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } }, calculation: { anyOf: [{ type: "null" }, { type: "object", properties: { kind: { type: "string", enum: ["numeric_expression", "linear_equation", "proportion", "basic_statistics"] }, expression: { type: "string" }, expectedAnswer: { type: "string" } }, required: ["kind", "expression", "expectedAnswer"], additionalProperties: false }] } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts", "calculation"], additionalProperties: false } } };
+// 일반 문항의 시각 자료는 그래프·표 두 형태만 허용해, 모델 응답 스키마와 저장할 Draft 구조가 어긋나지 않게 한다.
+const draftSchema = { type: "json_schema", json_schema: { name: "question_draft", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } }, visualSpec: { anyOf: [{ type: "null" }, { type: "object", properties: { kind: { type: "string", enum: ["graph"] }, title: { type: "string" }, xAxis: { type: "object", properties: { label: { type: "string" }, unit: { type: "string" } }, required: ["label"], additionalProperties: false }, yAxis: { type: "object", properties: { label: { type: "string" }, unit: { type: "string" } }, required: ["label"], additionalProperties: false }, series: { type: "array", items: { type: "object", properties: { name: { type: "string" }, color: { type: "string" }, points: { type: "array", items: { type: "object", properties: { x: { type: "number" }, y: { type: "number" } }, required: ["x", "y"], additionalProperties: false } } }, required: ["name", "points"], additionalProperties: false } } }, required: ["kind", "title", "xAxis", "yAxis", "series"], additionalProperties: false }, { type: "object", properties: { kind: { type: "string", enum: ["table"] }, title: { type: "string" }, columns: { type: "array", items: { type: "string" } }, rows: { type: "array", items: { type: "array", items: { type: "string" } } } }, required: ["kind", "title", "columns", "rows"], additionalProperties: false }] }, calculation: { anyOf: [{ type: "null" }, { type: "object", properties: { kind: { type: "string", enum: ["numeric_expression", "linear_equation", "proportion", "basic_statistics"] }, expression: { type: "string" }, expectedAnswer: { type: "string" } }, required: ["kind", "expression", "expectedAnswer"], additionalProperties: false }] } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts", "calculation"], additionalProperties: false } } };
+
+// 일부 모델이 복잡한 시각 자료·계산 스키마를 끝까지 채우지 못하면, 기본 문항 필드만으로 한 번 더 요청한다.
+const fallbackDraftSchema = { type: "json_schema", json_schema: { name: "question_draft_fallback", strict: true, schema: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, intent: { type: "string" }, usedConcepts: { type: "array", items: { type: "string" } } }, required: ["questionText", "choices", "answer", "explanation", "intent", "usedConcepts"], additionalProperties: false } } };
 
 const quickQuizSchema = { type: "json_schema", json_schema: { name: "quick_quiz", strict: true, schema: { type: "object", properties: { questions: { type: "array", items: { type: "object", properties: { questionText: { type: "string" }, choices: { type: "array", items: { type: "string" } }, answer: { type: "string" }, explanation: { type: "string" }, concept: { type: "string" } }, required: ["questionText", "choices", "answer", "explanation", "concept"], additionalProperties: false } } }, required: ["questions"], additionalProperties: false } } };
 
@@ -251,8 +267,13 @@ export async function generateDraft(input: { subject: string; unit: string; diff
   const model = await selectModel("generation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
   const calculationInstruction = input.subject === "중등 수학" ? "\n\n[중등 수학 계산 확인]\n수치 계산·일차식·비례·평균/중앙값을 포함한 문항이면 calculation에 계산기용 식과 수치 정답을 반드시 작성하십시오. kind는 numeric_expression, linear_equation, proportion, basic_statistics 중 하나입니다. expression은 숫자, x, + - * / ( ) 또는 mean(...), median(...)만 사용하고, expectedAnswer는 보기 번호가 아닌 계산 결과 숫자만 넣으십시오. 계산 대상이 아니면 calculation은 null입니다." : "\n\n계산 확인 대상이 아니면 calculation은 null입니다.";
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: appendTeacherInstructions(buildGenerationSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}${calculationInstruction}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }], responseFormat: draftSchema });
-  return { draft: JSON.parse(contentOf(response)) as Draft, model };
+  const messages: ProviderMessage[] = [{ role: "system", content: appendTeacherInstructions(buildGenerationSystemPrompt((provider?.kind || "managed") as ProviderKind), input.customInstructions) }, { role: "user", content: `요청 조건\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 난이도: ${input.difficulty}\n- 유형: ${input.questionType}\n- 배점: ${input.points}점\n- 추가 요구: ${input.additionalRequirements || "없음"}\n\n[교육과정 근거]\n${input.curriculumContext || "등록된 교육과정 근거 없음"}\n\n[기출 유형 근거]\n${input.referenceContext || "등록된 기출 근거 없음"}\n\n[출제 지침 근거]\n${input.guidelineContext || "등록된 출제 지침 근거 없음"}${calculationInstruction}\n\n위 근거로 새로운 선택형 문항 1개를 작성하십시오.` }];
+  let response = await invokeForProvider({ provider, model, outputTokenLimit: 4_000, messages, responseFormat: draftSchema });
+  if (typeof response.choices?.[0]?.message?.content !== "string") {
+    response = await invokeForProvider({ provider, model, outputTokenLimit: 2_000, messages, responseFormat: fallbackDraftSchema });
+  }
+  const parsed = JSON.parse(contentOf(response)) as Omit<Draft, "calculation"> & { calculation?: CalculationSpec | null };
+  return { draft: { ...parsed, calculation: parsed.calculation ?? null }, model };
 }
 
 const validationSchema = { type: "json_schema", json_schema: { name: "validation_result", strict: true, schema: { type: "object", properties: { inScope: { type: "boolean" }, answerExplanationConsistent: { type: "boolean" }, difficultyAppropriate: { type: "boolean" }, guidanceCompliant: { type: "boolean" }, tooSimilar: { type: "boolean" }, notes: { type: "array", items: { type: "string" } } }, required: ["inScope", "answerExplanationConsistent", "difficultyAppropriate", "guidanceCompliant", "tooSimilar", "notes"], additionalProperties: false } } };
@@ -260,7 +281,7 @@ const validationSchema = { type: "json_schema", json_schema: { name: "validation
 export async function validateDraft(input: { draft: Draft; subject: string; unit: string; difficulty: string; curriculumContext: string; guidelineContext: string; similarityScore: number; similarReferenceId: number | null; similarReference?: { questionText: string; choices: string[] | null; intent: string } }, provider?: ResolvedProvider) {
   const model = await selectModel("validation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
-  const response = await invokeForProvider({ provider, model, messages: [{ role: "system", content: buildValidationSystemPrompt((provider?.kind || "managed") as ProviderKind) }, { role: "user", content: `과목: ${input.subject}\n단원: ${input.unit}\n목표 난이도: ${input.difficulty}\n교육과정 근거: ${input.curriculumContext || "없음"}\n출제 지침 근거: ${input.guidelineContext || "없음"}\n\n[생성 문항]\n문항: ${input.draft.questionText}\n보기: ${(input.draft.choices ?? []).join(" | ")}\n정답: ${input.draft.answer}\n해설: ${input.draft.explanation}\n출제 의도: ${input.draft.intent}\n\n[가장 가까운 기출문제]\n문항: ${input.similarReference?.questionText || "없음"}\n보기: ${(input.similarReference?.choices || []).join(" | ")}\n출제 의도: ${input.similarReference?.intent || "없음"}\n\n두 문항이 문장·수치·자료구성·사고 과정까지 실질적으로 동일하거나 지나치게 유사하면 tooSimilar를 true로 판정하십시오.` }], responseFormat: validationSchema });
+  const response = await invokeForProvider({ provider, model, outputTokenLimit: 1_400, messages: [{ role: "system", content: buildValidationSystemPrompt((provider?.kind || "managed") as ProviderKind) }, { role: "user", content: `과목: ${input.subject}\n단원: ${input.unit}\n목표 난이도: ${input.difficulty}\n교육과정 근거: ${input.curriculumContext || "없음"}\n출제 지침 근거: ${input.guidelineContext || "없음"}\n\n[생성 문항]\n문항: ${input.draft.questionText}\n보기: ${(input.draft.choices ?? []).join(" | ")}\n정답: ${input.draft.answer}\n해설: ${input.draft.explanation}\n출제 의도: ${input.draft.intent}\n\n[가장 가까운 기출문제]\n문항: ${input.similarReference?.questionText || "없음"}\n보기: ${(input.similarReference?.choices || []).join(" | ")}\n출제 의도: ${input.similarReference?.intent || "없음"}\n\n두 문항이 문장·수치·자료구성·사고 과정까지 실질적으로 동일하거나 지나치게 유사하면 tooSimilar를 true로 판정하십시오.` }], responseFormat: validationSchema });
   const judged = JSON.parse(contentOf(response));
   const pass = Boolean(judged.inScope && judged.answerExplanationConsistent && judged.difficultyAppropriate && judged.guidanceCompliant && !judged.tooSimilar && input.similarityScore < 0.84);
   return { ...judged, similarityScore: input.similarityScore, similarReferenceId: input.similarReferenceId, pass, model } as Validation & { model: string };

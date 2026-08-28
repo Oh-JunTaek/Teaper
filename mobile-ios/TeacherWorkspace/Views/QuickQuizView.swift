@@ -18,7 +18,7 @@ struct QuickQuizView: View {
         Section("새 쪽지시험") {
             TextField("확인할 개념 (예: 분자 구조)", text: $topic)
             Picker("학교급", selection: $schoolLevel) { Text("중등").tag("중등"); Text("고등").tag("고등") }
-            Picker("난이도", selection: $difficulty) { Text("낮음").tag("낮음"); Text("보통").tag("보통"); Text("높음 · 조건 적용·간단 계산·오개념 판별").tag("높음") }
+            Picker("난이도", selection: $difficulty) { Text("낮음").tag("낮음"); Text("보통").tag("보통"); Text("높음").tag("높음") }
             Picker("문항 형식", selection: $format) { Text("객관식").tag("multiple_choice"); Text("주관식").tag("short_answer"); Text("O/X").tag("ox") }
             Stepper("문항 수 \(questionCount)", value: $questionCount, in: 1...5)
             Button(isGenerating ? "문항 생성 중" : "간결한 쪽지시험 만들기") { Task { await generate() } }.disabled(isGenerating || topic.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -42,9 +42,21 @@ struct QuickQuizDetailView: View {
     @State private var isStudentPDFShareOpen = false
     @State private var includePointsWhenSharing = false
     @State private var studentPDFURL: URL?
+    @State private var pointDrafts: [Int: String] = [:]
     private var quiz: QuickQuizSet? { workspace.quickQuizzes.first { $0.id == quizID } }
     var body: some View { NavigationStack { Group { if let quiz { List { Section("\(ScienceNotation.format(quiz.topic)) · \(quiz.summaryStatus.label)") { Text("승인 문항만 학생용으로 공유되며, 정답·해설은 포함하지 않습니다.").font(.footnote).foregroundStyle(.secondary); if OutputPlanPolicy.shouldShowStudentWatermark { Text("학생용 PDF 오른쪽 아래 여백에 EunmaStudio 워터마크가 표시됩니다.").font(.footnote).foregroundStyle(.secondary) } }
-        ForEach(quiz.questions.indices, id: \.self) { index in let question = quiz.questions[index]; Section("\(index + 1)번 · \(quiz.questionReviewStates[index].label)") { Text(ScienceNotation.format(question.questionText)).font(.headline); ForEach(question.choices, id: \.self) { Text(ScienceNotation.format($0)) }; HStack { Text("배점"); TextField("0~100", value: Binding(get: { question.points ?? 0 }, set: { workspace.updateQuickQuizPoints(setID: quiz.id, questionIndex: index, points: $0) }), format: .number.precision(.fractionLength(0...1))).keyboardType(.decimalPad).multilineTextAlignment(.trailing); Text("점") }; HStack { ForEach([2.0, 3.0, 4.0], id: \.self) { points in Button("\(Int(points))점") { workspace.updateQuickQuizPoints(setID: quiz.id, questionIndex: index, points: points) }.buttonStyle(.bordered) } }; Text("정답: \(ScienceNotation.format(question.answer))").font(.subheadline.bold()); Text("해설: \(ScienceNotation.format(question.explanation))").font(.footnote); Picker("검수 결과", selection: Binding(get: { quiz.questionReviewStates[index] }, set: { workspace.updateQuickQuizReview(setID: quiz.id, questionIndex: index, status: $0) })) { ForEach(QuickQuizReviewStatus.allCases) { Text($0.label).tag($0) } }.pickerStyle(.menu) } }
+        ForEach(quiz.questions.indices, id: \.self) { index in
+            let question = quiz.questions[index]
+            Section("\(index + 1)번 · \(quiz.questionReviewStates[index].label)") {
+                Text(ScienceNotation.format(question.questionText)).font(.headline)
+                ForEach(question.choices, id: \.self) { Text(ScienceNotation.format($0)) }
+                Text("정답: \(ScienceNotation.format(question.answer))").font(.subheadline.bold())
+                Text("해설: \(ScienceNotation.format(question.explanation))").font(.footnote)
+                HStack { Text("배점 부여"); TextField("미입력 시 미표기", text: Binding(get: { pointDrafts[index] ?? question.points.map { String($0) } ?? "" }, set: { pointDrafts[index] = $0 })).keyboardType(.decimalPad).multilineTextAlignment(.trailing); Text("점") }
+                if quiz.questionReviewStates[index] == .approved { Button("배점 변경 저장") { _ = savePoints(for: quiz, questionIndex: index) } }
+                HStack { Button("이 문항 승인") { if savePoints(for: quiz, questionIndex: index) { workspace.updateQuickQuizReview(setID: quiz.id, questionIndex: index, status: .approved) } }; Button("수정 필요") { workspace.updateQuickQuizReview(setID: quiz.id, questionIndex: index, status: .revised) }; Button("이 문항 반려", role: .destructive) { workspace.updateQuickQuizReview(setID: quiz.id, questionIndex: index, status: .rejected) } }
+            }
+        }
     } } else { VStack(spacing: 12) { Image(systemName: "exclamationmark.triangle").font(.largeTitle).foregroundStyle(.orange); Text("쪽지시험을 찾지 못했습니다.").foregroundStyle(.secondary) }.frame(maxWidth: .infinity, maxHeight: .infinity) } }.navigationTitle("문항별 검수").toolbar { ToolbarItem(placement: .topBarTrailing) { if let quiz, studentShareText(for: quiz) != nil { Menu("학생용 출력") { Toggle("문제 배점 표기", isOn: $includePointsWhenSharing); Button("텍스트 공유") { isStudentShareOpen = true }; Button("PDF 공유") { studentPDFURL = makeStudentPDF(for: quiz); isStudentPDFShareOpen = studentPDFURL != nil } } }; Button("닫기") { dismiss() } } }.sheet(isPresented: $isStudentShareOpen) { if let quiz, let text = studentShareText(for: quiz) { StudentShareSheet(text: text, subject: "\(quiz.subject) · \(quiz.topic) 쪽지시험") } }.sheet(isPresented: $isStudentPDFShareOpen) { if let studentPDFURL { StudentPDFShareSheet(fileURL: studentPDFURL, subject: "\(quiz.subject) · \(quiz.topic) 쪽지시험") } } } }
 
     private func studentShareText(for quiz: QuickQuizSet) -> String? {
@@ -56,6 +68,16 @@ struct QuickQuizDetailView: View {
         }
         guard !questions.isEmpty else { return nil }
         return "\(ScienceNotation.format(quiz.subject)) · \(ScienceNotation.format(quiz.unit))\n\(ScienceNotation.format(quiz.topic))\n\n\(questions.joined(separator: "\n\n"))"
+    }
+
+    /// 승인 시 배점을 함께 저장하며, 입력을 비우면 학생용 출력에서 배점을 보이지 않게 한다.
+    private func savePoints(for quiz: QuickQuizSet, questionIndex: Int) -> Bool {
+        let raw = pointDrafts[questionIndex] ?? quiz.questions[questionIndex].points.map { String($0) } ?? ""
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { workspace.updateQuickQuizPoints(setID: quiz.id, questionIndex: questionIndex, points: nil); return true }
+        guard let points = Double(trimmed), points >= 0, points <= 100, (points * 10).rounded() == points * 10 else { return false }
+        workspace.updateQuickQuizPoints(setID: quiz.id, questionIndex: questionIndex, points: points)
+        return true
     }
 
     /// 승인 문항·보기만 PDF에 그리고, 선택하지 않은 난이도·정답·해설·개념은 출력하지 않는다.

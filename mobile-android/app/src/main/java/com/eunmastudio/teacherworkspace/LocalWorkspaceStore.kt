@@ -312,9 +312,9 @@ class LocalWorkspaceStore(context: Context) {
         })) { "쪽지시험 문항 검수 상태를 저장하지 못했습니다." }
     }
 
-    /** 교사만 문항별 배점을 바꾸며, 상태 배열과 다른 문항의 배점은 그대로 둔다. */
-    fun updateQuickQuizQuestionPoints(quizId: String, questionIndex: Int, points: Double) {
-        require(points in 0.0..100.0 && kotlin.math.round(points * 10.0) == points * 10.0) { "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요." }
+    /** 교사만 문항별 배점을 바꾸며, 빈 값은 학생용 문서에서 배점을 보이지 않게 한다. */
+    fun updateQuickQuizQuestionPoints(quizId: String, questionIndex: Int, points: Double?) {
+        require(points == null || points in 0.0..100.0 && kotlin.math.round(points * 10.0) == points * 10.0) { "배점은 0~100점, 소수 첫째 자리까지 입력해 주세요." }
         check(writeQuickQuizzes(quickQuizzes().map { quiz ->
             if (quiz.id != quizId || questionIndex !in 0 until quiz.questionCount.coerceAtLeast(1)) quiz else {
                 val values = normalizedQuickQuizQuestionPoints(quiz.questionPoints, quiz.questionCount).toMutableList()

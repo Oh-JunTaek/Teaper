@@ -30,9 +30,9 @@ final class LocalWorkspaceStore: ObservableObject {
         persist()
     }
 
-    /// 배점은 해당 쪽지시험의 한 문항에만 저장하며, 범위·소수 자릿수는 화면과 저장소 양쪽에서 확인한다.
-    func updateQuickQuizPoints(setID: UUID, questionIndex: Int, points: Double) {
-        guard points >= 0, points <= 100, (points * 10).rounded() == points * 10,
+    /// 배점은 해당 쪽지시험의 한 문항에만 저장하며, 비우면 학생용 문서에서 미표기 상태로 되돌린다.
+    func updateQuickQuizPoints(setID: UUID, questionIndex: Int, points: Double?) {
+        guard points == nil || points! >= 0, points == nil || points! <= 100, points == nil || (points! * 10).rounded() == points! * 10,
               let setIndex = quickQuizzes.firstIndex(where: { $0.id == setID }), quickQuizzes[setIndex].questions.indices.contains(questionIndex) else { return }
         quickQuizzes[setIndex].questions[questionIndex].points = points
         persist()

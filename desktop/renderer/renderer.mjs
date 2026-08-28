@@ -155,7 +155,7 @@ async function bindActions() {
   document.querySelectorAll(".edit-schedule").forEach(item => item.addEventListener("click", () => { const schedule = JSON.parse(decodeURIComponent(item.dataset.schedule)); document.querySelector("#schedule-id").value = schedule.id; document.querySelector("#schedule-title").value = schedule.title; document.querySelector("#schedule-date").value = schedule.schedule_date; document.querySelector("#schedule-time").value = schedule.schedule_time || ""; document.querySelector("#schedule-type").value = schedule.event_type; document.querySelector("#schedule-note").value = schedule.note || ""; document.querySelector("#schedule-completed").checked = schedule.status === "completed"; }));
   document.querySelectorAll(".toggle-schedule").forEach(item => item.addEventListener("click", async () => { const all = await api.listSchedules(); const current = all.find(schedule => schedule.id === item.dataset.id); if (!current) return; await api.saveSchedule({ id: current.id, title: current.title, scheduleDate: current.schedule_date, scheduleTime: current.schedule_time || "", eventType: current.event_type, note: current.note || "", status: current.status === "completed" ? "planned" : "completed" }); flash("일정 상태를 저장했습니다."); render(); }));
   document.querySelectorAll(".delete-schedule").forEach(item => item.addEventListener("click", async () => { if (!window.confirm("이 일정을 삭제할까요?")) return; await api.deleteSchedule(item.dataset.id); flash("일정을 삭제했습니다."); render(); }));
-  document.querySelectorAll(".quick-question-review").forEach(item => item.addEventListener("click", async () => { try { await api.reviewQuickQuizQuestion({ id: item.dataset.id, questionIndex: Number(item.dataset.index), status: item.dataset.status }); flash("이 문항의 검수 상태를 기록했습니다."); render(); } catch (error) { flash(error.message); } }));
+  document.querySelectorAll(".quick-question-review").forEach(item => item.addEventListener("click", async () => { const input = item.closest(".generated")?.querySelector(".quick-question-points-input"); const rawPoints = input?.value.trim() || ""; const points = rawPoints === "" ? null : Number(rawPoints); if (item.dataset.status === "approved" && rawPoints !== "" && (!Number.isFinite(points) || points < 0 || points > 100 || Math.round(points * 10) !== points * 10)) return flash("배점은 0~100점, 소수 첫째 자리까지 입력해 주세요."); try { await api.reviewQuickQuizQuestion({ id: item.dataset.id, questionIndex: Number(item.dataset.index), status: item.dataset.status, ...(item.dataset.status === "approved" ? { points } : {}) }); flash("이 문항의 검수 상태를 기록했습니다."); render(); } catch (error) { flash(error.message); } }));
   document.querySelectorAll(".delete-quick-quiz").forEach(item => item.addEventListener("click", async () => { if (!window.confirm("이 쪽지시험을 삭제할까요?")) return; await api.deleteQuickQuiz(item.dataset.id); flash("쪽지시험을 삭제했습니다."); render(); }));
   // 쪽지시험 TXT도 일반 시험지 DOCX·PDF와 동일하게 교사가 선택한 배점만 표시한다.
   const quickStudentExport = document.querySelector("#export-quick-quiz-student");
@@ -212,24 +212,17 @@ bindActions = async () => {
   document.querySelector("#open-latest-pending-quick-quiz")?.addEventListener("click", event => document.querySelector(`#quick-quiz-${event.currentTarget.dataset.id}`)?.scrollIntoView({ behavior: "smooth", block: "center" }));
 };
 
-// 쪽지시험 배점은 문항별로만 정하며, 빠른 선택 또는 직접 입력 모두 같은 local-only IPC로 저장한다.
+// 쪽지시험 배점은 정답·해설을 확인한 뒤 한 칸에 적고, 승인할 때 함께 local-only 저장소에 보관한다.
 const pointsQuickQuizRender = renderQuickQuiz;
-renderQuickQuiz = async () => (await pointsQuickQuizRender()).replaceAll("객관식 4지선다", "객관식").replaceAll("객관식 (4지선다)", "객관식").replaceAll("</div></section>", `<div class="row" style="margin-top:10px"><span class="notice">배점</span><button class="small-button quick-question-points" data-points="2">2점</button><button class="small-button quick-question-points" data-points="3">3점</button><button class="small-button quick-question-points" data-points="4">4점</button><button class="small-button quick-question-points" data-points="manual">직접 입력</button></div></div></section>`);
+renderQuickQuiz = async () => (await pointsQuickQuizRender()).replaceAll("객관식 4지선다", "객관식").replaceAll("객관식 (4지선다)", "객관식").replaceAll("</div></section>", `<label class="notice" style="display:block;margin-top:10px">배점 부여 <input class="quick-question-points-input" type="number" min="0" max="100" step="0.1" inputmode="decimal" placeholder="미입력 시 미표기" style="margin-left:8px" /></label></div></section>`);
 const pointsQuickQuizBind = bindActions;
 bindActions = async () => {
   await pointsQuickQuizBind();
-  document.querySelectorAll(".quick-question-points").forEach(item => item.addEventListener("click", async () => {
-    const reviewButton = item.closest(".generated")?.querySelector(".quick-question-review");
-    if (!reviewButton) return;
-    const selected = item.dataset.points === "manual" ? window.prompt("배점(0~100점, 소수 첫째 자리까지)", "") : item.dataset.points;
-    if (selected === null || String(selected).trim() === "") return;
-    try { await api.updateQuickQuizQuestionPoints({ id: reviewButton.dataset.id, questionIndex: Number(reviewButton.dataset.index), points: Number(selected) }); flash("이 문항의 배점을 저장했습니다."); render(); } catch (error) { flash(error.message); }
-  }));
 };
 
 // PDF 시험지에는 난이도·유형을 출력하지 않고, 교사가 선택한 경우에만 문항 끝 배점을 넣는다.
 const pointsApprovedRender = renderApproved;
-renderApproved = async () => (await pointsApprovedRender()).replace(`<div class="row" style="margin:14px 0">`, `<label class="notice" style="display:block;margin:10px 0"><input id="print-include-points" type="checkbox" /> PDF 시험지에 배점 표기</label><div class="row" style="margin:14px 0">`);
+renderApproved = async () => (await pointsApprovedRender()).replace(`<div class="row" style="margin:14px 0">`, `<label class="notice" style="display:block;margin:10px 0"><input id="print-include-points" type="checkbox" /> 문제 배점 표기</label><div class="row" style="margin:14px 0">`);
 
 async function render() { const titles = { home: "오늘의 출제 업무", chat: "AI 채팅", materials: "참고 자료", references: "기출문제", official: "공식 자료", generate: "일반 문항", quickquiz: "간단한 문제", notes: "메모장", schedule: "시험일·일정", review: "검수함", approved: "승인 문항", general: "일반 설정", settings: "AI 설정", profile: "내 정보·작업 현황" }; pageTitle.textContent = titles[currentPage]; const renderer = { home: renderHome, chat: renderChat, materials: renderMaterials, references: renderReferences, official: renderOfficialDocuments, generate: renderFriendlyGenerate, quickquiz: renderQuickQuiz, notes: renderNotes, schedule: renderSchedule, review: renderReview, approved: renderApproved, general: renderGeneralSettings, settings: renderFriendlySettings, profile: renderProfile }[currentPage]; pageContent.innerHTML = await renderer(); applyTeacherFriendlyTerms(); await bindActions(); if (currentPage === "chat") { scrollChatToBottom(); void warmChatModelFromSelection(); } }
 

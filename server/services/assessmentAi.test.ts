@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cosineSimilarity, createTextEmbedding, needsVisionFallback, normalizeQuickQuizQuestions, splitIntoChunks } from "./assessmentAi";
+import { contentOf, cosineSimilarity, createTextEmbedding, needsVisionFallback, normalizeQuickQuizQuestions, splitIntoChunks } from "./assessmentAi";
 
 describe("assessmentAi retrieval helpers", () => {
   it("creates stable normalized vectors for the same educational text", () => {
@@ -31,6 +31,11 @@ describe("assessmentAi retrieval helpers", () => {
   it("uses visual reading only when a PDF has too little selectable text", () => {
     expect(needsVisionFallback("선택 가능한 PDF 텍스트 ".repeat(20))).toBe(false);
     expect(needsVisionFallback("스캔본")).toBe(true);
+  });
+
+  it("reads the JSON object when a model includes a code fence or a short surrounding note", () => {
+    expect(contentOf({ choices: [{ message: { content: "```json\n{\"questionText\":\"H₂O는 무엇인가?\"}\n```" } }] })).toBe('{"questionText":"H₂O는 무엇인가?"}');
+    expect(contentOf({ choices: [{ message: { content: "아래 문항입니다.\n{\"questionText\":\"화학 결합\"}\n확인해 주세요." } }] })).toBe('{"questionText":"화학 결합"}');
   });
 
   it("keeps the selected quick-quiz format consistent before storage", () => {
