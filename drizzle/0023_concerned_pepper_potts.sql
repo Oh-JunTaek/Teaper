@@ -1,0 +1,1 @@
+ALTER TABLE `quick_quiz_sets` ADD `schoolLevel` enum('middle','high') DEFAULT 'high' NOT NULL;

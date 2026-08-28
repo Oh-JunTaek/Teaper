@@ -283,7 +283,7 @@ export const assessmentRouter = router({
     // 쪽지시험은 장문형 문항과 분리된 단일 개념 확인 세트이며, 승인 뒤에만 수업용으로 사용한다.
     list: protectedProcedure.query(({ ctx }) => listQuickQuizSets(ctx.user.id)),
     create: protectedProcedure.input(z.object({
-      subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), topic: z.string().min(1).max(160), difficulty: z.enum(["낮음", "보통"]), questionFormat: z.enum(["multiple_choice", "short_answer", "ox"]).default("multiple_choice"), questionCount: z.number().int().min(1).max(10), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
+      subject: z.string().min(1).max(80), unit: z.string().min(1).max(120), topic: z.string().min(1).max(160), schoolLevel: z.enum(["middle", "high"]).default("high"), difficulty: z.enum(["낮음", "보통", "높음"]), questionFormat: z.enum(["multiple_choice", "short_answer", "ox"]).default("multiple_choice"), questionCount: z.number().int().min(1).max(10), providerSettingId: z.number().int().positive().optional(), confirmExternalTransfer: z.boolean().default(false),
     })).mutation(async ({ ctx, input }) => {
       if (isPromptDisclosureRequest(`${input.subject}\n${input.unit}\n${input.topic}`)) throw new TRPCError({ code: "BAD_REQUEST", message: "내부 설정·지시문은 공개하거나 생성 요청에 사용할 수 없습니다. 확인할 학습 개념을 입력해 주세요." });
       const providerSetting = input.providerSettingId ? await getAiProviderSettingForUser(ctx.user.id, input.providerSettingId) : undefined;
@@ -301,7 +301,7 @@ export const assessmentRouter = router({
         const generated = await generateQuickQuiz({ ...input, topic: input.topic.trim(), customInstructions: preferences?.customInstructions }, provider);
         if (provider.kind === "managed") void recordManagedAiUsage(createManagedAiUsageEntry({ operation: "generation", outcome: "success", model: generated.model, durationMs: Date.now() - startedAt }));
         // 새 세트의 모든 문항은 독립 검수 대기부터 시작한다. 한 문항의 처리 결과가 다른 문항에 영향을 주지 않는다.
-        const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), difficulty: input.difficulty, questionFormat: input.questionFormat, questionCount: generated.questions.length, questions: generated.questions, questionReviewStates: generated.questions.map(() => "pending_review"), providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
+        const id = await createQuickQuizSet({ ownerId: ctx.user.id, subject: input.subject, unit: input.unit, topic: input.topic.trim(), schoolLevel: input.schoolLevel, difficulty: input.difficulty, questionFormat: input.questionFormat, questionCount: generated.questions.length, questions: generated.questions, questionReviewStates: generated.questions.map(() => "pending_review"), providerType: provider.kind, providerModel: generated.model, promptVersion: generated.promptVersion });
         if (provider.kind === "managed") void recordManagedAiMonthlySuccess(ctx.user.id);
         return { id, questions: generated.questions, model: generated.model };
       } catch (error) {

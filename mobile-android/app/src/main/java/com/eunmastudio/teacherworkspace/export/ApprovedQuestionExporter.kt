@@ -5,6 +5,7 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import com.eunmastudio.teacherworkspace.LocalQuestion
 import com.eunmastudio.teacherworkspace.OutputPlanPolicy
+import com.eunmastudio.teacherworkspace.ScienceNotation
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -32,7 +33,7 @@ class ApprovedQuestionExporter(private val context: Context) {
 
     private fun writeDocx(question: LocalQuestion, file: File, includePoints: Boolean) {
         val documentParagraphs = buildList {
-            add(question.title)
+            add(ScienceNotation.format(question.title))
             add("")
             add(studentQuestionText(question.content, question.points, includePoints))
         }.flatMap { it.lineSequence().toList() }
@@ -69,7 +70,7 @@ class ApprovedQuestionExporter(private val context: Context) {
 
     private fun writePdf(question: LocalQuestion, file: File, includePoints: Boolean) {
         val document = PdfDocument()
-        val allLines = listOf(question.title, "") + studentQuestionText(question.content, question.points, includePoints).lineSequence().toList()
+        val allLines = listOf(ScienceNotation.format(question.title), "") + studentQuestionText(question.content, question.points, includePoints).lineSequence().toList()
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f }
         val margin = 48f
         val pageWidth = 595
@@ -129,7 +130,7 @@ class ApprovedQuestionExporter(private val context: Context) {
         val point = if (includePoints) points?.let { " ［${it}점］" } ?: "" else ""
         val firstQuestionLine = studentLines.indexOfFirst { it.trim().isNotEmpty() }
         if (firstQuestionLine >= 0) studentLines[firstQuestionLine] = "${studentLines[firstQuestionLine]}$point"
-        return studentLines.joinToString("\n").trim()
+        return ScienceNotation.format(studentLines.joinToString("\n").trim())
     }
 
     /** 기본 플랜의 표기는 학생용 PDF의 오른쪽 아래 여백에만 놓아 문항과 배점을 가리지 않는다. */

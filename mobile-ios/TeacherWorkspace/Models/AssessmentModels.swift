@@ -34,16 +34,17 @@ struct QuickQuizSet: Codable, Identifiable, Equatable {
     var subject: String
     var unit: String
     var topic: String
+    var schoolLevel: String
     var difficulty: String
     var questionFormat: String
     var createdAt: Date = .now
     var questions: [QuickQuizQuestion]
     var questionReviewStates: [QuickQuizReviewStatus]
 
-    enum CodingKeys: String, CodingKey { case id, subject, unit, topic, difficulty, questionFormat, createdAt, questions, questionReviewStates }
+    enum CodingKeys: String, CodingKey { case id, subject, unit, topic, schoolLevel, difficulty, questionFormat, createdAt, questions, questionReviewStates }
 
-    init(subject: String, unit: String, topic: String, difficulty: String = "보통", questionFormat: String, questions: [QuickQuizQuestion]) {
-        self.subject = subject; self.unit = unit; self.topic = topic; self.difficulty = difficulty; self.questionFormat = questionFormat; self.questions = questions
+    init(subject: String, unit: String, topic: String, schoolLevel: String = "고등", difficulty: String = "보통", questionFormat: String, questions: [QuickQuizQuestion]) {
+        self.subject = subject; self.unit = unit; self.topic = topic; self.schoolLevel = schoolLevel; self.difficulty = difficulty; self.questionFormat = questionFormat; self.questions = questions
         self.questionReviewStates = Array(repeating: .pendingReview, count: questions.count)
     }
 
@@ -54,6 +55,7 @@ struct QuickQuizSet: Codable, Identifiable, Equatable {
         subject = try values.decode(String.self, forKey: .subject)
         unit = try values.decode(String.self, forKey: .unit)
         topic = try values.decode(String.self, forKey: .topic)
+        schoolLevel = try values.decodeIfPresent(String.self, forKey: .schoolLevel) ?? "고등"
         difficulty = try values.decodeIfPresent(String.self, forKey: .difficulty) ?? "보통"
         questionFormat = try values.decodeIfPresent(String.self, forKey: .questionFormat) ?? "multiple_choice"
         createdAt = try values.decodeIfPresent(Date.self, forKey: .createdAt) ?? .now

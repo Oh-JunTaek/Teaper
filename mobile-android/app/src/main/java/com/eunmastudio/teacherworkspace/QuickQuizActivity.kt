@@ -66,6 +66,9 @@ class QuickQuizActivity : AppCompatActivity() {
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(22), dp(20), dp(30)); setBackgroundColor(Color.rgb(10, 20, 18)) }
         content.addView(LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; addView(TextView(this@QuickQuizActivity).apply { text = "간결한 쪽지시험"; textSize = 25f; setTextColor(Color.rgb(244, 241, 229)); setTypeface(typeface, android.graphics.Typeface.BOLD) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)); addView(button("닫기").apply { setOnClickListener { finish() } }, LinearLayout.LayoutParams(dp(76), dp(44))) })
         content.addView(TextView(this).apply { text = "한 개념을 한두 문장으로 확인하는 스피드 퀴즈입니다. 복합 자료와 긴 배경 설명은 만들지 않습니다."; textSize = 14f; setTextColor(Color.rgb(185, 205, 191)); setPadding(0, dp(8), 0, dp(16)) })
+        content.addView(fieldLabel("학교급"))
+        val schoolLevel = select(QuickQuizFormPolicy.schoolLevels).apply { setSelection(QuickQuizFormPolicy.schoolLevels.indexOf(store.quickQuizLastSchoolLevel()).coerceAtLeast(0)) }
+        content.addView(schoolLevel, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { bottomMargin = dp(10) })
         content.addView(fieldLabel("과목"))
         val subject = select(QuickQuizFormPolicy.subjects).apply { setSelection(QuickQuizFormPolicy.subjectIndex(store.quickQuizLastSubject())) }
         content.addView(subject, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(54)).apply { bottomMargin = dp(10) })
@@ -97,8 +100,9 @@ class QuickQuizActivity : AppCompatActivity() {
             val countValue = QuickQuizFormPolicy.questionCounts[count.selectedItemPosition]
             generate.isEnabled = false
             lifecycleScope.launch { try {
-                store.saveQuickQuizLastSubject(subjectValue)
-                if (ensureModelReady()) createQuiz(subjectValue, unit.text.toString().trim(), term, QuickQuizFormPolicy.difficultyLabel(rate), questionFormatValue, countValue)
+                val schoolLevelValue = QuickQuizFormPolicy.schoolLevels[schoolLevel.selectedItemPosition]
+                store.saveQuickQuizLastSubject(subjectValue); store.saveQuickQuizLastSchoolLevel(schoolLevelValue)
+                if (ensureModelReady()) createQuiz(subjectValue, unit.text.toString().trim(), term, schoolLevelValue, QuickQuizFormPolicy.difficultyTier(rate), questionFormatValue, countValue)
             } catch (error: Throwable) { status.text = error.message ?: "쪽지시험 생성에 실패했습니다." } finally { generate.isEnabled = true } }
         } }
         content.addView(generate, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply { bottomMargin = dp(18) })
@@ -116,12 +120,12 @@ class QuickQuizActivity : AppCompatActivity() {
     }
 
     /** 스트리밍 토큰은 화면에 노출하지 않고, LiteRT-LM 생성이 끝난 한 번의 결과만 검수 목록에 추가한다. */
-    private suspend fun createQuiz(subject: String, unit: String, topic: String, difficulty: String, questionFormat: String, count: Int) {
+    private suspend fun createQuiz(subject: String, unit: String, topic: String, schoolLevel: String, difficulty: String, questionFormat: String, count: Int) {
         status.text = "쪽지시험을 생성하고 있습니다. 완료되면 검수 목록에 표시합니다."
-        val response = runner.generateFinal(QuickQuizPromptContract.generationPrompt(subject, unit, topic, difficulty, questionFormat, count, store.teacherInstructions())).trim()
+        val response = runner.generateFinal(QuickQuizPromptContract.generationPrompt(subject, unit, topic, schoolLevel, difficulty, questionFormat, count, store.teacherInstructions())).trim()
         if (response.isBlank()) throw IllegalStateException("모델이 빈 쪽지시험을 반환했습니다. 다시 시도해 주세요.")
         val safe = if (PromptDisclosurePolicy.isPotentialDisclosure(response)) PromptDisclosurePolicy.SAFE_REPLY else response
-        store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, difficulty = difficulty.ifBlank { "낮음" }, questionFormat = questionFormat, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
+        store.saveQuickQuiz(LocalQuickQuiz(subject = subject.ifBlank { "화학 I" }, unit = unit.ifBlank { "공통" }, topic = topic, schoolLevel = schoolLevel, difficulty = difficulty.ifBlank { "보통" }, questionFormat = questionFormat, questionCount = count, content = safe, model = activeModel?.displayName ?: "Gemma", promptVersion = QuickQuizPromptContract.VERSION))
         status.text = "쪽지시험을 검수 목록에 저장했습니다. 정답과 해설을 확인해 주세요."
         refreshList()
     }
@@ -139,7 +143,7 @@ class QuickQuizActivity : AppCompatActivity() {
             val latest = pending.maxByOrNull { it.createdAt }
             list.addView(TextView(this).apply { text = if (latest == null) "현재 검수 대기 쪽지시험 문항이 없습니다." else "검수 대기 ${pending.size}세트 · $pendingQuestions문항\n가장 최근 미검수: ${latest.topic} · ${quickQuizCreatedAtLabel(latest.createdAt)}"; textSize = 13f; setTextColor(if (latest == null) Color.rgb(169, 215, 190) else Color.rgb(241, 202, 126)); setPadding(dp(8), dp(10), dp(8), dp(12)); background = surface(Color.rgb(28, 48, 40), dp(14)) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) })
         }
-        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.subject} · ${quiz.unit} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("학생용 PDF").apply { setOnClickListener { exportStudentPdf(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
+        store.quickQuizzes().forEach { quiz -> list.addView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(12)); background = surface(Color.rgb(22, 38, 33), dp(20)); val approved = quiz.questionReviewStatuses.count { it == "승인" }; addView(TextView(this@QuickQuizActivity).apply { text = "[${store.quickQuizReviewSummary(quiz)}] ${quiz.topic}"; textSize = 17f; setTextColor(Color.WHITE); setTypeface(typeface, android.graphics.Typeface.BOLD) }); addView(TextView(this@QuickQuizActivity).apply { text = "${quiz.schoolLevel} · ${quiz.subject} · ${quiz.unit} · ${quiz.difficulty} · ${QuickQuizFormPolicy.questionFormatLabel(quiz.questionFormat)} · ${quiz.questionCount}문항 · 승인 $approved문항"; textSize = 12f; setTextColor(Color.rgb(177, 199, 183)); setPadding(0, dp(4), 0, dp(5)) }); addView(TextView(this@QuickQuizActivity).apply { text = readableQuickQuizText(quiz.content); textSize = 14f; setTextColor(Color.rgb(201, 215, 202)); maxLines = 10 }); addView(LinearLayout(this@QuickQuizActivity).apply { addView(button("문항별 검수").apply { setOnClickListener { showQuizDetail(quiz) } }, LinearLayout.LayoutParams(dp(112), dp(38))); addView(button("학생용 공유").apply { setOnClickListener { shareStudentQuiz(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("학생용 PDF").apply { setOnClickListener { exportStudentPdf(quiz) } }, LinearLayout.LayoutParams(dp(96), dp(38)).apply { leftMargin = dp(8) }); addView(button("삭제").apply { setOnClickListener { store.deleteQuickQuiz(quiz.id); refreshList() } }, LinearLayout.LayoutParams(dp(70), dp(38)).apply { leftMargin = dp(8) }) }) }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }) }
     }
 
     /** 승인한 문항에서만 정답·해설·개념을 빼고, 교사가 선택한 경우에만 해당 문항의 배점을 붙인다. */
@@ -241,8 +245,8 @@ class QuickQuizActivity : AppCompatActivity() {
     private fun quickQuizBlocks(value: String): List<String> = value.split(Regex("(?m)(?=^\\s*문항\\s*[:：])")).map { it.trim() }.filter { it.matches(Regex("(?s)^문항\\s*[:：].*")) }
     /** 생성 순서를 확인할 수 있도록 현재 기기 시간대를 적용한 짧은 생성 시각을 표시한다. */
     private fun quickQuizCreatedAtLabel(value: Long): String = android.text.format.DateFormat.format("M월 d일 HH:mm", value).toString()
-    /** 이전 세트의 ‘③ 6’ 같은 숫자 보기를 ‘선택 ③: 6’으로 읽어 선택 번호와 값의 혼동을 막는다. */
-    private fun readableQuickQuizText(value: String): String = value.replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*(?:선택\\s*)?\\2\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(정답\\s*[:：]\\s*)선택\\s*([①②③④])\\s*$"), "$1$2번")
+    /** 이전 세트의 숫자 보기 중복을 정리하고 화학식·이온식은 화면·공유·PDF에서 같은 표기로 보이게 한다. */
+    private fun readableQuickQuizText(value: String): String = ScienceNotation.format(value.replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*(?:선택\\s*)?\\2\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(\\s*)선택\\s*([①②③④])\\s*:\\s*"), "$1$2 ").replace(Regex("(?m)^(정답\\s*[:：]\\s*)선택\\s*([①②③④])\\s*$"), "$1$2번"))
     private fun fieldLabel(label: String) = TextView(this).apply { text = label; textSize = 13.5f; setTextColor(Color.rgb(194, 211, 195)); setPadding(dp(4), dp(2), dp(4), dp(5)) }
     private fun field(label: String, value: String) = EditText(this).apply { hint = label; setText(value); setTextColor(Color.WHITE); setHintTextColor(Color.rgb(145, 165, 151)); background = surface(Color.rgb(15, 29, 25), (resources.displayMetrics.density * 16).toInt()); setPadding((resources.displayMetrics.density * 16).toInt(), (resources.displayMetrics.density * 12).toInt(), (resources.displayMetrics.density * 16).toInt(), (resources.displayMetrics.density * 12).toInt()) }
     private fun select(values: List<String>) = Spinner(this).apply { adapter = ArrayAdapter(this@QuickQuizActivity, android.R.layout.simple_spinner_dropdown_item, values); background = surface(Color.rgb(15, 29, 25), (resources.displayMetrics.density * 16).toInt()); setPadding((resources.displayMetrics.density * 12).toInt(), 0, (resources.displayMetrics.density * 12).toInt(), 0) }

@@ -241,7 +241,8 @@ function registerHandlers() {
     if (isPotentialPromptDisclosure(generated.response)) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
     const now = new Date().toISOString(); const id = randomUUID();
     // 한 세트의 문항도 각각 검수할 수 있도록 모두 독립 검수 대기 상태로 저장한다.
-    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, difficulty: String(input.difficulty || "낮음").slice(0, 30), questionFormat, questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", questionReviewStates: Array.from({ length: questionCount }, () => "pending_review"), questionPoints: Array.from({ length: questionCount }, () => null), createdAt: now, updatedAt: now });
+    const schoolLevel = input.schoolLevel === "middle" ? "middle" : "high";
+    store.saveQuickQuizSet({ id, subject: String(input.subject || "화학 I").slice(0, 80), unit: String(input.unit || "공통").slice(0, 120), topic, schoolLevel, difficulty: ["낮음", "보통", "높음"].includes(input.difficulty) ? input.difficulty : "보통", questionFormat, questionCount, rawOutput: generated.response, model: generated.model, promptVersion: QUICK_QUIZ_PROMPT_VERSION, status: "pending_review", questionReviewStates: Array.from({ length: questionCount }, () => "pending_review"), questionPoints: Array.from({ length: questionCount }, () => null), createdAt: now, updatedAt: now });
     store.audit({ id: randomUUID(), action: "local_quick_quiz_generate", payload: { questionCount, questionFormat, model: generated.model }, createdAt: now });
     return { id, response: generated.response, model: generated.model };
   });

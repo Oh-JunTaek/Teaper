@@ -225,6 +225,8 @@ export const quickQuizSets = mysqlTable(
     subject: varchar("subject", { length: 80 }).notNull(),
     unit: varchar("unit", { length: 120 }).notNull(),
     topic: varchar("topic", { length: 160 }).notNull(),
+    // 기존 세트는 고등 기준으로 읽어, 학교급 선택 기능 추가 뒤에도 검수·출력 기록을 보존한다.
+    schoolLevel: mysqlEnum("schoolLevel", ["middle", "high"]).default("high").notNull(),
     difficulty: varchar("difficulty", { length: 30 }).notNull(),
     // 기존 세트는 객관식 4지선다로 읽어, 새 형식 도입 뒤에도 학생용 출력 흐름을 유지한다.
     questionFormat: mysqlEnum("questionFormat", ["multiple_choice", "short_answer", "ox"]).default("multiple_choice").notNull(),

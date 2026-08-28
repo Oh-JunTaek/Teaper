@@ -98,11 +98,11 @@ describe("generation request evidence integration", () => {
     await expect(caller.quickQuiz.reviewQuestion({ id: 501, questionIndex: 9, status: "rejected" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
-  it("stores the selected quick-quiz format with the current teacher only", async () => {
+  it("stores the selected quick-quiz format, school level, and difficulty with the current teacher only", async () => {
     const caller = assessmentRouter.createCaller(context());
-    await expect(caller.quickQuiz.create({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", difficulty: "낮음", questionFormat: "ox", questionCount: 1 })).resolves.toMatchObject({ id: 811 });
-    expect(generateQuickQuiz).toHaveBeenCalledWith(expect.objectContaining({ questionFormat: "ox", topic: "공유 결합" }), expect.anything());
-    expect(db.createQuickQuizSet).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 42, questionFormat: "ox", questionReviewStates: ["pending_review"] }));
+    await expect(caller.quickQuiz.create({ subject: "화학 I", unit: "화학 결합", topic: "공유 결합", schoolLevel: "high", difficulty: "높음", questionFormat: "ox", questionCount: 1 })).resolves.toMatchObject({ id: 811 });
+    expect(generateQuickQuiz).toHaveBeenCalledWith(expect.objectContaining({ questionFormat: "ox", schoolLevel: "high", difficulty: "높음", topic: "공유 결합" }), expect.anything());
+    expect(db.createQuickQuizSet).toHaveBeenCalledWith(expect.objectContaining({ ownerId: 42, schoolLevel: "high", difficulty: "높음", questionFormat: "ox", questionReviewStates: ["pending_review"] }));
   });
 
   it("stores schedule dates only in the current teacher's workspace", async () => {

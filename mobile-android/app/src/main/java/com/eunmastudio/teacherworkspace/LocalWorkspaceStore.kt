@@ -80,6 +80,7 @@ data class LocalQuickQuiz(
     val subject: String,
     val unit: String,
     val topic: String,
+    val schoolLevel: String = "고등",
     val difficulty: String,
     val questionFormat: String = "multiple_choice",
     val questionCount: Int,
@@ -214,6 +215,7 @@ class LocalWorkspaceStore(context: Context) {
                 subject = item.getString("subject"),
                 unit = item.getString("unit"),
                 topic = item.getString("topic"),
+                schoolLevel = item.optString("schoolLevel", "고등").takeIf { it == "중등" || it == "고등" } ?: "고등",
                 difficulty = item.getString("difficulty"),
                 questionFormat = normalizedQuickQuizFormat(item.optString("questionFormat", "multiple_choice")),
                 questionCount = item.getInt("questionCount"),
@@ -447,6 +449,13 @@ class LocalWorkspaceStore(context: Context) {
         preferences.edit().putString("quickQuizLastSubject", subject.trim()).apply()
     }
 
+    /** 최근 학교급은 다음 쪽지시험 화면의 기본 선택으로만 저장하며, 다른 기기와 자동 동기화하지 않는다. */
+    fun quickQuizLastSchoolLevel(): String = preferences.getString("quickQuizLastSchoolLevel", "고등")?.takeIf { it == "중등" || it == "고등" } ?: "고등"
+
+    fun saveQuickQuizLastSchoolLevel(level: String) {
+        preferences.edit().putString("quickQuizLastSchoolLevel", level.takeIf { it == "중등" || it == "고등" } ?: "고등").apply()
+    }
+
     private fun writeSources(items: List<LocalSource>) {
         val array = JSONArray()
         items.forEach { item ->
@@ -507,7 +516,7 @@ class LocalWorkspaceStore(context: Context) {
         items.forEach { item ->
             array.put(JSONObject().apply {
                 put("id", item.id); put("subject", item.subject); put("unit", item.unit); put("topic", item.topic)
-                put("difficulty", item.difficulty); put("questionFormat", normalizedQuickQuizFormat(item.questionFormat)); put("questionCount", item.questionCount); put("content", item.content)
+                put("schoolLevel", item.schoolLevel); put("difficulty", item.difficulty); put("questionFormat", normalizedQuickQuizFormat(item.questionFormat)); put("questionCount", item.questionCount); put("content", item.content)
                 put("model", item.model); put("promptVersion", item.promptVersion); put("reviewStatus", item.reviewStatus); put("questionReviewStatuses", JSONArray(normalizedQuickQuizQuestionStatuses(item.questionReviewStatuses, item.questionCount))); put("questionPoints", JSONArray(normalizedQuickQuizQuestionPoints(item.questionPoints, item.questionCount)))
                 put("createdAt", item.createdAt); put("updatedAt", item.updatedAt)
             })

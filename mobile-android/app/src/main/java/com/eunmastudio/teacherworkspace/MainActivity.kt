@@ -832,8 +832,8 @@ class MainActivity : AppCompatActivity() {
         } else {
             lateinit var reviewDialog: Dialog
             questions.sortedByDescending { it.createdAt }.forEach { question ->
-                container.addView(studioButton("[${question.reviewStatus}] ${question.title}\n${question.content.take(90)}").apply {
-                    text = "[${question.reviewStatus}] ${question.title}\n${question.content.take(90)}"
+                container.addView(studioButton("[${question.reviewStatus}] ${ScienceNotation.format(question.title)}\n${ScienceNotation.format(question.content.take(90))}").apply {
+                    text = "[${question.reviewStatus}] ${ScienceNotation.format(question.title)}\n${ScienceNotation.format(question.content.take(90))}"
                     isAllCaps = false
                     setOnClickListener { reviewDialog.dismiss(); showQuestionDetailDialog(question) }
                 }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
@@ -863,13 +863,13 @@ class MainActivity : AppCompatActivity() {
         container.addView(text("일반 문항 ${approvedQuestions.size}개 · 쪽지시험 ${approvedQuickItems.size}개", 14f, Color.rgb(188, 209, 193)).apply { setPadding(4, 4, 4, 12) })
         if (approvedQuestions.isNotEmpty()) {
             container.addView(text("일반 승인 문항", 16f, Color.WHITE).apply { setPadding(4, 8, 4, 6) })
-            approvedQuestions.forEach { question -> container.addView(studioButton(question.title).apply { setOnClickListener { showQuestionDetailDialog(question) } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 }) }
+            approvedQuestions.forEach { question -> container.addView(studioButton(ScienceNotation.format(question.title)).apply { setOnClickListener { showQuestionDetailDialog(question) } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 }) }
         }
         if (approvedQuickItems.isNotEmpty()) {
             container.addView(text("승인 쪽지시험 문항", 16f, Color.WHITE).apply { setPadding(4, 14, 4, 6) })
             approvedQuickItems.forEach { (quiz, index, block) ->
                 val preview = block.replace(Regex("(?m)^문항\\s*[:：]\\s*"), "").lineSequence().firstOrNull().orEmpty()
-                container.addView(studioButton("${quiz.topic} · ${index + 1}번\n${preview.take(90)}").apply { isAllCaps = false; setOnClickListener { startActivity(Intent(this@MainActivity, QuickQuizActivity::class.java)); status.text = "쪽지시험 관리에서 승인 문항을 확인할 수 있습니다." } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
+                container.addView(studioButton("${ScienceNotation.format(quiz.topic)} · ${index + 1}번\n${ScienceNotation.format(preview.take(90))}").apply { isAllCaps = false; setOnClickListener { startActivity(Intent(this@MainActivity, QuickQuizActivity::class.java)); status.text = "쪽지시험 관리에서 승인 문항을 확인할 수 있습니다." } }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = 8 })
             }
         }
         if (approvedQuestions.isEmpty() && approvedQuickItems.isEmpty()) container.addView(text("아직 승인 문항이 없습니다. 검수함 또는 쪽지시험에서 교사가 문항을 승인하면 이곳에 모입니다.", 15f, Color.rgb(192, 207, 193)).apply { setPadding(4, 8, 4, 8) })
@@ -878,8 +878,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showQuestionDetailDialog(question: LocalQuestion) {
         AlertDialog.Builder(this)
-            .setTitle("${question.title} · ${question.reviewStatus}")
-            .setMessage(question.content)
+            .setTitle("${ScienceNotation.format(question.title)} · ${question.reviewStatus}")
+            .setMessage(ScienceNotation.format(question.content))
             .setNegativeButton("닫기", null)
             .setNeutralButton("내보내기") { _, _ -> showExportDialog(question) }
             .setPositiveButton("교사 검수") { _, _ -> runLocalReview(question) }

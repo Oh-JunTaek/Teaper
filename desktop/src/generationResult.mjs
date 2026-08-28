@@ -19,8 +19,11 @@ const escapeHtml = value => String(value ?? "").replace(/&/g, "&amp;").replace(/
 const subscript = { 0: "₀", 1: "₁", 2: "₂", 3: "₃", 4: "₄", 5: "₅", 6: "₆", 7: "₇", 8: "₈", 9: "₉" };
 const superscript = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹", "+": "⁺", "-": "⁻" };
 
-function readableMath(value) {
-  return value.replace(/\\text\{([^}]+)\}/g, "$1").replace(/\\delta\^\{?(-|\+)\}?/g, (_, sign) => sign === "-" ? "δ⁻" : "δ⁺").replace(/\\circ/g, "°").replace(/_\{?([0-9]+)\}?/g, (_, digits) => [...digits].map(digit => subscript[digit] || digit).join("")).replace(/\^\{?([0-9+-]+)\}?/g, (_, digits) => [...digits].map(digit => superscript[digit] || digit).join(""));
+export function readableMath(value) {
+  const toSubscript = digits => String(digits).split("").map(digit => subscript[digit] || digit).join("");
+  const toSuperscript = digits => String(digits).split("").map(digit => superscript[digit] || digit).join("");
+  const normalizeFormula = formula => formula.replace(/([A-Z][a-z]?)(\d+)/g, (_match, symbol, digits) => `${symbol}${toSubscript(digits)}`);
+  return String(value || "").replace(/\$([^$]+)\$/g, "$1").replace(/\\text\{([^}]+)\}/g, "$1").replace(/\\delta\^\{?(-|\+)\}?/g, (_match, sign) => sign === "-" ? "δ⁻" : "δ⁺").replace(/\\circ/g, "°").replace(/_\{?([0-9]+)\}?/g, (_match, digits) => toSubscript(digits)).replace(/\^\{?([0-9+-]+)\}?/g, (_match, digits) => toSuperscript(digits)).replace(/\b(?:[A-Z][a-z]?\d*){2,}\b/g, normalizeFormula).replace(/\b((?:[A-Z][a-z]?\d*)+)([+-])(?=\s|$|[),.?!])/g, (_match, formula, charge) => `${normalizeFormula(formula)}${toSuperscript(charge)}`).replace(/\b(\d+[spdfg])(\d+)\b/g, (_match, orbital, digits) => `${orbital}${toSuperscript(digits)}`);
 }
 
 /** 브라우저에서 외부 라이브러리 없이 교사용 생성 결과의 핵심 Markdown과 수식을 읽기 좋게 표시한다. */

@@ -1,4 +1,5 @@
 import { AlignmentType, Document, HeadingLevel, ImageRun, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { formatScienceNotation } from "./scienceNotation";
 
 export type ExportVisualSpec =
   | { kind: "graph"; title: string; xAxis: { label: string; unit?: string }; yAxis: { label: string; unit?: string }; series: Array<{ name: string; color?: string; points: Array<{ x: number; y: number }> }> }
@@ -57,14 +58,14 @@ function graphToSvg(spec: Extract<ExportVisualSpec, { kind: "graph" }>) {
   const plotHeight = graphHeight - pad.top - pad.bottom;
   const scaleX = (value: number) => pad.left + ((value - xMin) / (xMax - xMin || 1)) * plotWidth;
   const scaleY = (value: number) => pad.top + plotHeight - ((value - yMin) / (yMax - yMin || 1)) * plotHeight;
-  const xAxis = `${escapeXml(spec.xAxis.label)}${spec.xAxis.unit ? ` (${escapeXml(spec.xAxis.unit)})` : ""}`;
-  const yAxis = `${escapeXml(spec.yAxis.label)}${spec.yAxis.unit ? ` (${escapeXml(spec.yAxis.unit)})` : ""}`;
+  const xAxis = `${escapeXml(formatScienceNotation(spec.xAxis.label))}${spec.xAxis.unit ? ` (${escapeXml(formatScienceNotation(spec.xAxis.unit))})` : ""}`;
+  const yAxis = `${escapeXml(formatScienceNotation(spec.yAxis.label))}${spec.yAxis.unit ? ` (${escapeXml(formatScienceNotation(spec.yAxis.unit))})` : ""}`;
   const lines = spec.series.map((series, index) => {
     const color = series.color || ["#15856B", "#2D6496", "#B56716", "#7B56B3"][index % 4];
     const points = series.points.map(point => `${scaleX(point.x).toFixed(1)},${scaleY(point.y).toFixed(1)}`).join(" ");
-    return `<polyline fill="none" stroke="${escapeXml(color)}" stroke-width="3" points="${points}"/><text x="${pad.left + 8}" y="${pad.top + 18 + index * 18}" fill="${escapeXml(color)}" font-size="13" font-family="Arial, sans-serif">${escapeXml(series.name)}</text>`;
+    return `<polyline fill="none" stroke="${escapeXml(color)}" stroke-width="3" points="${points}"/><text x="${pad.left + 8}" y="${pad.top + 18 + index * 18}" fill="${escapeXml(color)}" font-size="13" font-family="Arial, sans-serif">${escapeXml(formatScienceNotation(series.name))}</text>`;
   }).join("");
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graphWidth}" height="${graphHeight}" viewBox="0 0 ${graphWidth} ${graphHeight}"><rect width="100%" height="100%" fill="#ffffff"/><text x="${graphWidth / 2}" y="20" text-anchor="middle" fill="#183248" font-size="15" font-weight="700" font-family="Arial, sans-serif">${escapeXml(spec.title)}</text><line x1="${pad.left}" y1="${pad.top + plotHeight}" x2="${pad.left + plotWidth}" y2="${pad.top + plotHeight}" stroke="#334155" stroke-width="1.5"/><line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotHeight}" stroke="#334155" stroke-width="1.5"/><text x="${pad.left + plotWidth / 2}" y="${graphHeight - 12}" text-anchor="middle" fill="#475569" font-size="12" font-family="Arial, sans-serif">${xAxis}</text><text x="14" y="${pad.top + plotHeight / 2}" transform="rotate(-90 14 ${pad.top + plotHeight / 2})" text-anchor="middle" fill="#475569" font-size="12" font-family="Arial, sans-serif">${yAxis}</text>${lines}</svg>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${graphWidth}" height="${graphHeight}" viewBox="0 0 ${graphWidth} ${graphHeight}"><rect width="100%" height="100%" fill="#ffffff"/><text x="${graphWidth / 2}" y="20" text-anchor="middle" fill="#183248" font-size="15" font-weight="700" font-family="Arial, sans-serif">${escapeXml(formatScienceNotation(spec.title))}</text><line x1="${pad.left}" y1="${pad.top + plotHeight}" x2="${pad.left + plotWidth}" y2="${pad.top + plotHeight}" stroke="#334155" stroke-width="1.5"/><line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotHeight}" stroke="#334155" stroke-width="1.5"/><text x="${pad.left + plotWidth / 2}" y="${graphHeight - 12}" text-anchor="middle" fill="#475569" font-size="12" font-family="Arial, sans-serif">${xAxis}</text><text x="14" y="${pad.top + plotHeight / 2}" transform="rotate(-90 14 ${pad.top + plotHeight / 2})" text-anchor="middle" fill="#475569" font-size="12" font-family="Arial, sans-serif">${yAxis}</text>${lines}</svg>`;
 }
 
 function visualBlocks(spec: ExportVisualSpec | null | undefined) {
@@ -81,23 +82,23 @@ function visualBlocks(spec: ExportVisualSpec | null | undefined) {
 
 /** 학생용 문항 제목은 문제·보기·선택 배점만 남기고 난이도·유형·검수 정보를 넣지 않는다. */
 export function studentQuestionHeadingText(question: Pick<ExportQuestion, "questionText" | "points">, index: number, includePoints = false) {
-  return `${index}. ${question.questionText}${includePoints ? ` ［${question.points}점］` : ""}`;
+  return `${index}. ${formatScienceNotation(question.questionText)}${includePoints ? ` ［${question.points}점］` : ""}`;
 }
 
 function questionBlocks(question: ExportQuestion, index: number, kind: QuestionDocumentKind, options: QuestionPrintOptions = {}) {
   const showAnswers = kind === "answer-sheet";
   const showStudentPoints = kind === "question-paper" && options.includePoints === true;
   const blocks = [
-    new Paragraph({ spacing: { before: index === 1 ? 0 : 280, after: 120 }, children: [new TextRun({ text: `${index}. `, bold: true, size: 24 }), new TextRun({ text: question.questionText, size: 22 }), ...(showStudentPoints ? [new TextRun({ text: ` ［${question.points}점］`, size: 20, color: "475569" })] : [])] }),
+    new Paragraph({ spacing: { before: index === 1 ? 0 : 280, after: 120 }, children: [new TextRun({ text: `${index}. `, bold: true, size: 24 }), new TextRun({ text: formatScienceNotation(question.questionText), size: 22 }), ...(showStudentPoints ? [new TextRun({ text: ` ［${question.points}점］`, size: 20, color: "475569" })] : [])] }),
     ...(showAnswers ? [new Paragraph({ spacing: { after: 80 }, children: [new TextRun({ text: `${question.questionType} · 난이도 ${question.difficulty} · ${question.points}점`, color: "475569", size: 18 })] })] : []),
-    ...(question.choices || []).map((choice, choiceIndex) => new Paragraph({ indent: { left: 360 }, spacing: { after: 60 }, children: [new TextRun({ text: `${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${choice}`, size: 21 })] })),
+    ...(question.choices || []).map((choice, choiceIndex) => new Paragraph({ indent: { left: 360 }, spacing: { after: 60 }, children: [new TextRun({ text: `${"①②③④⑤"[choiceIndex] || `${choiceIndex + 1}.`} ${formatScienceNotation(choice)}`, size: 21 })] })),
     ...visualBlocks(question.visualSpec),
   ];
   if (showAnswers) {
     blocks.push(
-      new Paragraph({ spacing: { before: 120, after: 50 }, children: [new TextRun({ text: "정답  ", bold: true, color: "15856B" }), new TextRun({ text: question.answer, bold: true })] }),
-      new Paragraph({ spacing: { after: 50 }, children: [new TextRun({ text: "해설  ", bold: true, color: "183248" }), new TextRun(question.explanation)] }),
-      new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: "출제 의도  ", bold: true, color: "183248" }), new TextRun(question.intent)] }),
+      new Paragraph({ spacing: { before: 120, after: 50 }, children: [new TextRun({ text: "정답  ", bold: true, color: "15856B" }), new TextRun({ text: formatScienceNotation(question.answer), bold: true })] }),
+      new Paragraph({ spacing: { after: 50 }, children: [new TextRun({ text: "해설  ", bold: true, color: "183248" }), new TextRun(formatScienceNotation(question.explanation))] }),
+      new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: "출제 의도  ", bold: true, color: "183248" }), new TextRun(formatScienceNotation(question.intent))] }),
     );
   }
   return blocks;

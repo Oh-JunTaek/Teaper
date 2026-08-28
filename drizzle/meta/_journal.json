@@ -162,6 +162,13 @@
       "when": 1787813118797,
       "tag": "0022_yellow_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "5",
+      "when": 1787880335144,
+      "tag": "0023_concerned_pepper_potts",
+      "breakpoints": true
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { invokeLLM, listLLMModels } from "../_core/llm";
 import { PDFParse } from "pdf-parse";
 import type { ResolvedProvider } from "./aiProviders";
-import { appendTeacherInstructions, buildGenerationSystemPrompt, buildQuickQuizSystemPrompt, buildValidationSystemPrompt, isPotentialPromptDisclosure, PROMPT_CONTRACT_VERSION, QUICK_QUIZ_PROMPT_VERSION, type ProviderKind, type QuickQuizFormat } from "./assessmentPrompt";
+import { appendTeacherInstructions, buildGenerationSystemPrompt, buildQuickQuizSystemPrompt, buildValidationSystemPrompt, isPotentialPromptDisclosure, PROMPT_CONTRACT_VERSION, QUICK_QUIZ_PROMPT_VERSION, type ProviderKind, type QuickQuizFormat, type QuickQuizSchoolLevel } from "./assessmentPrompt";
 import type { CalculationSpec } from "./mathVerification";
 
 export const PROMPT_VERSION = PROMPT_CONTRACT_VERSION;
@@ -234,12 +234,12 @@ export function normalizeQuickQuizQuestions(rawQuestions: QuickQuizQuestion[], f
   return questions;
 }
 
-export async function generateQuickQuiz(input: { subject: string; unit: string; topic: string; difficulty: string; questionCount: number; questionFormat: QuickQuizFormat; customInstructions?: string }, provider?: ResolvedProvider) {
+export async function generateQuickQuiz(input: { subject: string; unit: string; topic: string; schoolLevel: QuickQuizSchoolLevel; difficulty: "낮음" | "보통" | "높음"; questionCount: number; questionFormat: QuickQuizFormat; customInstructions?: string }, provider?: ResolvedProvider) {
   const model = await selectModel("generation", provider);
   if (!model) throw new Error("사용 가능한 AI 모델을 찾을 수 없습니다.");
   const response = await invokeForProvider({ provider, model, messages: [
-    { role: "system", content: appendTeacherInstructions(buildQuickQuizSystemPrompt((provider?.kind || "managed") as ProviderKind, input.questionFormat), input.customInstructions) },
-    { role: "user", content: `쪽지시험 생성 요청\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 확인할 개념: ${input.topic}\n- 난이도: ${input.difficulty}\n- 문항 형식: ${quickQuizFormatLabel[input.questionFormat]}\n- 문항 수: ${input.questionCount}\n\n학생이 짧은 시간 안에 풀 수 있는 새로운 개념 확인 문항만 ${input.questionCount}개 생성하십시오.` },
+    { role: "system", content: appendTeacherInstructions(buildQuickQuizSystemPrompt((provider?.kind || "managed") as ProviderKind, input.questionFormat, input.difficulty, input.schoolLevel), input.customInstructions) },
+    { role: "user", content: `쪽지시험 생성 요청\n- 학교급: ${input.schoolLevel === "middle" ? "중등" : "고등"}\n- 과목: ${input.subject}\n- 단원: ${input.unit}\n- 확인할 개념: ${input.topic}\n- 난이도: ${input.difficulty}\n- 문항 형식: ${quickQuizFormatLabel[input.questionFormat]}\n- 문항 수: ${input.questionCount}\n\n학생이 짧은 시간 안에 풀 수 있는 새로운 개념 확인 문항만 ${input.questionCount}개 생성하십시오.` },
   ], responseFormat: quickQuizSchema });
   const parsed = JSON.parse(contentOf(response)) as { questions: QuickQuizQuestion[] };
   if (parsed.questions.some(question => isPotentialPromptDisclosure(`${question.questionText}\n${question.answer}\n${question.explanation}\n${question.concept}`))) throw new Error("쪽지시험 결과에서 내부 지시문 노출 가능성을 감지했습니다. 저장하지 않았습니다.");
