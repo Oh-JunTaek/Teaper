@@ -152,4 +152,4 @@ cd mobile-android
 
 파일럿을 실제 서비스로 전환하기 전에는 개인정보 처리방침, 이용약관, 자료 권리와 보존·삭제 정책, AI 제공자 약관, 문의·장애 대응 절차, 결제·환불 정책을 실제 운영 조건에 맞게 확정해야 합니다. 공식 자료는 자동 수집 즉시 반영하지 않고, 변경 감지 후 운영자 검토와 교사 고지 과정을 두는 것을 원칙으로 합니다.
 
-추가 설계와 검토 위치는 [CHANGELOG.md](./CHANGELOG.md), [todo.md](./todo.md), [기능별 코드 검토 안내](./docs/code-review-map.md), [3플랫폼 기능 동등성 점검](./docs/platform-parity-audit-2026-08.md), [출시 준비 점검 보고서](./docs/release-readiness-audit-2026-08.md), [출시 공식 출처 메모](./docs/release-source-notes-2026-08.md)에서 확인할 수 있습니다.
+추가 설계와 검토 위치는 [CHANGELOG.md](./CHANGELOG.md), [todo.md](./todo.md), [기능별 코드 검토 안내](./docs/code-review-map.md), [4플랫폼 기능 동등성 점검](./docs/platform-parity-audit-2026-08.md), [수업 자료 활용 허브·가상 실험 검토](./docs/learning-resource-hub-v1-plan-2026-08.md), [iOS Version 1.0 출시 체크리스트](./docs/ios-version-1-release-checklist-2026-08.md), [출시 준비 점검 보고서](./docs/release-readiness-audit-2026-08.md), [출시 공식 출처 메모](./docs/release-source-notes-2026-08.md)에서 확인할 수 있습니다.
